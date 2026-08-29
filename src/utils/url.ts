@@ -151,6 +151,20 @@ export function isAggregatorUrl(value: string): boolean {
   }
 }
 
+/** A board-level employer page is shared by many requisitions, so it is not a
+ * unique listing identity and should not be used to merge otherwise distinct
+ * roles. */
+export function isCompanyLandingUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.replace(/^www\./i, "");
+    return /(?:^|\.)dreamworkhq\.com$/i.test(hostname)
+      && /^\/c\/[^/]+\/?$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** A Jobright detail/slug page whose UI can link to the employer's original post. */
 export function isJobrightJobUrl(value: string): boolean {
   try {

@@ -464,6 +464,73 @@ describe("SQLite lifecycle", () => {
     database.close();
   });
 
+  it("replaces a shared company page with a row-specific posting on refresh", () => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-db-company-page-refresh-"));
+    temporaryDirectories.push(directory);
+    const sourceUrl = "https://github.com/dreamworkhq/Tech-Internships-2027";
+    const settings = resolveSettings({
+      databasePath: join(directory, "test.db"),
+      outputDirectory: join(directory, "output"),
+    });
+    const options: ScoutRunOptions = {
+      sources: [sourceUrl],
+      settings,
+      filters: { categories: [], newOnly: false, minScore: 60 },
+    };
+    const database = new InternshipDatabase(settings.databasePath);
+    const companyPage = "https://www.dreamworkhq.com/c/southstatebank.com";
+    const shared = makeInternship({
+      id: "southstate-houston",
+      company: "Southstatebank",
+      title: "Summer 2027 Commercial Banking Intern Houston, TX",
+      location: ["Houston, TX", "Richmond James Center", "Atlanta Midtown"],
+      normalizedLocations: [{
+        raw: "Houston, TX",
+        country: "United States",
+        provinceState: "Texas",
+        city: "Houston",
+        remote: false,
+        remoteScope: null,
+      }],
+      applicationUrl: companyPage,
+      postingUrl: companyPage,
+      sourceUrl,
+      sources: [sourceUrl],
+    });
+    const firstRun = database.startRun(options);
+    database.persistRun(firstRun, crawl(shared), 2);
+
+    const specificUrl = "https://www.dreamworkhq.com/job/613e0503-9132-4309-8b0e-aa660d1e7bf7";
+    const specific = makeInternship({
+      id: "southstate-houston-specific",
+      company: shared.company,
+      title: shared.title,
+      location: ["Houston, TX"],
+      normalizedLocations: [{
+        raw: "Houston, TX",
+        country: "United States",
+        provinceState: "Texas",
+        city: "Houston",
+        remote: false,
+        remoteScope: null,
+      }],
+      applicationUrl: specificUrl,
+      postingUrl: specificUrl,
+      sourceUrl,
+      sources: [sourceUrl],
+      lastVerifiedAt: "2027-01-02T00:00:00.000Z",
+    });
+    const secondRun = database.startRun(options);
+    const result = database.persistRun(secondRun, crawl(specific), 2);
+
+    expect(result.internships).toHaveLength(1);
+    expect(result.internships[0]?.id).toBe(shared.id);
+    expect(result.internships[0]?.applicationUrl).toBe(specificUrl);
+    expect(result.internships[0]?.postingUrl).toBe(specificUrl);
+    expect(result.internships[0]?.location).toEqual(["Houston, TX"]);
+    database.close();
+  });
+
   it("replaces stale extracted fields when the same posting is reprocessed", () => {
     const directory = mkdtempSync(join(tmpdir(), "internshipmatic-db-refresh-"));
     temporaryDirectories.push(directory);

@@ -24,6 +24,27 @@ describe("deduplication", () => {
     expect(deduplicateListings([first, same, different])).toHaveLength(2);
   });
 
+  it("does not merge distinct roles that share a company landing page", () => {
+    const companyPage = "https://www.dreamworkhq.com/c/southstatebank.com";
+    const first = {
+      company: "Southstatebank",
+      title: "Summer 2027 Commercial Banking Intern Houston, TX",
+      location: "Houston, TX",
+      postingUrl: companyPage,
+      applicationUrl: companyPage,
+    };
+    const second = {
+      company: "Southstatebank",
+      title: "Summer 2027 Commercial Banking Intern Richmond, VA",
+      location: "Richmond James Center",
+      postingUrl: companyPage,
+      applicationUrl: companyPage,
+    };
+
+    expect(listingIdentityMatches(first, second)).toBe(false);
+    expect(deduplicateListings([first, second])).toHaveLength(2);
+  });
+
   it("merges the same job across sources and prefers the ATS application", () => {
     const companyCopy = makeInternship({
       applicationUrl: "https://northstar.example/careers/jobs/100",

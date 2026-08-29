@@ -38,7 +38,7 @@ import type {
 } from "../domain/types.js";
 import { InternshipSchema, normalizeCategory, type Internship, type LifecycleStatus } from "../domain/schemas.js";
 import { normalizeCompanyIdentity, normalizeIdentity, normalizeRoleIdentity, uniqueStrings } from "../utils/text.js";
-import { canonicalizeUrl, isAggregatorUrl, isJobrightUrl, normalizedJobUrl } from "../utils/url.js";
+import { canonicalizeUrl, isAggregatorUrl, isCompanyLandingUrl, isJobrightUrl, normalizedJobUrl } from "../utils/url.js";
 import { DATABASE_SCHEMA } from "./schema.js";
 import { CrawlCancelledError } from "../domain/cancellation.js";
 
@@ -1577,7 +1577,7 @@ export class InternshipDatabase {
     const candidateUrls = uniqueStrings([
       normalizedJobUrl(internship.applicationUrl),
       normalizedJobUrl(internship.postingUrl),
-    ]);
+    ]).filter((url) => !isCompanyLandingUrl(url));
     const rowsById = new Map<string, InternshipRow>();
     const urlRows = this.database.prepare(`
       SELECT * FROM internships
@@ -1639,10 +1639,10 @@ export class InternshipDatabase {
          OR posting_url IN (@applicationUrl, @postingUrl, @normalizedApplicationUrl, @normalizedPostingUrl)
       LIMIT 1
     `).get({
-      applicationUrl: internship.applicationUrl,
-      postingUrl: internship.postingUrl,
-      normalizedApplicationUrl,
-      normalizedPostingUrl,
+      applicationUrl: isCompanyLandingUrl(internship.applicationUrl) ? "" : internship.applicationUrl,
+      postingUrl: isCompanyLandingUrl(internship.postingUrl) ? "" : internship.postingUrl,
+      normalizedApplicationUrl: isCompanyLandingUrl(normalizedApplicationUrl) ? "" : normalizedApplicationUrl,
+      normalizedPostingUrl: isCompanyLandingUrl(normalizedPostingUrl) ? "" : normalizedPostingUrl,
     }) as unknown as InternshipRow | undefined;
     if (urlMatch) return urlMatch;
     const duplicateMatch = duplicateMatches.toSorted((left, right) => left.first_seen_at.localeCompare(right.first_seen_at))[0];
@@ -1691,6 +1691,10 @@ export class InternshipDatabase {
     const duplicatePayloads = duplicateMatches
       .filter((row) => row.id !== existing?.id)
       .map((row) => InternshipSchema.parse(JSON.parse(row.payload_json)));
+    const existingHasCompanyLandingUrl = existingPayload !== null
+      && (isCompanyLandingUrl(existingPayload.applicationUrl) || isCompanyLandingUrl(existingPayload.postingUrl));
+    const candidateHasRowSpecificUrl = [candidate.applicationUrl, candidate.postingUrl]
+      .some((url) => !isCompanyLandingUrl(url) && normalizedJobUrl(url) !== normalizedJobUrl(candidate.sourceUrl));
     const authoritativeRefresh = existingPayload !== null
       && (
         normalizedJobUrl(candidate.postingUrl) === normalizedJobUrl(existingPayload.postingUrl)
@@ -1699,6 +1703,7 @@ export class InternshipDatabase {
           && !isAggregatorUrl(candidate.postingUrl)
           && isAggregatorUrl(existingPayload.postingUrl)
         )
+        || (existingHasCompanyLandingUrl && candidateHasRowSpecificUrl)
       );
     const mergedCandidate = [authoritativeRefresh ? null : existingPayload, ...duplicatePayloads]
       .filter((payload): payload is Internship => payload !== null)

@@ -2,7 +2,7 @@ import type { AnalyzedJob } from "../domain/types.js";
 import type { Internship } from "../domain/schemas.js";
 import { internshipContentHash } from "../classification/analyzeJob.js";
 import { normalizeCompanyIdentity, normalizeIdentity, normalizeRoleIdentity, uniqueStrings } from "../utils/text.js";
-import { canonicalizeUrl, extractJobId, isAggregatorUrl, isAtsUrl, normalizedJobUrl, organizationTokenFromUrl } from "../utils/url.js";
+import { canonicalizeUrl, extractJobId, isAggregatorUrl, isAtsUrl, isCompanyLandingUrl, normalizedJobUrl, organizationTokenFromUrl } from "../utils/url.js";
 import { parseLocation } from "../parsing/locations.js";
 
 /**
@@ -205,8 +205,13 @@ function sameLocation(left: string[], right: string[]): boolean {
 export function listingIdentityMatches(left: ListingIdentityInput, right: ListingIdentityInput): boolean {
   const leftKeys = listingIdentityKeys(left);
   const rightKeys = listingIdentityKeys(right);
-  const rightUrls = new Set(rightKeys.filter(({ kind }) => kind === "canonical-url").map(({ key }) => key));
-  if (leftKeys.some(({ kind, key }) => kind === "canonical-url" && rightUrls.has(key))) return true;
+  const rightUrls = new Set(rightKeys
+    .filter(({ kind, key }) => kind === "canonical-url"
+      && !isCompanyLandingUrl(key.slice("url:".length)))
+    .map(({ key }) => key));
+  if (leftKeys.some(({ kind, key }) => kind === "canonical-url"
+    && !isCompanyLandingUrl(key.slice("url:".length))
+    && rightUrls.has(key))) return true;
 
   const a = listingDescriptor(left);
   const b = listingDescriptor(right);

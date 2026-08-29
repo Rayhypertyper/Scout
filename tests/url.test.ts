@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { canonicalizeUrl, extractJobId, isAggregatorUrl, isAtsUrl, isJobrightJobUrl, isJobrightUrl, isLinkedInJobUrl, normalizedJobUrl, redactSensitiveText, redactSensitiveUrl } from "../src/utils/url.js";
+import { canonicalizeUrl, extractJobId, isAggregatorUrl, isAtsUrl, isCompanyLandingUrl, isJobrightJobUrl, isJobrightUrl, isLinkedInJobUrl, normalizedJobUrl, redactSensitiveText, redactSensitiveUrl } from "../src/utils/url.js";
 
 describe("URL normalization", () => {
   it("removes fragments, trailing slashes, and tracking parameters", () => {
@@ -27,6 +27,8 @@ describe("URL normalization", () => {
     expect(extractJobId("https://acme.wd5.myworkdayjobs.com/jobs/job/Toronto/Intern_R26_4907")).toBe("R26_4907");
     expect(isAtsUrl("https://simplify.jobs/p/example/job")).toBe(false);
     expect(isAggregatorUrl("https://simplify.jobs/p/example/job")).toBe(true);
+    expect(isCompanyLandingUrl("https://www.dreamworkhq.com/c/southstatebank.com")).toBe(true);
+    expect(isCompanyLandingUrl("https://www.dreamworkhq.com/job/613e0503-940a-456d-b9b1-c01ee630c494")).toBe(false);
     expect(isJobrightUrl("https://jobright.ai/minisites-jobs/intern/us/swe?embed=true")).toBe(true);
     expect(isJobrightJobUrl("https://jobright.ai/jobs/info/abc123?visit=related-role")).toBe(true);
     expect(isJobrightJobUrl("https://jobright.ai/jobs/software-engineer-intern-jobs-in-united-states")).toBe(true);
