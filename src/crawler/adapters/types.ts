@@ -21,6 +21,13 @@ export interface SourceAdapterResult {
   notes: string[];
   failures: FetchFailure[];
   strategy: RetrievalStrategy;
+  /**
+   * Maximum number of raw listings represented by the returned snapshots.
+   * Adapters may set this only when their retrieval path applies its own
+   * finite, source-specific bound. Generic sources retain the crawler's
+   * conservative default.
+   */
+  maxRawListings?: number;
   /** True only when ordinary HTTP cannot expose the useful source content. */
   browserRequired?: boolean;
 }

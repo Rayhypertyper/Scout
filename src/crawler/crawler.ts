@@ -131,12 +131,12 @@ function hostname(value: string): string {
   return new URL(value).hostname;
 }
 
-function sourceLimitFailure(sourceUrl: string, url: string, kind: string, observed: number): FetchFailure {
+function sourceLimitFailure(sourceUrl: string, url: string, kind: string, observed: number, limit = MAX_ACCEPTED_JOBS_PER_SOURCE): FetchFailure {
   return {
     sourceUrl,
     url,
     errorType: "source_limit",
-    message: `${kind} exceeded the per-source safety limit of ${MAX_ACCEPTED_JOBS_PER_SOURCE}; observed at least ${observed} and analyzed only the bounded prefix to protect crawler memory.`,
+    message: `${kind} exceeded the per-source safety limit of ${limit}; observed at least ${observed} and analyzed only the bounded prefix to protect crawler memory.`,
     statusCode: null,
     retryCount: 0,
     occurredAt: new Date().toISOString(),
@@ -1514,6 +1514,9 @@ export class InternshipCrawler {
   ): Promise<SourceCrawlResult> {
     const startedAt = performance.now();
     const httpMetricsStart = this.http.metrics;
+    const structuredSnapshotFloor = collected.strategy === "structured_endpoint"
+      ? collected.snapshots.length
+      : 0;
     const structuredLinkFloor = collected.strategy === "structured_endpoint"
       ? collected.snapshots.reduce((largest, snapshot) => Math.max(largest, snapshot.links.length + 1), 0)
       : 0;
@@ -1521,6 +1524,7 @@ export class InternshipCrawler {
       1,
       this.settings.maxPagesPerSource,
       largeListingSourcePageFloor(sourceUrl) ?? 0,
+      structuredSnapshotFloor,
       structuredLinkFloor,
     );
     // Capacity is bounded by the crawl's own admission ceiling. This avoids
@@ -1542,6 +1546,9 @@ export class InternshipCrawler {
     let pending = 0;
     let pagesVisited = 0;
     let potentialPostingsInspected = 0;
+    const rawListingLimit = Number.isSafeInteger(collected.maxRawListings) && (collected.maxRawListings ?? 0) > 0
+      ? collected.maxRawListings!
+      : MAX_ACCEPTED_JOBS_PER_SOURCE;
     let rawListingsObserved = 0;
     let rawListingLimitReported = false;
     let candidateLimitReported = false;
@@ -1630,9 +1637,9 @@ export class InternshipCrawler {
         const rawJobs = extractJobs(snapshot);
         potentialPostingsInspected += rawJobs.length;
         rawListingsObserved += rawJobs.length;
-        const rawJobBudget = Math.max(0, MAX_ACCEPTED_JOBS_PER_SOURCE - (rawListingsObserved - rawJobs.length));
-        if (rawListingsObserved > MAX_ACCEPTED_JOBS_PER_SOURCE && !rawListingLimitReported) {
-          failures.push(sourceLimitFailure(sourceUrl, snapshot.url, "Raw listings", rawListingsObserved));
+        const rawJobBudget = Math.max(0, rawListingLimit - (rawListingsObserved - rawJobs.length));
+        if (rawListingsObserved > rawListingLimit && !rawListingLimitReported) {
+          failures.push(sourceLimitFailure(sourceUrl, snapshot.url, "Raw listings", rawListingsObserved, rawListingLimit));
           rawListingLimitReported = true;
         }
         for (const rawJob of rawJobs.slice(0, rawJobBudget)) {

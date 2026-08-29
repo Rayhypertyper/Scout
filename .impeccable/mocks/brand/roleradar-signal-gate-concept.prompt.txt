@@ -1,9 +1,0 @@
-Generator: built-in image_gen
-Use case: logo-brand
-Input images: Image 1: edit target and concept reference
-Primary request: simplify Image 1 into a far more compact RoleRadar “signal gate” mark. Keep only the core many-to-one motion: three short source rails converge through one upright intake seam and become one rightward path. Remove the oversized standalone R outline; if an R appears, it must exist only as subtle negative space inside the signal geometry.
-Style/medium: original vector-friendly logo mark made from no more than six hard-edged geometric shapes; perfectly flat solid fill
-Composition/framing: one centered square mark with generous transparent margin and a near-square silhouette
-Color palette: deep forest ink #18200F only
-Constraints: genuinely transparent background; no antialias-like glow; no gradient; no shadow; no texture; no mockup; no 3D; no text; no watermark; recognizable at 16px; balanced negative space; crisp 90-degree and 45-degree angles
-Avoid: radar arcs, target rings, antenna symbols, Wi-Fi marks, magnifying glasses, arrows repeated as separate decorative icons, rounded app-icon containers, a literal standalone letter R

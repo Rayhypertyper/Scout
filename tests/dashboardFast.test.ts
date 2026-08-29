@@ -262,6 +262,7 @@ describe("dashboard fast API", () => {
     expect(items[0]).not.toHaveProperty("description");
     expect(items[0]).not.toHaveProperty("requiredQualifications");
     expect(items[0]).toHaveProperty("applicationUrl");
+    expect(items[0]).toHaveProperty("canadianLocation", "Toronto, ON, Canada");
   });
 
   it("applies the shared hard filters to live-board listings", async () => {

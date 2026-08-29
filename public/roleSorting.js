@@ -86,16 +86,59 @@ export const ROLE_SEASONS = Object.freeze(["winter", "spring", "summer", "fall"]
 export const ROLE_SEASON_FILTERS = Object.freeze([...ROLE_SEASONS, "unknown"]);
 const ROLE_SEASON_RANK = new Map(ROLE_SEASONS.map((season, index) => [season, index]));
 
+const ROLE_SEASON_TEXT_FIELDS = [
+  "title",
+  "description",
+  "responsibilities",
+  "requiredQualifications",
+  "preferredQualifications",
+  "technologies",
+  "educationRequirements",
+  "graduationRequirements",
+  "experienceRequirements",
+  "workAuthorizationRequirements",
+  "sponsorshipInformation",
+  "qualificationDetails",
+  "internshipTerm",
+  "internshipYear",
+  "duration",
+  "salary",
+];
+
+function seasonTextValues(value) {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(seasonTextValues);
+  if (value !== null && typeof value === "object") return Object.values(value).flatMap(seasonTextValues);
+  return [];
+}
+
+function roleSeasonText(role) {
+  return ROLE_SEASON_TEXT_FIELDS.flatMap((field) => seasonTextValues(role?.[field])).join("\n");
+}
+
 export function normalizeRoleSeason(value) {
   const match = /\b(winter|spring|summer|fall|autumn)\b/i.exec(String(value ?? ""));
   if (!match) return null;
   return match[1].toLocaleLowerCase() === "autumn" ? "fall" : match[1].toLocaleLowerCase();
 }
 
+export function roleSeasons(role) {
+  if (Array.isArray(role?.seasons)) {
+    const known = new Set(role.seasons.map(normalizeRoleSeason));
+    return ROLE_SEASONS.filter((season) => known.has(season));
+  }
+  const text = roleSeasonText(role);
+  return ROLE_SEASONS.filter((season) => new RegExp(`\\b${season}\\b`, "i").test(text)
+    || (season === "fall" && /\bautumn\b/i.test(text)));
+}
+
+export function roleHasSeason(role, season) {
+  const seasons = roleSeasons(role);
+  return season === "unknown" ? seasons.length === 0 : seasons.includes(season);
+}
+
 export function roleSeason(role) {
-  return normalizeRoleSeason(role?.internshipTerm)
-    || normalizeRoleSeason(role?.title)
-    || "unknown";
+  return roleSeasons(role)[0] || "unknown";
 }
 
 function roleSeasonYear(role) {

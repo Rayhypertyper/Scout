@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildRoleTabKeys, roleMatchesTab } from "../src/dashboardTabs.js";
+import { buildRoleTabKeys, canadianLocationForRole, roleMatchesTab } from "../src/dashboardTabs.js";
+import { dashboardRoleHasSeason, dashboardRoleSeasons } from "../src/dashboardSort.js";
 import { makeInternship } from "./helpers.js";
 
 describe("dashboard role tabs", () => {
@@ -71,6 +72,60 @@ describe("dashboard role tabs", () => {
     expect(roleMatchesTab(remoteCanada, "canada")).toBe(true);
     expect(roleMatchesTab(unitedStates, "canada")).toBe(false);
     expect(roleMatchesTab(unspecifiedRemote, "canada")).toBe(false);
+  });
+
+  it("uses the primary listing location instead of later aggregated locations", () => {
+    const mixed = makeInternship({
+      id: "mixed-locations",
+      location: ["San Diego, CA", "Toronto, ON, Canada"],
+      normalizedLocations: [
+        {
+          raw: "San Diego, CA",
+          country: "United States",
+          provinceState: "California",
+          city: "San Diego",
+          remote: false,
+          remoteScope: null,
+        },
+        {
+          raw: "Toronto, ON, Canada",
+          country: "Canada",
+          provinceState: "Ontario",
+          city: "Toronto",
+          remote: false,
+          remoteScope: null,
+        },
+      ],
+    });
+
+    expect(canadianLocationForRole(mixed)).toBeNull();
+    expect(roleMatchesTab(mixed, "canada")).toBe(false);
+  });
+
+  it("matches the requested Canadian cities with or without province markers", () => {
+    for (const location of [
+      "Ottawa",
+      "Montréal",
+      "Calgary",
+      "Vancouver",
+      "Toronto",
+      "Waterloo",
+      "Remote (Toronto)",
+      "Montreal, QC, Canada",
+    ]) {
+      expect(roleMatchesTab(makeInternship({ location: [location] }), "canada"), location).toBe(true);
+    }
+  });
+
+  it("does not classify U.S. state locations as Canadian", () => {
+    for (const location of [
+      "Westerville, OH, US",
+      "The Woodlands, Texas",
+      "Philadelphia, PA",
+      "Toronto, OH",
+    ]) {
+      expect(roleMatchesTab(makeInternship({ location: [location] }), "canada"), location).toBe(false);
+    }
   });
 
   it("does not classify a U.S. facility label as Canadian", () => {
@@ -158,5 +213,22 @@ describe("dashboard role tabs", () => {
     expect(roleMatchesTab(makeInternship(), "summer")).toBe(true);
     expect(roleMatchesTab(fall, "summer")).toBe(false);
     expect(roleMatchesTab(noInternship, "summer")).toBe(false);
+  });
+
+  it("keeps every season mentioned anywhere in a listing", () => {
+    const role = makeInternship({
+      title: "Software Engineering Intern",
+      description: "Join us for a Summer placement building production software.",
+      internshipTerm: null,
+      internshipYear: null,
+      workAuthorizationRequirements: ["Available for the Fall work term."],
+    });
+
+    expect(dashboardRoleSeasons(role)).toEqual(["summer", "fall"]);
+    expect(dashboardRoleHasSeason(role, "summer")).toBe(true);
+    expect(dashboardRoleHasSeason(role, "fall")).toBe(true);
+    expect(dashboardRoleHasSeason(role, "winter")).toBe(false);
+    expect(dashboardRoleHasSeason(role, "unknown")).toBe(false);
+    expect(roleMatchesTab(role, "summer")).toBe(true);
   });
 });

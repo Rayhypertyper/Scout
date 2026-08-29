@@ -1,12 +1,13 @@
 /* global document, Element, URL, URLSearchParams, fetch, AbortController, setTimeout, setInterval, clearTimeout, IntersectionObserver, localStorage, navigator, window, history */
 
 import { isRecentListing } from "./newRole.js";
+import { hasRequiredListingKeywords } from "./listingKeywords.js";
 import {
   compareByPostedDate,
   compareBySeason,
   parseSortDate,
   ROLE_SEASON_FILTERS,
-  roleSeason,
+  roleHasSeason,
 } from "./roleSorting.js";
 import { authClient, wireLogoutButton } from "./auth/auth-client.js";
 
@@ -247,7 +248,6 @@ const state = {
   currentSourceTimerKey: null,
   currentSourceTimerStartedAt: null,
   sourceResultMemory: { runKey: null, results: [] },
-  featuredKey: null,
   runLimit: RECENT_RUN_LIMIT,
   sourcesExpanded: false,
   loadMoreObserver: null,
@@ -287,9 +287,10 @@ function listingKeyForRole(role) {
 
 const WATCHLIST_ROLE_FIELDS = [
   "id", "listingType", "listingId", "jobId", "company", "title", "location",
+  "canadianLocation",
   "remoteStatus", "applicationUrl", "postingUrl", "sourceUrl", "sources",
   "technologies", "categories", "relevanceScore", "relevanceReason", "internshipTerm",
-  "internshipYear", "duration", "postingDate", "discoveredAt", "firstSeenAt", "lastSeenAt",
+  "seasons", "internshipYear", "duration", "postingDate", "discoveredAt", "firstSeenAt", "lastSeenAt",
   "availabilityStatus", "lifecycleStatus", "statusRunId", "missCount", "isNew",
   "normalizedLocations", "eligibilityStatus", "description",
   "responsibilities", "requiredQualifications", "preferredQualifications",
@@ -362,11 +363,12 @@ export function filterWatchlistRoles(entries, {
   const normalizedLocation = String(location || "all").toLocaleLowerCase();
   const filtered = (Array.isArray(entries) ? entries : [])
     .filter((role) => {
+      if (!hasRequiredListingKeywords(role)) return false;
       if (!watchlistStatusMatches(role, status)) return false;
       if (normalizedSearch && !watchlistSearchText(role).includes(normalizedSearch)) return false;
       if (normalizedCategory !== "all" && !roleArray(role.categories).some((value) => String(value) === normalizedCategory)) return false;
       if (normalizedMode !== "all" && String(role.remoteStatus || "unknown").toLocaleLowerCase() !== normalizedMode) return false;
-      if (normalizedSeason !== "all" && roleSeason(role) !== normalizedSeason) return false;
+      if (normalizedSeason !== "all" && !roleHasSeason(role, normalizedSeason)) return false;
       if (normalizedLocation !== "all" && !roleArray(role.location).join(" ").toLocaleLowerCase().includes(normalizedLocation)) return false;
       return true;
     });
@@ -434,6 +436,10 @@ export function mergeRolePage(previousItems, nextItems, maxItems = Number.POSITI
     merged.push(role);
   }
   return Number.isFinite(maxItems) && merged.length > maxItems ? merged.slice(-maxItems) : merged;
+}
+
+export function roleQueueHead(items) {
+  return Array.isArray(items) && items.length ? items[0] : null;
 }
 
 export function canLoadMoreRoles(pagination, loadedCount, maxItems = MAX_RENDERED_ROLES) {
@@ -854,6 +860,10 @@ function writeWatchlistRoles(roles) {
 function isWatchlisted(role) {
   const key = listingKeyForRole(role);
   return state.watchlistRoles.some((candidate) => listingKeyForRole(candidate) === key);
+}
+
+export function isRoleFeedView(activeView) {
+  return activeView === "roles" || activeView === "dashboard";
 }
 
 function isSavedRoleView() {
@@ -1900,9 +1910,22 @@ function formatMode(role) {
   return label;
 }
 
-function formatLocation(role) {
+export function roleDisplayLocation(role, activeTab = "main") {
   const unique = [...new Set(roleArray(role.location).filter(Boolean))];
-  return (unique[0] || "—").replace(/\s*\((?:on[- ]?site|hybrid|remote)\)\s*$/i, "").trim() || "—";
+  const normalizedCanadianLocation = roleArray(role.normalizedLocations).find((location) => (
+    location && typeof location === "object"
+      && (String(location.remoteScope || "").toLowerCase() === "canada"
+        || ["canada", "canadian"].includes(String(location.country || "").toLowerCase()))
+  ));
+  const canadianLocation = activeTab === "canada"
+    ? String(role.canadianLocation || normalizedCanadianLocation?.raw || "").trim()
+    : "";
+  return (canadianLocation || unique[0] || "—")
+    .replace(/\s*\((?:on[- ]?site|hybrid|remote)\)\s*$/i, "").trim() || "—";
+}
+
+function formatLocation(role) {
+  return roleDisplayLocation(role, state.activeTab);
 }
 
 function formatPosted(value) {
@@ -1956,13 +1979,27 @@ function roleKey(role) {
   return listingKey(role.listingType || "internship", role.listingId || role.id);
 }
 
+export function insertRoleForUndo(items, role, index = 0) {
+  if (!role || !(role.listingId || role.id)) return Array.isArray(items) ? [...items] : [];
+  const key = listingKeyForRole(role);
+  const existing = (Array.isArray(items) ? items : [])
+    .filter((candidate) => listingKeyForRole(candidate) !== key);
+  const insertionIndex = Number.isInteger(index) && index >= 0
+    ? Math.min(index, existing.length)
+    : 0;
+  const next = [...existing];
+  next.splice(insertionIndex, 0, role);
+  return next;
+}
+
 function displayRoles(items = state.items) {
   const mode = $("#work-mode-filter")?.value || "all";
   const season = $("#season-filter")?.value || "all";
   const location = $("#location-filter")?.value || "all";
   return items.filter((role) => {
+    if (!hasRequiredListingKeywords(role)) return false;
     if (mode !== "all" && String(role.remoteStatus || "").toLowerCase() !== mode) return false;
-    if (season !== "all" && roleSeason(role) !== season) return false;
+    if (season !== "all" && !roleHasSeason(role, season)) return false;
     if (location !== "all") {
       const haystack = roleArray(role.location).join(" ").toLowerCase();
       if (!haystack.includes(location.toLowerCase())) return false;
@@ -1974,18 +2011,10 @@ function displayRoles(items = state.items) {
 function featuredRole() {
   const items = displayRoles();
   if (!items.length) return null;
-  if (state.featuredKey) {
-    const pinned = items.find((role) => roleKey(role) === state.featuredKey);
-    if (pinned) return pinned;
-  }
-  // The matches endpoint is already ranked by the server's preference
-  // evaluation. Keep that order intact instead of re-ranking by catalog
-  // relevance on the client.
-  const best = isMatchesRoleView()
-    ? items[0]
-    : items.reduce((top, role) => (Number(role.relevanceScore) > Number(top.relevanceScore) ? role : top), items[0]);
-  state.featuredKey = roleKey(best);
-  return best;
+  // The featured role is the head of the same ordered queue rendered below.
+  // Keeping one source of order makes completing the head promote the next
+  // listing instead of selecting a different role independently.
+  return roleQueueHead(items);
 }
 
 function metaIcon(kind) {
@@ -3726,7 +3755,6 @@ function invalidateRoleListingState() {
   state.listController = null;
   state.loadMoreObserver?.disconnect();
   state.loadMoreObserver = null;
-  state.featuredKey = null;
   abortDetailRequests();
   invalidateRoleListingCaches(state.tabSnapshots, state.detailCache);
 }
@@ -3738,7 +3766,6 @@ function invalidateForIntent() {
   state.loading = false;
   state.loadingMore = false;
   state.listError = null;
-  state.featuredKey = null;
   state.listController?.abort();
   state.listController = null;
   state.loadMoreObserver?.disconnect();
@@ -4267,9 +4294,21 @@ async function loadRoleDetails(card, details, force = false) {
   }
 }
 
-function rememberListingAction(record) {
+function rememberListingAction(record, context = {}) {
   state.undoStack = state.undoStack.filter((item) => item.listingKey !== record.listingKey);
-  state.undoStack.push(record);
+  const optimisticRole = context.role ?? record.optimisticRole ?? null;
+  const optimisticFiltersKey = context.filtersKey ?? record.optimisticFiltersKey ?? null;
+  const optimisticRoleIndex = Number.isInteger(context.index)
+    ? context.index
+    : Number.isInteger(record.optimisticRoleIndex)
+      ? record.optimisticRoleIndex
+      : null;
+  state.undoStack.push({
+    ...record,
+    ...(optimisticRole
+      ? { optimisticRole, optimisticFiltersKey, optimisticRoleIndex }
+      : {}),
+  });
 }
 
 function forgetListingAction(key) {
@@ -4288,9 +4327,26 @@ function applyListingActionPayload(payload) {
 function removeLocalRole(key) {
   if (state.selectedRoleKey === key) closeRoleDetail({ restoreFocus: false });
   state.items = state.items.filter((role) => listingKey(role.listingType || "internship", role.listingId || role.id) !== key);
-  if (state.featuredKey === key) state.featuredKey = null;
   if (state.data) state.data.items = state.data.internships = state.items;
   renderRoles();
+}
+
+function restoreLocalRole(role, index = 0) {
+  if (!role || state.pendingActions.has(roleKey(role))) return false;
+  state.items = insertRoleForUndo(state.items, role, index);
+  if (state.data) state.data.items = state.data.internships = state.items;
+  state.loading = false;
+  state.loadingMore = false;
+  state.listError = null;
+  renderRoles({ animate: false });
+  return true;
+}
+
+function canRestoreRoleLocally(action) {
+  return isRoleFeedView(state.activeView)
+    && !isSavedRoleView()
+    && Boolean(action?.optimisticRole)
+    && action.optimisticFiltersKey === roleFiltersKey(readFilters());
 }
 
 function removeListingNotifications(key) {
@@ -4334,31 +4390,44 @@ async function saveListingAction(button) {
   const title = button.dataset.listingTitle;
   const key = listingType && listingId ? listingKey(listingType, listingId) : "";
   if (!listingType || !listingId || !action || !company || !title || !state.data || !key || state.pendingActions.has(key)) return;
-  const optimisticRole = state.items.find((role) => listingKey(role.listingType || "internship", role.listingId || role.id) === key);
+  const optimisticRoleIndex = state.items.findIndex((role) => listingKey(role.listingType || "internship", role.listingId || role.id) === key);
+  const optimisticRole = optimisticRoleIndex >= 0 ? state.items[optimisticRoleIndex] : null;
+  const optimisticFiltersKey = roleFiltersKey(readFilters());
   state.pendingActions.add(key);
   const previousHiddenForOptimistic = state.data?.stats?.hidden ?? 0;
   const shouldOptimisticallyHide = action === "cant_fit";
+  const successMessage = action === "applied" ? `Applied · ${company}` : `Hidden · ${title}`;
   if (shouldOptimisticallyHide && state.data) {
     state.data = applyListingActionCounts(state.data, { hiddenCount: previousHiddenForOptimistic + 1 });
     renderChrome(state.data);
   }
   removeLocalRole(key);
+  // The role is already gone from the feed optimistically; acknowledge that
+  // immediately instead of making the feedback wait for the API and reload.
+  if (shouldOptimisticallyHide) showToast(successMessage);
   try {
     const response = await fetch("/api/actions", {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ listingType, listingId, action, company, title, applicationUrl: button.dataset.listingApplicationUrl || "", postingUrl: button.dataset.listingPostingUrl || "", jobId: button.dataset.listingJobId || "", location: button.dataset.listingLocation || "" }),
     });
     const payload = await readJsonResponse(response);
-    if (payload.listingAction) rememberListingAction(payload.listingAction);
+    if (payload.listingAction) {
+      rememberListingAction(payload.listingAction, {
+        role: optimisticRole,
+        filtersKey: optimisticFiltersKey,
+        index: optimisticRoleIndex,
+      });
+    }
     state.pendingActions.delete(key);
     invalidateRoleListingState();
     removeListingNotifications(key);
     applyListingActionPayload(payload);
-    await ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
-    showToast(action === "applied" ? `Applied · ${company}` : `Hidden · ${title}`, {
+    showToast(successMessage, {
       label: "Undo",
       onClick: () => { void undoLastListingAction(); },
     });
+    // Reconcile in the background; it should not delay the action feedback.
+    void ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
   } catch (error) {
     state.pendingActions.delete(key);
     // The request may have committed successfully even if the response was
@@ -4384,16 +4453,39 @@ async function undoLastListingAction() {
   const action = state.undoStack.at(-1);
   if (!action) return;
   state.undoing = true;
+  let restoredLocally = false;
+  if (canRestoreRoleLocally(action)) {
+    invalidateRoleListingState();
+    restoredLocally = restoreLocalRole(action.optimisticRole, action.optimisticRoleIndex);
+    if (restoredLocally) {
+      forgetListingAction(action.listingKey);
+      showToast(`Restoring · ${action.title}`);
+    }
+  }
   try {
     const query = new URLSearchParams({ listingType: action.listingType, listingId: action.listingId });
     const response = await fetch(`/api/actions?${query.toString()}`, { method: "DELETE", headers: { Accept: "application/json" } });
     const payload = await readJsonResponse(response);
-    forgetListingAction(action.listingKey);
-    invalidateRoleListingState();
+    if (!restoredLocally) {
+      forgetListingAction(action.listingKey);
+      invalidateRoleListingState();
+    }
     applyListingActionPayload(payload);
-    await ensureRolesLoaded(state.intentRevision);
+    if (restoredLocally) {
+      // The role is already visible. Reconcile quietly so the server can
+      // correct stale ordering, closure, or filtering without blocking undo.
+      void ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
+    } else {
+      await ensureRolesLoaded(state.intentRevision);
+    }
     showToast(`Restored · ${action.title}`);
-  } catch (error) { showToast(error?.message || "Could not undo listing decision"); }
+  } catch (error) {
+    if (restoredLocally) {
+      removeLocalRole(action.listingKey);
+      rememberListingAction(action);
+    }
+    showToast(error?.message || "Could not undo listing decision");
+  }
   finally { state.undoing = false; }
 }
 

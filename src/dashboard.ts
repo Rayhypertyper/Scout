@@ -56,6 +56,7 @@ import {
   type GrindJobBoardSnapshot,
 } from "./integrations/grindJobBoard.js";
 import {
+  hasRequiredListingKeywords,
   isListingContentAllowed,
   isListingWorkAuthorizationAllowed,
 } from "./output/eligibility.js";
@@ -66,17 +67,19 @@ import {
   type VerifiedLinkedInUrlsReadOptions,
 } from "./output/linkEligibility.js";
 import { normalizeCompanyIdentity } from "./utils/text.js";
-import { ROLE_TABS, buildRoleTabKeys, roleMatchesTab, type RoleTab } from "./dashboardTabs.js";
+import { ROLE_TABS, buildRoleTabKeys, canadianLocationForRole, roleMatchesTab, type RoleTab } from "./dashboardTabs.js";
 import { isWithinNewRoleBannerWindow, newRoleBannerCacheKey, readNewListingKeys } from "./dashboardNew.js";
 import {
   compareByDashboardSeason,
   dashboardLocalDayKey,
   dashboardPostingAgeKey,
   dashboardPostingDay,
+  dashboardRoleHasSeason,
+  dashboardRoleSeasons,
   isDashboardPostingTooOld,
-  dashboardRoleSeason,
   DASHBOARD_SEASON_FILTERS,
   parseDashboardSortDate,
+  type DashboardSeason,
 } from "./dashboardSort.js";
 import { sha256 } from "./utils/hash.js";
 import { handleAuthRequest } from "./auth/router.js";
@@ -408,6 +411,7 @@ interface FastRoleCard {
   company: string;
   title: string;
   location: string[];
+  canadianLocation: string | null;
   remoteStatus: Internship["remoteStatus"];
   applicationUrl: string;
   postingUrl: string;
@@ -417,6 +421,7 @@ interface FastRoleCard {
   categories: Internship["categories"];
   relevanceScore: number;
   relevanceReason: string;
+  seasons: DashboardSeason[];
   internshipTerm: string | null;
   internshipYear: string | null;
   duration: string | null;
@@ -2064,6 +2069,10 @@ function dashboardRolePassesHardFilters(
 ): boolean {
   if (role.relevanceScore < MIN_LISTING_SCORE) return false;
   if (handled) return false;
+  // This gate applies to every visible status, including closed roles. A
+  // closed historical record may be retained for lifecycle tracking, but it
+  // must still satisfy the user-facing technical + placement vocabulary.
+  if (!hasRequiredListingKeywords(role)) return false;
 
   // Apply the same fixed dashboard policy to every source. Live-board roles
   // have sparse metadata, but they still carry enough normalized title,
@@ -2695,6 +2704,7 @@ function compactRole(
     company: role.company,
     title: role.title,
     location: role.location,
+    canadianLocation: canadianLocationForRole(role),
     remoteStatus: role.remoteStatus,
     applicationUrl: role.applicationUrl,
     postingUrl: role.postingUrl,
@@ -2704,6 +2714,7 @@ function compactRole(
     categories: role.categories,
     relevanceScore: role.relevanceScore,
     relevanceReason: role.relevanceReason,
+    seasons: dashboardRoleSeasons(role),
     internshipTerm: role.internshipTerm,
     internshipYear: role.internshipYear,
     duration: role.duration,
@@ -2871,7 +2882,7 @@ function fastFilterAndPage(
     .filter((entry) => fastStatusMatches(entry, query.status))
     .filter((entry) => query.category === null || entry.role.categories.includes(query.category as Internship["categories"][number]))
     .filter((entry) => query.workMode === null || entry.role.remoteStatus === query.workMode)
-    .filter((entry) => query.season === null || dashboardRoleSeason(entry.role) === query.season)
+    .filter((entry) => query.season === null || dashboardRoleHasSeason(entry.role, query.season))
     .filter((entry) => {
       if (requestedLocation === null) return true;
       return entry.role.location.some((value) => value.toLocaleLowerCase().includes(requestedLocation));
@@ -3551,6 +3562,7 @@ function readStoredClosingSoonNotifications(
       const role = InternshipSchema.parse(JSON.parse(row.payload_json));
       const candidate = { ...role, listingType: "internship" as const, listingId: row.id };
       if (dashboardRoleIsHandled(candidate, hiddenListingKeys, actionMatcher, hiddenDestinationLinks)) continue;
+      if (!hasRequiredListingKeywords(candidate)) continue;
       roles.push(candidate);
     } catch {
       // A malformed historical payload cannot produce a trustworthy alert.
@@ -3745,6 +3757,7 @@ async function serveFastRoleDetail(
       listingType,
       listingId,
       isNew: detail.isNew,
+      canadianLocation: canadianLocationForRole(detail.role),
     };
     const etag = `"${detail.version}"`;
     jsonResponse(response, 200, {

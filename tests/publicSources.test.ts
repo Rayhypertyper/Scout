@@ -88,6 +88,28 @@ describe("public source fallbacks", () => {
 });
 
 describe("public board extractors", () => {
+  it("uses row-specific company links from GitHub digest tables", () => {
+    const sourceUrl =
+      "https://raw.githubusercontent.com/SuryaHarikrishnan/2027-internship-tracker/master/digests/2026-08-07.md";
+    const markdown = [
+      "# Digest — 2026-08-07",
+      "",
+      "| Company | Role | Location | Terms |",
+      "| --- | --- | --- | --- |",
+      "| [Alayacare](https://alayacare.com/open-positions?gh_jid=8687981002) | Full-Stack Developer Intern - Python | Montreal, QC, Canada | Fall 2026 |",
+    ].join("\n");
+
+    const [job] = extractPublicBoardJobs(snapshot(sourceUrl, markdown));
+
+    expect(job).toMatchObject({
+      company: "Alayacare",
+      title: "Full-Stack Developer Intern - Python",
+      locations: ["Montreal, QC, Canada"],
+      applicationUrl: "https://alayacare.com/open-positions?gh_jid=8687981002",
+      postingUrl: "https://alayacare.com/open-positions?gh_jid=8687981002",
+    });
+  });
+
   it("extracts a GitHub Markdown row and its direct application URL", () => {
     const markdown = [
       "# Summer 2027",

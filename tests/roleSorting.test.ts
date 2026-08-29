@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compareByPostedDate, compareBySeason, isDashboardPostingTooOld, parseSortDate, roleSeason } from "../public/roleSorting.js";
+import { compareByPostedDate, compareBySeason, isDashboardPostingTooOld, parseSortDate, roleHasSeason, roleSeason, roleSeasons } from "../public/roleSorting.js";
 
 type SortableRole = {
   company: string;
@@ -74,5 +74,19 @@ describe("dashboard posted-date sorting", () => {
     ]);
     expect(roleSeason(roles[0]!)).toBe("unknown");
     expect(roleSeason(roles[1]!)).toBe("fall");
+  });
+
+  it("keeps a role in every matching season for client-side filters", () => {
+    const roleWithMultipleSeasons = {
+      title: "Software Engineering Intern",
+      description: "This role is available for Summer and Fall placements.",
+      internshipTerm: null,
+      internshipYear: null,
+    };
+
+    expect(roleSeasons(roleWithMultipleSeasons)).toEqual(["summer", "fall"]);
+    expect(roleHasSeason(roleWithMultipleSeasons, "summer")).toBe(true);
+    expect(roleHasSeason(roleWithMultipleSeasons, "fall")).toBe(true);
+    expect(roleSeason(roleWithMultipleSeasons)).toBe("summer");
   });
 });

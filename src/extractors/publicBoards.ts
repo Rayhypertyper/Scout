@@ -147,6 +147,18 @@ function firstMarkdownUrl(values: string[], sourceUrl: string, excludedUrls: Rea
     .find((link): link is string => link !== null && !excludedUrls.has(link)) ?? null;
 }
 
+function isGithubDigestSource(sourceUrl: string): boolean {
+  try {
+    const url = new URL(sourceUrl);
+    return (
+      url.hostname.replace(/^www\./i, "") === "raw.githubusercontent.com" &&
+      /\/digests\/[^/]+\.md$/i.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function extractMarkdownTableJobs(markdown: string, sourceUrl: string): RawJob[] {
   const jobs: RawJob[] = [];
   const lines = markdown.split(/\r?\n/);
@@ -196,6 +208,14 @@ function extractMarkdownTableJobs(markdown: string, sourceUrl: string): RawJob[]
           .map((link) => safeCanonicalizeUrl(link, sourceUrl))
           .filter((link): link is string => Boolean(link)),
       );
+      // SuryaHarikrishnan's digest tables put the row-specific employer listing
+      // in the Company cell, unlike normal boards where that link is shared.
+      const digestListingUrl = isGithubDigestSource(sourceUrl)
+        ? firstMarkdownUrl(
+            companyIndex >= 0 ? [row[companyIndex] ?? ""] : [],
+            sourceUrl,
+          )
+        : null;
       const applyUrl = firstMarkdownUrl(
         applyIndex >= 0 ? [row[applyIndex] ?? ""] : [],
         sourceUrl,
@@ -211,8 +231,8 @@ function extractMarkdownTableJobs(markdown: string, sourceUrl: string): RawJob[]
         sourceUrl,
         companyUrls,
       );
-      const postingUrl = titleUrl ?? applyUrl ?? otherRowUrl ?? sourceUrl;
-      const applicationUrl = applyUrl ?? titleUrl ?? otherRowUrl;
+      const postingUrl = titleUrl ?? applyUrl ?? otherRowUrl ?? digestListingUrl ?? sourceUrl;
+      const applicationUrl = applyUrl ?? titleUrl ?? otherRowUrl ?? digestListingUrl;
       const metadata = columns
         .filter(({ index: column }) => ![companyIndex, titleIndex, locationIndex, applyIndex].includes(column))
         .map(({ index: column }) => cellAt(row, column))

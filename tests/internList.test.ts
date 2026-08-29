@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { extractJobrightJobRecords } from "../src/extractors/jobright.js";
-import { INTERN_LIST_CANADA_TAB_CATEGORY, INTERN_LIST_CANADA_TAB_URL, InternListAdapter, internListCategory, internListEndpoint, internListFeeds, parseInternListResponse } from "../src/crawler/adapters/internList.js";
+import { INTERN_LIST_CANADA_TAB_CATEGORY, INTERN_LIST_CANADA_TAB_URL, INTERN_LIST_MAX_RAW_LISTINGS, InternListAdapter, internListCategory, internListEndpoint, internListFeeds, parseInternListResponse } from "../src/crawler/adapters/internList.js";
 import type { HttpResponseSnapshot } from "../src/crawler/http.js";
 import { Logger } from "../src/utils/logger.js";
 
@@ -115,6 +115,7 @@ describe("Intern List structured feed", () => {
     expect(result.failures).toHaveLength(0);
     expect(result.snapshots).toHaveLength(2 * SELECTED_FEED_COUNT);
     expect(result.notes.join(" ")).toContain("51/51 unique records");
+    expect(result.maxRawListings).toBe(INTERN_LIST_MAX_RAW_LISTINGS);
     expect(calls).toHaveLength(3 * SELECTED_FEED_COUNT);
     expect(counts).toEqual(Array.from({ length: SELECTED_FEED_COUNT }, () => [50, 51, 1000]).flat());
   });

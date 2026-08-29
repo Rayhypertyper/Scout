@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 // @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
-import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isScanActive, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleFiltersKey, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
+import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
 
 function role(listingId: string) {
   return { listingType: "internship", listingId, id: listingId };
@@ -182,6 +182,16 @@ describe("fast dashboard client state helpers", () => {
     expect(shouldFallbackToCanada({ pagination: { total: 0 }, items: [{ id: "summer-1" }] })).toBe(true);
   });
 
+  it("shows the Canadian location when a mixed posting is viewed in Canada", () => {
+    const mixed = {
+      location: ["San Diego, CA", "Toronto, ON, Canada"],
+      canadianLocation: "Toronto, ON, Canada",
+    };
+
+    expect(roleDisplayLocation(mixed, "canada")).toBe("Toronto, ON, Canada");
+    expect(roleDisplayLocation(mixed, "main")).toBe("San Diego, CA");
+  });
+
   it("constructs compact server queries without empty filters", () => {
     const query = buildRolesQuery({
       tab: "main",
@@ -213,7 +223,7 @@ describe("fast dashboard client state helpers", () => {
       internshipTerm: "Fall", internshipYear: "2027",
     }, "2026-08-22T12:00:00.000Z");
     const old = createWatchlistEntry({
-      listingType: "internship", listingId: "old-1", company: "Old", title: "Old Intern",
+      listingType: "internship", listingId: "old-1", company: "Old", title: "Software Intern",
       categories: ["swe"], technologies: ["JavaScript"], location: ["Toronto, Canada"],
       remoteStatus: "remote", postingDate: "2026-01-01", availabilityStatus: "open",
     }, "2026-08-22T12:00:00.000Z");
@@ -363,6 +373,32 @@ describe("fast dashboard client state helpers", () => {
 
     expect(merged).toHaveLength(10);
     expect(merged.map((item) => item.listingId)).toEqual(["6", "7", "8", "9", "10", "11", "12", "13", "14", "15"]);
+  });
+
+  it("restores an undone role at its previous position without duplicating it", () => {
+    const first = role("first");
+    const second = role("second");
+    const restored = role("restored");
+
+    expect(insertRoleForUndo([first, second], restored, 1).map((item: { listingId: string }) => item.listingId))
+      .toEqual(["first", "restored", "second"]);
+    expect(insertRoleForUndo([first, restored, second], restored, 0).map((item: { listingId: string }) => item.listingId))
+      .toEqual(["restored", "first", "second"]);
+    expect(insertRoleForUndo([first], null, 0)).toEqual([first]);
+  });
+
+  it("recognizes both screens that render the live role feed", () => {
+    expect(isRoleFeedView("roles")).toBe(true);
+    expect(isRoleFeedView("dashboard")).toBe(true);
+    expect(isRoleFeedView("applications")).toBe(false);
+  });
+
+  it("keeps the featured role at the head of the visible queue", () => {
+    const queue = [role("first"), role("second"), role("third")];
+
+    expect(roleQueueHead(queue)?.listingId).toBe("first");
+    expect(roleQueueHead(queue.slice(1))?.listingId).toBe("second");
+    expect(roleQueueHead([])).toBeNull();
   });
 
   it("keeps every loaded role when no render cap is provided", () => {

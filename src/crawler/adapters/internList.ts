@@ -19,6 +19,12 @@ export const INTERN_LIST_MAX_OFFSET_PAGES = 64;
 export const INTERN_LIST_BULK_TIMEOUT_MS = 30_000;
 export const INTERN_LIST_PAGE_TIMEOUT_MS = 15_000;
 export const INTERN_LIST_RETRY_COUNT = 1;
+// The adapter never retains more than one exact-total bulk response plus the
+// bounded offset walk below. Expose that finite bound to the central crawler
+// so a legitimate feed larger than the generic 5,000-row guard is not
+// incorrectly reported as a source failure.
+export const INTERN_LIST_MAX_RAW_LISTINGS = INTERN_LIST_MAX_BULK_COUNT
+  + INTERN_LIST_MAX_OFFSET_PAGES * INTERN_LIST_FALLBACK_PAGE_SIZE;
 export const INTERN_LIST_CANADA_TAB_CATEGORY = "intern:ca:engineering_development";
 export const INTERN_LIST_CANADA_TAB_URL = "https://jobright.ai/minisites-jobs/intern/ca/engineering_development?embed=true";
 export const INTERN_LIST_CANADA_SWE_CATEGORY = "intern:ca:swe";
@@ -229,6 +235,7 @@ export class InternListAdapter implements SourceAdapter {
       notes,
       failures,
       strategy: "structured_endpoint",
+      maxRawListings: feeds.length * INTERN_LIST_MAX_RAW_LISTINGS,
     };
   }
 
@@ -447,7 +454,14 @@ export class InternListAdapter implements SourceAdapter {
       const value: unknown = JSON.parse(response.body);
       const page = parseInternListResponse(value);
       if (!page) throw new Error("Intern List API returned an invalid response shape.");
-      return { endpoint, response, page, failure: null };
+      // The API is expected to honor `count`, but keep the adapter's retained
+      // payload bounded if a provider regression returns a larger window.
+      return {
+        endpoint,
+        response,
+        page: page.jobList.length > count ? { ...page, jobList: page.jobList.slice(0, count) } : page,
+        failure: null,
+      };
     } catch (error) {
       return {
         endpoint,

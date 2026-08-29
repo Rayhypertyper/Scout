@@ -5,13 +5,41 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { InternshipCrawler } from "../src/crawler/crawler.js";
-import { INTERN_LIST_API_URL } from "../src/crawler/adapters/internList.js";
-import type { CrawlStateDecision, CrawlStateRecord } from "../src/domain/types.js";
+import { INTERN_LIST_API_URL, INTERN_LIST_MAX_RAW_LISTINGS } from "../src/crawler/adapters/internList.js";
+import type { CrawlStateDecision, CrawlStateRecord, PageSnapshot } from "../src/domain/types.js";
 import { resolveSettings } from "../src/config/settings.js";
 import { Logger } from "../src/utils/logger.js";
 import { makeInternship } from "./helpers.js";
+import type { SourceAdapterResult } from "../src/crawler/adapters/types.js";
 
 const temporaryDirectories: string[] = [];
+
+function internListSnapshot(recordCount: number): PageSnapshot {
+  const endpoint = `${INTERN_LIST_API_URL}?position=0&count=${recordCount}`;
+  const jobList = Array.from({ length: recordCount }, (_, index) => ({
+    jobId: `large-feed-${index}`,
+    properties: {
+      title: "Software Engineering Intern",
+      company: "Example Robotics",
+      location: "Remote",
+      qualifications: "Experience with Python.",
+    },
+  }));
+  const text = JSON.stringify({ success: true, result: { total: recordCount, jobList } });
+  return {
+    requestedUrl: endpoint,
+    url: endpoint,
+    status: 200,
+    contentType: "application/json",
+    title: "",
+    html: "",
+    text,
+    links: [],
+    attempts: 1,
+    fromCache: false,
+    fetchedAt: new Date().toISOString(),
+  };
+}
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -19,6 +47,51 @@ afterEach(() => {
 });
 
 describe("generic HTTP incremental pipeline", () => {
+  it("accepts a complete Intern List feed above the generic 5,000-row guard", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-large-feed-"));
+    temporaryDirectories.push(directory);
+    const source = "https://www.intern-list.com/?k=eng";
+    const recordCount = 6_223;
+    const adapterResult: SourceAdapterResult = {
+      snapshots: [internListSnapshot(recordCount)],
+      retrievalMethod: "Intern List structured API",
+      retrievalUrls: [INTERN_LIST_API_URL],
+      attempts: 1,
+      httpStatus: 200,
+      notes: [],
+      failures: [],
+      strategy: "structured_endpoint",
+      maxRawListings: INTERN_LIST_MAX_RAW_LISTINGS,
+    };
+    const crawler = new InternshipCrawler(resolveSettings({
+      outputDirectory: directory,
+      databasePath: join(directory, "crawl.db"),
+      respectRobotsTxt: false,
+      maxDepth: 0,
+      maxPagesPerSource: 1,
+      httpConcurrency: 1,
+    }), new Logger("error"));
+    (crawler as unknown as { adapterRouter: { collect: () => Promise<SourceAdapterResult> } }).adapterRouter = {
+      collect: async () => adapterResult,
+    };
+    let analyzed = 0;
+    (crawler as unknown as { analyzeJobWithProfile: (...args: unknown[]) => Promise<unknown> }).analyzeJobWithProfile = async () => {
+      analyzed += 1;
+      return { accepted: false, title: "Synthetic listing", reason: "test" };
+    };
+
+    const result = await crawler.crawl([source]);
+
+    expect(analyzed).toBe(recordCount);
+    expect(result.sourceResults[0]).toMatchObject({
+      sourceUrl: source,
+      status: "no_internships_found",
+      completed: true,
+      potentialPostingsInspected: recordCount,
+    });
+    expect(result.failures).toEqual([]);
+  });
+
   it("uses the public Intern List feed origin when the page shell is robots-disallowed", async () => {
     const directory = mkdtempSync(join(tmpdir(), "internshipmatic-intern-list-pipeline-"));
     temporaryDirectories.push(directory);

@@ -1,3 +1,5 @@
+import type { Internship } from "./domain/schemas.js";
+
 /**
  * Canonical dashboard date parsing shared by every server-side sort.
  *
@@ -101,6 +103,73 @@ export type DashboardSeason = typeof DASHBOARD_SEASONS[number];
 export const DASHBOARD_SEASON_FILTERS = [...DASHBOARD_SEASONS, "unknown"] as const;
 export type DashboardSeasonFilter = typeof DASHBOARD_SEASON_FILTERS[number];
 
+export type DashboardSeasonRole = Partial<Pick<Internship,
+  | "title"
+  | "description"
+  | "responsibilities"
+  | "requiredQualifications"
+  | "preferredQualifications"
+  | "technologies"
+  | "educationRequirements"
+  | "graduationRequirements"
+  | "experienceRequirements"
+  | "workAuthorizationRequirements"
+  | "sponsorshipInformation"
+  | "qualificationDetails"
+  | "internshipTerm"
+  | "internshipYear"
+  | "duration"
+  | "salary"
+>>;
+
+const DASHBOARD_SEASON_TEXT_FIELDS: Array<keyof DashboardSeasonRole> = [
+  "title",
+  "description",
+  "responsibilities",
+  "requiredQualifications",
+  "preferredQualifications",
+  "technologies",
+  "educationRequirements",
+  "graduationRequirements",
+  "experienceRequirements",
+  "workAuthorizationRequirements",
+  "sponsorshipInformation",
+  "qualificationDetails",
+  "internshipTerm",
+  "internshipYear",
+  "duration",
+  "salary",
+];
+
+function seasonTextValues(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(seasonTextValues);
+  if (value !== null && typeof value === "object") return Object.values(value).flatMap(seasonTextValues);
+  return [];
+}
+
+function dashboardRoleSeasonText(role: DashboardSeasonRole): string {
+  return DASHBOARD_SEASON_TEXT_FIELDS
+    .flatMap((field) => seasonTextValues(role[field]))
+    .join("\n");
+}
+
+/** Return every season explicitly mentioned anywhere in the listing content. */
+export function dashboardRoleSeasons(role: DashboardSeasonRole): DashboardSeason[] {
+  const matches = new Set<DashboardSeason>();
+  for (const match of dashboardRoleSeasonText(role).matchAll(/\b(winter|spring|summer|fall|autumn)\b/gi)) {
+    const season = match[1]?.toLocaleLowerCase();
+    if (season === "autumn") matches.add("fall");
+    else if (season && DASHBOARD_SEASONS.includes(season as DashboardSeason)) matches.add(season as DashboardSeason);
+  }
+  return DASHBOARD_SEASONS.filter((season) => matches.has(season));
+}
+
+export function dashboardRoleHasSeason(role: DashboardSeasonRole, season: DashboardSeasonFilter): boolean {
+  const seasons = dashboardRoleSeasons(role);
+  return season === "unknown" ? seasons.length === 0 : seasons.includes(season);
+}
+
 const DASHBOARD_SEASON_RANK = new Map<DashboardSeason, number>(
   DASHBOARD_SEASONS.map((season, index) => [season, index]),
 );
@@ -113,13 +182,8 @@ export function normalizeDashboardSeason(value: string | null | undefined): Dash
   return season === "autumn" ? "fall" : season as DashboardSeason;
 }
 
-export function dashboardRoleSeason(role: Pick<{
-  internshipTerm: string | null;
-  title: string;
-}, "internshipTerm" | "title">): DashboardSeasonFilter {
-  return normalizeDashboardSeason(role.internshipTerm)
-    ?? normalizeDashboardSeason(role.title)
-    ?? "unknown";
+export function dashboardRoleSeason(role: DashboardSeasonRole): DashboardSeasonFilter {
+  return dashboardRoleSeasons(role)[0] ?? "unknown";
 }
 
 function dashboardRoleSeasonYear(role: {
