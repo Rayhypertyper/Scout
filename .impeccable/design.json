@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-23T19:14:42.000Z",
+  "title": "Design System: RoleRadar",
+  "extensions": {
+    "colorMeta": {
+      "signal-lime": {
+        "role": "primary",
+        "displayName": "Signal Lime",
+        "canonical": "#d9ef70",
+        "tonalRamp": ["#283000", "#465600", "#657b14", "#86a22d", "#a8ca48", "#c4e363", "#d9ef70", "#f1f8c6"]
+      },
+      "signal-ink": {
+        "role": "neutral",
+        "displayName": "Signal Ink",
+        "canonical": "#18200f",
+        "tonalRamp": ["oklch(15% 0.033 129.2)", "oklch(26% 0.033 129.2)", "oklch(37% 0.033 129.2)", "oklch(49% 0.033 129.2)", "oklch(61% 0.033 129.2)", "oklch(73% 0.033 129.2)", "oklch(84% 0.033 129.2)", "oklch(95% 0.033 129.2)"]
+      },
+      "field-canvas": {
+        "role": "neutral",
+        "displayName": "Field Canvas",
+        "canonical": "#f2f0e9",
+        "tonalRamp": ["#23241f", "#41423b", "#60615a", "#81817a", "#a3a29b", "#c6c4bd", "#e2e0d9", "#f7f6f1"]
+      },
+      "forest-ink": {
+        "role": "neutral",
+        "displayName": "Forest Ink",
+        "canonical": "#17201b",
+        "tonalRamp": ["#101612", "#17201b", "#2d3832", "#46524b", "#657069", "#87918a", "#b0b8b2", "#edf1ee"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Editorial Display", "purpose": "Page propositions and major narrative turns." },
+      "body": { "displayName": "Operational Body", "purpose": "Working copy and dense product information." },
+      "label": { "displayName": "Signal Label", "purpose": "Counts, sources, timestamps, and system state." }
+    },
+    "shadows": [
+      { "name": "ambient-low", "value": "0 1px 1px rgba(23, 32, 27, .05)", "purpose": "Rare separation for temporary or selected layers." }
+    ],
+    "motion": [
+      { "name": "state-fast", "value": "180ms ease", "purpose": "Hover, focus, and compact state changes." },
+      { "name": "reorder-settle", "value": "700ms cubic-bezier(.2, .72, .2, 1)", "purpose": "Rows and signals settling into a new order." }
+    ],
+    "breakpoints": [
+      { "name": "rail", "value": "1180px" },
+      { "name": "tablet", "value": "980px" },
+      { "name": "mobile", "value": "760px" },
+      { "name": "compact", "value": "520px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Signal Gate Brand Mark",
+      "kind": "custom",
+      "refersTo": "brand-mark",
+      "description": "Canonical RoleRadar lockup: three source lanes resolve through one intake seam into one outbound current path.",
+      "html": "<span class=\"ds-brand-lockup\" role=\"img\" aria-label=\"RoleRadar\"><span class=\"ds-brand-mark\" aria-hidden=\"true\"><svg viewBox=\"0 0 32 32\" width=\"30\" height=\"30\" fill=\"none\" xmlns=\"http://www.w3.org/2000/svg\"><rect width=\"32\" height=\"32\" rx=\"4\" fill=\"#d9ef70\"/><g fill=\"#18200f\"><path d=\"M4 6h8.2l3.2 3.2v4l-4.1-3.4H4V6Z\"/><path d=\"M4 13.6h7.5l3.9 1.5v1.8l-3.9 1.5H4v-4.8Z\"/><path d=\"M4 22.2h7.3l4.1-3.4v4L12.2 26H4v-3.8Z\"/><path d=\"M16.6 5.5h3.6v7.8h3.6L28 16l-4.2 2.7h-3.6v7.8h-3.6v-21Z\"/></g></svg></span><strong class=\"ds-brand-name\" aria-hidden=\"true\">RoleRadar</strong></span>",
+      "css": ".ds-brand-lockup { align-items:center; color:#17201b; display:inline-flex; gap:10px; font-family:Geist,\"Helvetica Neue\",Arial,sans-serif; } .ds-brand-mark { display:inline-flex; flex:0 0 30px; height:30px; overflow:hidden; width:30px; } .ds-brand-mark svg { display:block; height:100%; width:100%; } .ds-brand-name { font-size:16px; font-weight:700; letter-spacing:-.025em; line-height:1; }"
+    },
+    {
+      "name": "Signal Button",
+      "kind": "button",
+      "refersTo": "button-signal",
+      "description": "Compact decisive action with the product's rare lime signal.",
+      "html": "<button class=\"ds-signal-button\">Browse Internships</button>",
+      "css": ".ds-signal-button { background:#d9ef70; border:1px solid #bcd63f; border-radius:4px; color:#18200f; min-height:40px; padding:0 16px; font:600 13px/1 Geist,Arial,sans-serif; transition:background-color 180ms ease,transform 180ms ease; } .ds-signal-button:hover { background:#bcd63f; transform:translateY(-1px); } .ds-signal-button:focus-visible { outline:2px solid #bcd63f; outline-offset:3px; }"
+    },
+    {
+      "name": "Stacked Filter Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Paper control with a compact uppercase label above the selected value.",
+      "html": "<label class=\"ds-field\"><span>Location</span><select aria-label=\"Location\"><option>Toronto, ON</option></select></label>",
+      "css": ".ds-field { background:#fbfaf6; border:1px solid #d8dbd3; border-radius:4px; display:grid; gap:2px; padding:6px 9px; } .ds-field span { color:#929a95; font:600 8px/1 Geist,Arial,sans-serif; letter-spacing:.08em; text-transform:uppercase; } .ds-field select { background:#fbfaf6; border:0; color:#3d4741; font:500 11px/1.2 Geist,Arial,sans-serif; } .ds-field:focus-within { border-color:#69736d; outline:2px solid #bcd63f; outline-offset:2px; }"
+    },
+    {
+      "name": "Active Navigation Row",
+      "kind": "nav",
+      "description": "Text-first dark-rail navigation with no destination or help icons; one lime hairline marks the active row across desktop, tablet, and the mobile labeled strip.",
+      "html": "<a class=\"ds-nav-active\" href=\"#\"><span>Roles</span></a>",
+      "css": ".ds-nav-active { align-items:center; border-left:1px solid #d9ef70; color:#f4f4ed; display:flex; min-height:36px; padding:0 10px 0 11px; text-decoration:none; font:600 13px/1.45 Geist,Arial,sans-serif; } .ds-nav-active:hover { background:rgba(255,255,255,.055); } .ds-nav-active:focus-visible { outline:2px solid #d9ef70; outline-offset:2px; }"
+    },
+    {
+      "name": "Role Row",
+      "kind": "card",
+      "description": "Transparent, sharp listing row structured by a hairline and selected inset signal.",
+      "html": "<article class=\"ds-role-row\"><strong>Software Engineering Intern</strong><span>Toronto, ON · Posted 8 min ago</span></article>",
+      "css": ".ds-role-row { background:transparent; border-bottom:1px solid #d8dbd3; color:#17201b; display:grid; gap:4px; min-height:72px; padding:12px 10px; transition:background-color 180ms ease,box-shadow 180ms ease; } .ds-role-row strong { font:600 12.5px/1.25 Geist,Arial,sans-serif; } .ds-role-row span { color:#69736d; font:400 10px/1.4 Geist,Arial,sans-serif; } .ds-role-row:hover { background:#f7f6f0; box-shadow:inset 3px 0 0 #bcd63f; }"
+    },
+    {
+      "name": "Live Signal Panel",
+      "kind": "custom",
+      "refersTo": "signal-panel",
+      "description": "High-contrast status field for current crawler and source activity.",
+      "html": "<section class=\"ds-live-panel\"><span class=\"ds-live-dot\" aria-hidden=\"true\"></span><div><small>SCANNING SOURCES</small><strong>New roles arriving</strong></div></section>",
+      "css": ".ds-live-panel { align-items:center; background:#17201b; color:#fbfaf6; display:flex; gap:10px; padding:14px 16px; } .ds-live-dot { background:#d9ef70; border-radius:50%; height:8px; width:8px; } .ds-live-panel div { display:grid; gap:2px; } .ds-live-panel small { color:#aeb8b1; font:600 8px/1 Geist Mono,monospace; letter-spacing:.12em; } .ds-live-panel strong { font:600 12px/1.2 Geist,Arial,sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Signal Triage Desk",
+    "overview": "RoleRadar looks like a focused research desk built for sorting live opportunity signals: editorial in hierarchy, operational in density, and deliberately restrained. Warm stone and paper fields keep long searches calm; dark forest panels create decisive anchors; rare lime signals mark what is live, new, or actionable.\n\nThe system earns character through alignment, information rhythm, hairlines, and compact typography rather than decorative chrome. Interface elements sit directly in the composition whenever a container adds no meaning.",
+    "keyCharacteristics": [
+      "Warm, low-glare working canvas with high-contrast forest anchors.",
+      "One rare signal color reserved for status and decisive actions.",
+      "Editorial display scale paired with compact operational metadata.",
+      "Flat surfaces, thin separators, small corners, and dense but legible rows.",
+      "Motion communicates incoming or reorganized information, never decoration."
+    ],
+    "rules": [
+      { "name": "The One Signal Rule", "body": "Lime marks change, state, or action; it is not ambient decoration.", "section": "colors" },
+      { "name": "The Scale Before Ornament Rule", "body": "Hierarchy comes from type size, weight, position, and wrapping before color or containers are added.", "section": "typography" },
+      { "name": "The Structural Depth Rule", "body": "Prefer a divider, inset line, or changed field color before adding a shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use composition, rows, dividers, and metadata as primary visual material.",
+      "Do vary density between quiet propositions and information-rich demonstrations.",
+      "Do keep product previews believable and aligned to the real listings vocabulary.",
+      "Do reserve lime for a visible state change, live signal, or decisive action.",
+      "Do make responsive reflow preserve meaning rather than merely shrink dimensions."
+    ],
+    "donts": [
+      "Don't turn every content group into a rounded card or pill.",
+      "Don't introduce blue-purple gradients, glass panels, glow, or generic startup decoration.",
+      "Don't use shadows as the default boundary between regions.",
+      "Don't center every section or repeat one symmetric container rhythm.",
+      "Don't animate ornamental properties when the information itself can move, assemble, filter, or update."
+    ]
+  }
+}

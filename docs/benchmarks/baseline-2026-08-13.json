@@ -1,0 +1,34 @@
+{
+  "capturedAt": "2026-08-13",
+  "source": "optimization specification run inputs",
+  "runs": [
+    {
+      "name": "live-run-68",
+      "kind": "live",
+      "runId": 68,
+      "totalRuntimeMs": 2033677,
+      "pagesVisited": 1664,
+      "potentialPostingsInspected": 7864,
+      "jobs": 798,
+      "unchangedJobsProcessed": 614,
+      "unchangedSkips": 0,
+      "browserNavigations": 701,
+      "staticHttpPages": 942,
+      "githubPages": 21,
+      "notes": "Captured baseline values; this fixture makes no before/after performance claim."
+    },
+    {
+      "name": "local-deterministic-two-run-sample",
+      "kind": "local_deterministic_sample",
+      "totalRuntimeMs": 12700,
+      "sourceDurationsMs": [3153, 3366],
+      "pagesVisited": 18,
+      "potentialPostingsInspected": 8,
+      "jobs": 2,
+      "jobsDeeplyProcessed": 4,
+      "unchangedJobsProcessed": 2,
+      "unchangedSkips": 0,
+      "notes": "Captured local baseline values from the two-run sample logs. HTTP request, browser navigation, and detail-fetch counts were not separately instrumented by the browser-first baseline and are intentionally omitted."
+    }
+  ]
+}

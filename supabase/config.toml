@@ -1,0 +1,7 @@
+project_id = "internshipmatic"
+
+[db]
+major_version = 15
+
+[db.seed]
+enabled = false

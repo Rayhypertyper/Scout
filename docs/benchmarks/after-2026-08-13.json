@@ -1,0 +1,61 @@
+{
+  "capturedAt": "2026-08-13",
+  "source": "npm run sample (deterministic localhost fixture)",
+  "command": "/usr/bin/time -p npm run sample",
+  "external": {
+    "wallClockMs": 8080,
+    "realSeconds": 8.08
+  },
+  "internal": {
+    "sourceDurationsMs": [1387, 826],
+    "crawlRuntimeMs": [1450, 883]
+  },
+  "totalRuntimeMs": 8080,
+  "httpRequests": 7,
+  "browserNavigations": 2,
+  "detailPagesFetched": 3,
+  "jobsDeeplyProcessed": 2,
+  "unchangedJobsProcessed": 0,
+  "duplicateListingsSkipped": 2,
+  "unchangedSkips": 2,
+  "urlsDiscovered": 9,
+  "urlsFetched": 7,
+  "retries": 0,
+  "measuredFields": [
+    "totalRuntimeMs",
+    "httpRequests",
+    "browserNavigations",
+    "detailPagesFetched",
+    "jobsDeeplyProcessed",
+    "duplicateListingsSkipped",
+    "unchangedSkips",
+    "urlsDiscovered",
+    "urlsFetched",
+    "retries"
+  ],
+  "runs": [
+    {
+      "name": "sample-run-1",
+      "jobs": 2,
+      "newListings": 2,
+      "unchangedSkips": 0,
+      "httpRequests": 7,
+      "browserNavigations": 1,
+      "detailPagesFetched": 3,
+      "duplicateListingsSkipped": 1,
+      "irrelevantListingsSkipped": 1
+    },
+    {
+      "name": "sample-run-2",
+      "jobs": 2,
+      "newListings": 0,
+      "unchangedSkips": 2,
+      "httpRequests": 0,
+      "browserNavigations": 1,
+      "detailPagesFetched": 0,
+      "duplicateListingsSkipped": 1,
+      "irrelevantListingsSkipped": 1
+    }
+  ],
+  "notes": "External wall-clock and internal source/crawl timings are separated. No baseline request/page metrics were inferred; the historical fixture only supplies its recorded runtime and source timings."
+}

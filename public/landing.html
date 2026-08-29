@@ -1,0 +1,621 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Scout brings internship postings from many public sources into one current, filterable shortlist." />
+    <meta name="theme-color" content="#f2f0e9" />
+    <title>Scout — New Internships, Without the Hunt</title>
+    <link rel="icon" href="/assets/brand/scout-favicon.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&family=Outfit:wght@400;500;600;700&display=swap" />
+    <link rel="preconnect" href="https://picsum.photos" />
+    <link rel="stylesheet" href="/landing.css" />
+    <script defer src="/vendor/gsap.min.js"></script>
+    <script defer src="/vendor/ScrollTrigger.min.js"></script>
+    <script defer src="/landing.js"></script>
+  </head>
+  <body>
+    <!--
+      THESIS: Source Ledger makes internship normalization the page itself and refuses the centered SaaS hero plus card stack.
+      OWN-WORLD: Warm field canvas, forest intake seams, signal-lime state, hairline rows, compact metadata, and square-to-4px geometry.
+      STORY: Visitors see fragmented sources become one current shortlist, watch it scan and filter, then enter the live listings application.
+      FIRST VIEWPORT: A left-weighted two-line proposition sits above a full-width source ledger; one forest intake column turns raw fragments into aligned roles; the CTA stays beside the offer.
+      FORM: Source Ledger, ranked 1 of 3 delegated comps; seed key brief-delegated-source-ledger.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+    -->
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+
+    <header class="landing-nav" data-landing-nav>
+      <a class="landing-brand" href="#top" aria-label="Scout landing page" translate="no">
+        <span class="landing-brand-mark" aria-hidden="true">
+          <img src="/assets/brand/scout-logo.png" alt="" width="30" height="30" fetchpriority="high" />
+        </span>
+        <span class="landing-brand-name">Scout</span>
+      </a>
+
+      <nav class="landing-nav-links" aria-label="Landing page">
+        <a href="#how-it-works">How It Works</a>
+        <a href="#sources">Sources</a>
+        <a class="landing-nav-cta" href="/jobs">
+          Browse Internships
+          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M3 8h9M9 4.5 12.5 8 9 11.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </a>
+        <span class="landing-nav-sep" aria-hidden="true"></span>
+        <div class="landing-nav-auth" data-landing-auth>
+          <a class="landing-nav-signin" href="/login">Sign In</a>
+          <a class="landing-nav-signup" href="/signup">Sign Up</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main-content">
+      <section class="hero" id="top" aria-labelledby="hero-title">
+        <div class="hero-stage">
+          <div class="hero-intro">
+            <div class="hero-copy">
+              <h1 id="hero-title">
+                <span class="hero-title-line">Many Sources.</span>
+                <span class="hero-title-line hero-title-emphasis">One Live Shortlist.</span>
+              </h1>
+              <div class="hero-support">
+                <p>New internships surface while they’re still new.</p>
+                <a class="primary-link" href="/jobs">
+                  Browse Internships
+                  <svg viewBox="0 0 18 18" fill="none" aria-hidden="true">
+                    <path d="M3 9h11M10 4.5 14.5 9 10 13.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </a>
+              </div>
+            </div>
+
+            <div class="hero-live" aria-label="Illustrative live discovery status">
+              <span class="hero-live-dot" aria-hidden="true"></span>
+              <div>
+                <span>Scanning sources…</span>
+                <strong>Updated just now</strong>
+              </div>
+            </div>
+          </div>
+
+          <!-- Temporarily disabled while testing the coded hero feed reconstruction. -->
+          <!--
+          <div class="source-ledger" aria-label="Illustrative view of source postings becoming one Scout feed">
+            <div class="ledger-heading" aria-hidden="true">
+              <span>Source</span>
+              <span>Raw Posting Signal</span>
+              <span class="intake-heading">Live Intake</span>
+              <span>Normalized Shortlist</span>
+            </div>
+
+            <div class="ledger-row" data-ledger-row>
+              <div class="ledger-source"><span class="source-glyph" aria-hidden="true">C</span><strong>Company Careers</strong></div>
+              <div class="ledger-raw"><code>careers.google.com/jobs/…</code><span>Software Engineering Intern · University Grad</span></div>
+              <div class="ledger-intake" aria-hidden="true"><span></span><svg viewBox="0 0 22 12" fill="none"><path d="M1 6h19M15 1l5 5-5 5" stroke="currentColor" stroke-width="1.2" /></svg></div>
+              <article class="ledger-role"><span class="role-monogram" aria-hidden="true">G</span><div><strong>Software Engineering Intern</strong><span>Toronto, ON</span></div><time>8 min ago</time></article>
+            </div>
+
+            <div class="ledger-row" data-ledger-row>
+              <div class="ledger-source"><span class="source-glyph" aria-hidden="true">GH</span><strong>GitHub Lists</strong></div>
+              <div class="ledger-raw"><code>github.com/…/internships</code><span>ML Engineering Intern · Remote (Canada)</span></div>
+              <div class="ledger-intake" aria-hidden="true"><span></span><svg viewBox="0 0 22 12" fill="none"><path d="M1 6h19M15 1l5 5-5 5" stroke="currentColor" stroke-width="1.2" /></svg></div>
+              <article class="ledger-role"><span class="role-monogram" aria-hidden="true">M</span><div><strong>ML Engineering Intern</strong><span>Remote Canada</span></div><time>21 min ago</time></article>
+            </div>
+
+            <div class="ledger-row" data-ledger-row>
+              <div class="ledger-source"><span class="source-glyph" aria-hidden="true">S</span><strong>Startup Boards</strong></div>
+              <div class="ledger-raw"><code>wellfound.com/company/…</code><span>Frontend Intern · Builder Tools</span></div>
+              <div class="ledger-intake" aria-hidden="true"><span></span><svg viewBox="0 0 22 12" fill="none"><path d="M1 6h19M15 1l5 5-5 5" stroke="currentColor" stroke-width="1.2" /></svg></div>
+              <article class="ledger-role"><span class="role-monogram" aria-hidden="true">R</span><div><strong>Frontend Intern</strong><span>Vancouver, BC</span></div><time>37 min ago</time></article>
+            </div>
+
+            <div class="ledger-row" data-ledger-row>
+              <div class="ledger-source"><span class="source-glyph" aria-hidden="true">IN</span><strong>LinkedIn</strong></div>
+              <div class="ledger-raw"><code>linkedin.com/jobs/view/…</code><span>Data Engineering Intern · Hybrid</span></div>
+              <div class="ledger-intake" aria-hidden="true"><span></span><svg viewBox="0 0 22 12" fill="none"><path d="M1 6h19M15 1l5 5-5 5" stroke="currentColor" stroke-width="1.2" /></svg></div>
+              <article class="ledger-role"><span class="role-monogram" aria-hidden="true">N</span><div><strong>Data Engineering Intern</strong><span>Toronto, ON</span></div><time>42 min ago</time></article>
+            </div>
+
+            <div class="ledger-row" data-ledger-row>
+              <div class="ledger-source"><span class="source-glyph" aria-hidden="true">U</span><strong>University Resources</strong></div>
+              <div class="ledger-raw"><code>uwaterloo.ca/careers/…</code><span>Software Developer Intern · Co-op</span></div>
+              <div class="ledger-intake" aria-hidden="true"><span></span><svg viewBox="0 0 22 12" fill="none"><path d="M1 6h19M15 1l5 5-5 5" stroke="currentColor" stroke-width="1.2" /></svg></div>
+              <article class="ledger-role"><span class="role-monogram" aria-hidden="true">W</span><div><strong>Software Developer Intern</strong><span>Waterloo, ON</span></div><time>48 min ago</time></article>
+            </div>
+
+            <div class="ledger-row" data-ledger-row>
+              <div class="ledger-source"><span class="source-glyph" aria-hidden="true">ATS</span><strong>ATS Feeds</strong></div>
+              <div class="ledger-raw"><code>jobs.lever.co/…</code><span>Backend Intern · Distributed Systems</span></div>
+              <div class="ledger-intake" aria-hidden="true"><span></span><svg viewBox="0 0 22 12" fill="none"><path d="M1 6h19M15 1l5 5-5 5" stroke="currentColor" stroke-width="1.2" /></svg></div>
+              <article class="ledger-role"><span class="role-monogram" aria-hidden="true">A</span><div><strong>Backend Intern</strong><span>Remote Canada</span></div><time>1 hr ago</time></article>
+            </div>
+          </div>
+          -->
+
+          <div class="hero-feed-wrap">
+            <div class="hero-feed-map" aria-label="Illustrative Scout feed visualization">
+              <svg class="hero-feed-icon-defs" aria-hidden="true" focusable="false">
+                <defs>
+                  <symbol id="hero-feed-logo-google" viewBox="0 0 48 48">
+                    <path fill="#4285F4" d="M47.98 24.55c0-1.57-.14-3.09-.4-4.55H24v8.61h13.48c-.58 2.94-2.26 5.43-4.81 7.09v5.9h7.8c4.57-4.21 7.51-10.42 7.51-17.05Z" />
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.15 15.9-5.85l-7.8-5.9c-2.15 1.44-4.89 2.3-8.1 2.3-6.24 0-11.53-4.21-13.43-9.88H2.5v6.09C6.46 42.52 14.65 48 24 48Z" />
+                    <path fill="#FBBC05" d="M10.57 28.67A14.42 14.42 0 0 1 9.8 24c0-1.62.28-3.2.77-4.67v-6.09H2.5A24 24 0 0 0 0 24c0 3.87.93 7.53 2.5 10.76l8.07-6.09Z" />
+                    <path fill="#EA4335" d="M24 9.45c3.53 0 6.7 1.21 9.2 3.58l6.9-6.9C35.92 2.15 30.48 0 24 0 14.65 0 6.46 5.48 2.5 13.24l8.07 6.09C12.47 13.66 17.76 9.45 24 9.45Z" />
+                  </symbol>
+                  <symbol id="hero-feed-logo-microsoft" viewBox="0 0 48 48">
+                    <path fill="#F35325" d="M3 3h20v20H3z" />
+                    <path fill="#81BC06" d="M25 3h20v20H25z" />
+                    <path fill="#05A6F0" d="M3 25h20v20H3z" />
+                    <path fill="#FFBA08" d="M25 25h20v20H25z" />
+                  </symbol>
+                  <symbol id="hero-feed-logo-github" viewBox="0 0 24 24">
+                    <path fill="#111" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.757-1.333-1.757-1.09-.745.083-.729.083-.729 1.205.084 1.838 1.237 1.838 1.237 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.404 1.02.005 2.04.137 3 .404 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.215 1.91 1.215 3.22 0 4.61-2.805 5.625-5.475 5.92.435.375.81 1.102.81 2.222 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12Z" />
+                  </symbol>
+                </defs>
+              </svg>
+
+              <svg class="hero-feed-routes" viewBox="0 0 1000 562.5" preserveAspectRatio="none" fill="none" aria-hidden="true">
+                <g class="hero-feed-route-paths">
+                  <path d="M90 85H329V161H378V205" />
+                  <path d="M90 178H306V240H378" />
+                  <path d="M90 268H378" />
+                  <path d="M90 359H306V323H378" />
+                  <path d="M90 450H329V377H374" />
+                  <path d="M514 225H529V112H728" />
+                  <path d="M510 245H542V177H728" />
+                  <path d="M510 268H555V250H728" />
+                  <path d="M510 293H542V321H728" />
+                  <path d="M510 320H529V391H728" />
+                  <path d="M510 342H529V461H728" />
+                </g>
+                <g class="hero-feed-route-dots">
+                  <circle cx="90" cy="85" r="3.5" /><circle cx="90" cy="178" r="3.5" /><circle cx="90" cy="268" r="3.5" /><circle cx="90" cy="359" r="3.5" /><circle cx="90" cy="450" r="3.5" />
+                  <circle cx="378" cy="205" r="3.5" /><circle cx="378" cy="240" r="3.5" /><circle cx="378" cy="268" r="3.5" /><circle cx="378" cy="323" r="3.5" /><circle cx="374" cy="377" r="3.5" />
+                  <circle cx="514" cy="225" r="3.5" /><circle cx="510" cy="245" r="3.5" /><circle cx="510" cy="268" r="3.5" /><circle cx="510" cy="293" r="3.5" /><circle cx="510" cy="320" r="3.5" /><circle cx="510" cy="342" r="3.5" />
+                  <circle cx="728" cy="112" r="3.5" /><circle cx="728" cy="177" r="3.5" /><circle cx="728" cy="250" r="3.5" /><circle cx="728" cy="321" r="3.5" /><circle cx="728" cy="391" r="3.5" /><circle cx="728" cy="461" r="3.5" />
+                </g>
+              </svg>
+
+              <section class="hero-feed-sources" aria-labelledby="hero-feed-sources-title">
+                <h2 id="hero-feed-sources-title" class="sr-only">Source postings</h2>
+                <article class="hero-feed-source">
+                  <span class="hero-feed-source-mark hero-feed-source-mark--wellfound" aria-hidden="true">W</span>
+                  <div class="hero-feed-source-copy"><span class="hero-feed-source-url">wellfound.com/jobs/1123456</span><strong>Data Intern</strong><span class="hero-feed-source-meta">Remote Canada</span></div>
+                </article>
+                <article class="hero-feed-source">
+                  <span class="hero-feed-source-mark" aria-hidden="true"><img class="hero-feed-logo-image" src="/assets/brand/shopify-mark.svg" alt="" width="89" height="101" /></span>
+                  <div class="hero-feed-source-copy"><span class="hero-feed-source-url">careers.shopify.com</span><strong>Developer Intern</strong><span class="hero-feed-source-meta">Ottawa, ON · Hybrid</span></div>
+                </article>
+                <article class="hero-feed-source">
+                  <span class="hero-feed-source-mark" aria-hidden="true"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#hero-feed-logo-github" /></svg></span>
+                  <div class="hero-feed-source-copy"><span class="hero-feed-source-url">github.com/careers/internships</span><strong>ML Engineering Intern</strong><span class="hero-feed-source-meta">Redmond, WA · Remote</span></div>
+                </article>
+                <article class="hero-feed-source">
+                  <span class="hero-feed-source-mark" aria-hidden="true"><img class="hero-feed-logo-image" src="/assets/brand/linkedin-in-bug.png" alt="" width="635" height="540" /></span>
+                  <div class="hero-feed-source-copy"><span class="hero-feed-source-url">linkedin.com/jobs/intern</span><strong>Frontend Intern</strong><span class="hero-feed-source-meta">Vancouver, BC</span></div>
+                </article>
+                <article class="hero-feed-source">
+                  <span class="hero-feed-source-mark" aria-hidden="true"><svg viewBox="0 0 48 48" aria-hidden="true"><use href="#hero-feed-logo-google" /></svg></span>
+                  <div class="hero-feed-source-copy"><span class="hero-feed-source-url">careers.google.com</span><strong>Software Engineering Intern</strong><span class="hero-feed-source-meta">Toronto, ON</span></div>
+                </article>
+              </section>
+
+              <div class="hero-feed-center" aria-hidden="true">
+                <img src="/assets/brand/scout-icon.png" alt="" width="256" height="256" />
+              </div>
+
+              <section class="hero-feed-roles" aria-labelledby="hero-feed-title">
+                <h2 id="hero-feed-title" class="hero-feed-title">SCOUT FEED</h2>
+                <div class="hero-feed-role-list">
+                  <article class="hero-feed-role">
+                    <svg class="hero-feed-role-mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#hero-feed-logo-google" /></svg>
+                    <div class="hero-feed-role-copy"><strong>Software Engineering Intern</strong><span>Google</span></div><span class="hero-feed-role-location">Toronto, ON</span><time>8 min ago</time><i class="hero-feed-live-dot" aria-hidden="true"></i>
+                  </article>
+                  <article class="hero-feed-role hero-feed-role--microsoft">
+                    <svg class="hero-feed-role-mark" viewBox="0 0 48 48" aria-hidden="true"><use href="#hero-feed-logo-microsoft" /></svg>
+                    <div class="hero-feed-role-copy"><strong>ML Engineering Intern</strong><span>Microsoft</span></div><span class="hero-feed-role-location">Remote Canada</span><time>21 min ago</time><i class="hero-feed-live-dot" aria-hidden="true"></i>
+                    <aside class="hero-feed-callout" aria-label="Postings you missed">
+                      <svg viewBox="0 0 132 74" fill="none" aria-hidden="true" focusable="false">
+                        <path d="M125 14C92 18 58 27 30 34 20 37 13 39 7 40" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+                        <path d="m22 31-15 9 17 4" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                      <span>postings<br />you missed</span>
+                    </aside>
+                  </article>
+                  <article class="hero-feed-role">
+                    <img class="hero-feed-role-mark hero-feed-logo-image" src="/assets/brand/linkedin-in-bug.png" alt="" width="635" height="540" />
+                    <div class="hero-feed-role-copy"><strong>Frontend Intern</strong><span>LinkedIn</span></div><span class="hero-feed-role-location">Vancouver, BC</span><time>37 min ago</time><i class="hero-feed-live-dot" aria-hidden="true"></i>
+                  </article>
+                  <article class="hero-feed-role">
+                    <img class="hero-feed-role-mark hero-feed-logo-image" src="/assets/brand/notion-logo.png" alt="" width="512" height="512" />
+                    <div class="hero-feed-role-copy"><strong>Product Intern</strong><span>Notion</span></div><span class="hero-feed-role-location">San Francisco, CA</span><time>42 min ago</time><i class="hero-feed-live-dot" aria-hidden="true"></i>
+                  </article>
+                  <article class="hero-feed-role">
+                    <img class="hero-feed-role-mark hero-feed-logo-image" src="/assets/brand/shopify-mark.svg" alt="" width="89" height="101" />
+                    <div class="hero-feed-role-copy"><strong>Developer Intern</strong><span>Shopify</span></div><span class="hero-feed-role-location">Ottawa, ON</span><time>1 hr ago</time><i class="hero-feed-live-dot" aria-hidden="true"></i>
+                  </article>
+                  <article class="hero-feed-role">
+                    <svg class="hero-feed-role-mark" viewBox="0 0 24 24" aria-hidden="true"><use href="#hero-feed-logo-github" /></svg>
+                    <div class="hero-feed-role-copy"><strong>ML Intern</strong><span>GitHub</span></div><span class="hero-feed-role-location">Toronto, ON</span><time>1 hr ago</time><i class="hero-feed-live-dot" aria-hidden="true"></i>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </div>
+
+          <p class="hero-scroll-cue" aria-hidden="true"><span></span>Scroll to Follow the Signal</p>
+        </div>
+      </section>
+
+      <section class="fragment-section" id="sources" aria-labelledby="fragment-title">
+        <div class="fragment-stage" data-fragment-stage data-phase="0">
+          <header class="section-copy fragment-copy">
+            <h2 id="fragment-title">
+              <span>Every Tab, Reopened.</span>
+              <span>One <span class="fragment-inline-signal" aria-hidden="true"><img src="/assets/brand/scout-icon.png" alt="" width="256" height="256" loading="lazy" /></span> View, Kept Current.</span>
+            </h2>
+            <p>The work isn’t finding one internship. It’s reopening every source, translating each format, and remembering what changed.</p>
+          </header>
+
+          <div class="fragment-source-marquee" aria-hidden="true">
+            <div class="fragment-source-marquee-track" data-fragment-marquee>
+              <div class="fragment-source-marquee-set">
+                <span>Career Pages</span><i></i><span>GitHub Lists</span><i></i><span>ATS Feeds</span><i></i><span>Public Boards</span><i></i><span>University Resources</span><i></i>
+              </div>
+              <div class="fragment-source-marquee-set">
+                <span>Career Pages</span><i></i><span>GitHub Lists</span><i></i><span>ATS Feeds</span><i></i><span>Public Boards</span><i></i><span>University Resources</span><i></i>
+              </div>
+            </div>
+          </div>
+
+          <div class="fragment-workspace" role="group" aria-label="Illustrative sequence showing separate public postings becoming one organized Scout shortlist">
+            <section class="fragment-source-column" aria-labelledby="fragment-source-title">
+              <header class="fragment-column-head">
+                <h3 id="fragment-source-title">Open Sources</h3>
+                <span>Different formats</span>
+              </header>
+              <div class="fragment-source-stack">
+                <article class="fragment-source-card" data-fragment-source>
+                  <span class="fragment-source-type">Career Page</span>
+                  <strong>Software Engineering Intern</strong>
+                  <small>Toronto, ON · Just posted</small>
+                </article>
+                <article class="fragment-source-card" data-fragment-source>
+                  <span class="fragment-source-type">GitHub List</span>
+                  <strong>ML Platform Intern</strong>
+                  <small>Remote Canada · New row</small>
+                </article>
+                <article class="fragment-source-card" data-fragment-source>
+                  <span class="fragment-source-type">ATS Feed</span>
+                  <strong>Data Engineering Intern</strong>
+                  <small>Toronto, ON · Hybrid</small>
+                </article>
+                <article class="fragment-source-card" data-fragment-source>
+                  <span class="fragment-source-type">University Resource</span>
+                  <strong>Software Developer Co-op</strong>
+                  <small>Waterloo, ON</small>
+                </article>
+              </div>
+            </section>
+
+            <div class="fragment-intake" role="img" aria-label="Scout checks each posting and keeps its source attached">
+              <span class="fragment-intake-rule" data-fragment-intake-rule aria-hidden="true"></span>
+              <div class="fragment-intake-core" data-fragment-intake>
+                <img src="/assets/brand/scout-icon.png" alt="" width="256" height="256" loading="lazy" aria-hidden="true" />
+                <span data-fragment-intake-status>Checking</span>
+              </div>
+              <span class="fragment-intake-pulse" data-fragment-pulse aria-hidden="true"></span>
+            </div>
+
+            <section class="fragment-shortlist" aria-labelledby="fragment-shortlist-title">
+              <header class="fragment-column-head">
+                <h3 id="fragment-shortlist-title">Scout Shortlist</h3>
+                <span>Source attached</span>
+              </header>
+              <div class="fragment-shortlist-rows">
+                <article class="fragment-shortlist-row" data-fragment-output>
+                  <span class="role-monogram" aria-hidden="true">C</span><div><strong>Software Engineering Intern</strong><span>Toronto, ON · Career Page</span></div><time>8 min ago</time>
+                </article>
+                <article class="fragment-shortlist-row" data-fragment-output>
+                  <span class="role-monogram" aria-hidden="true">G</span><div><strong>ML Platform Intern</strong><span>Remote Canada · GitHub List</span></div><time>21 min ago</time>
+                </article>
+                <article class="fragment-shortlist-row" data-fragment-output>
+                  <span class="role-monogram" aria-hidden="true">A</span><div><strong>Data Engineering Intern</strong><span>Toronto, ON · ATS Feed</span></div><time>42 min ago</time>
+                </article>
+                <article class="fragment-shortlist-row" data-fragment-output>
+                  <span class="role-monogram" aria-hidden="true">U</span><div><strong>Software Developer Co-op</strong><span>Waterloo, ON · University Resource</span></div><time>48 min ago</time>
+                </article>
+              </div>
+              <p class="fragment-shortlist-empty" aria-hidden="true">Waiting for source signals</p>
+            </section>
+          </div>
+
+          <ol class="fragment-phases" aria-label="How Scout replaces the repeated search">
+            <li class="fragment-phase is-active" data-fragment-phase>
+              <span>Scattered</span><strong>Open Every Source</strong><p>Each board has its own language, cadence, and gaps.</p>
+            </li>
+            <li class="fragment-phase" data-fragment-phase>
+              <span>Checked</span><strong>Keep the Evidence</strong><p>Source, location, and recency stay attached as postings are organized.</p>
+            </li>
+            <li class="fragment-phase" data-fragment-phase>
+              <span>Ready</span><strong>Start From What Changed</strong><p>A current shortlist replaces the tab-by-tab routine.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="scan-section" id="how-it-works" aria-labelledby="scan-title">
+        <div class="scan-stage">
+          <header class="section-copy scan-copy">
+            <h2 id="scan-title">New Roles Don’t Wait for Your Next Search.</h2>
+            <p>Scout checks public sources, keeps provenance attached, and brings newly discovered opportunities forward.</p>
+          </header>
+
+          <div class="scan-board" aria-label="Illustrative product view of internships arriving from public sources">
+            <div class="scan-board-head">
+              <span><i aria-hidden="true"></i>Scanning Sources…</span>
+              <span>Illustrative product view</span>
+            </div>
+            <div class="scan-source-track" aria-hidden="true">
+              <span>Career Pages</span><span>GitHub Lists</span><span>ATS Feeds</span><span>Public Boards</span><span>University Resources</span>
+            </div>
+            <div class="scan-viewport">
+              <div class="scan-beam" aria-hidden="true"><span></span></div>
+              <article class="scan-role" data-scan-row>
+                <span class="scan-index">A01</span><div><strong>Software Engineering Intern</strong><span>Toronto, ON · Company Careers</span></div><time>Posted 8 min ago</time>
+              </article>
+              <article class="scan-role" data-scan-row>
+                <span class="scan-index">A02</span><div><strong>ML Engineering Intern</strong><span>Remote Canada · GitHub List</span></div><time>Posted 21 min ago</time>
+              </article>
+              <article class="scan-role" data-scan-row>
+                <span class="scan-index">A03</span><div><strong>Frontend Intern</strong><span>Vancouver, BC · Startup Board</span></div><time>Posted 37 min ago</time>
+              </article>
+              <article class="scan-role" data-scan-row>
+                <span class="scan-index">A04</span><div><strong>Data Engineering Intern</strong><span>Toronto, ON · ATS Feed</span></div><time>Posted 42 min ago</time>
+              </article>
+              <article class="scan-role" data-scan-row>
+                <span class="scan-index">A05</span><div><strong>Software Developer Co-op</strong><span>Waterloo, ON · University Resource</span></div><time>Posted 48 min ago</time>
+              </article>
+            </div>
+            <div class="scan-board-foot">
+              <span data-scan-status>Source signals ready</span>
+              <span>5 new opportunities</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="filter-section" aria-labelledby="filter-title">
+        <div class="filter-stage">
+          <header class="section-copy filter-copy">
+            <h2 id="filter-title">Filter the Market Down to Yours.</h2>
+            <p>Start broad. Add the details that matter. Keep only the roles worth opening.</p>
+          </header>
+
+          <div class="filter-demo" aria-describedby="filter-demo-description">
+            <p id="filter-demo-description" class="sr-only">Illustrative filtering sequence that narrows 842 internship postings to 18 relevant roles.</p>
+            <div class="filter-demo-head">
+              <div class="filter-count" aria-hidden="true"><strong data-filter-count>842</strong><span>Internships</span></div>
+              <p class="sr-only">842 internships before filtering; 18 internships after all illustrative filters.</p>
+              <span class="illustrative-label">Illustrative product view</span>
+            </div>
+
+            <div class="filter-controls" aria-label="Try the illustrative filters">
+              <button type="button" class="demo-filter" data-filter-step="country" aria-pressed="false"><span>Country</span>Canada</button>
+              <button type="button" class="demo-filter" data-filter-step="discipline" aria-pressed="false"><span>Discipline</span>Software Engineering</button>
+              <button type="button" class="demo-filter" data-filter-step="term" aria-pressed="false"><span>Term</span>Summer 2027</button>
+              <button type="button" class="demo-filter" data-filter-step="location" aria-pressed="false"><span>Location</span>Remote / Toronto / Waterloo</button>
+            </div>
+
+            <div class="filter-results" aria-label="Illustrative internship results">
+              <article class="filter-role" data-filter-role data-match="all" style="--row:0">
+                <span class="role-monogram" aria-hidden="true">G</span><div><strong>Software Engineering Intern</strong><span>Toronto, ON · Summer 2027</span></div><time>8 min ago</time>
+              </article>
+              <article class="filter-role" data-filter-role data-match="country discipline term location" style="--row:1">
+                <span class="role-monogram" aria-hidden="true">M</span><div><strong>ML Engineering Intern</strong><span>Remote Canada · Summer 2027</span></div><time>21 min ago</time>
+              </article>
+              <article class="filter-role" data-filter-role data-match="country discipline term location" style="--row:2">
+                <span class="role-monogram" aria-hidden="true">R</span><div><strong>Frontend Engineering Intern</strong><span>Waterloo, ON · Summer 2027</span></div><time>37 min ago</time>
+              </article>
+              <article class="filter-role" data-filter-role data-match="country" style="--row:3">
+                <span class="role-monogram" aria-hidden="true">N</span><div><strong>Product Design Intern</strong><span>Vancouver, BC · Fall 2026</span></div><time>42 min ago</time>
+              </article>
+              <article class="filter-role" data-filter-role data-match="discipline" style="--row:4">
+                <span class="role-monogram" aria-hidden="true">A</span><div><strong>Backend Systems Intern</strong><span>New York, NY · Summer 2027</span></div><time>48 min ago</time>
+              </article>
+              <article class="filter-role" data-filter-role data-match="country discipline" style="--row:5">
+                <span class="role-monogram" aria-hidden="true">W</span><div><strong>Platform Engineering Co-op</strong><span>Montreal, QC · Winter 2027</span></div><time>1 hr ago</time>
+              </article>
+              <article class="filter-role" data-filter-role data-match="term" style="--row:6">
+                <span class="role-monogram" aria-hidden="true">S</span><div><strong>Marketing Analytics Intern</strong><span>Chicago, IL · Summer 2027</span></div><time>2 hr ago</time>
+              </article>
+            </div>
+            <p class="filter-live-summary" data-filter-summary aria-live="polite">No illustrative filters selected.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="recency-section" aria-labelledby="recency-title" data-recency-section>
+        <div class="recency-stage" data-recency-stage data-phase="0">
+          <div class="recency-layout">
+            <header class="section-copy recency-copy">
+              <h2 id="recency-title"><span>Newest First.</span><span>Context Intact.</span></h2>
+              <p>When Scout discovers a role, it moves to the top with its source, location, and first-seen time attached—so your next check starts with what changed.</p>
+              <div class="recency-status" aria-label="Illustrative live feed status">
+                <i aria-hidden="true"></i>
+                <div>
+                  <strong data-recency-status>Watching public sources</strong>
+                  <span>The feed below keeps the newest discovery on top.</span>
+                </div>
+              </div>
+            </header>
+
+            <div class="recency-board" aria-describedby="recency-board-caption">
+              <div class="recency-board-head">
+                <span><i aria-hidden="true"></i>Live Shortlist</span>
+                <strong data-recency-stage-label>Waiting for the next signal</strong>
+              </div>
+
+              <div class="recency-window">
+                <div class="recency-time-axis" aria-hidden="true">
+                  <span>Now</span><span>15 Min</span><span>30 Min</span><span>1 Hr</span>
+                  <i class="recency-now-rule"></i>
+                </div>
+
+                <div class="recency-incoming" data-recency-incoming aria-hidden="true">
+                  <span>Company Careers</span>
+                  <strong>Software Engineering Intern</strong>
+                  <small>Toronto, ON · Source signal found</small>
+                </div>
+
+                <div class="recency-stack" aria-label="Illustrative newest-first internship feed">
+                  <article class="recency-card recency-card-newest" data-recency-card>
+                    <span class="recency-card-index" aria-hidden="true">A01</span>
+                    <div><strong>Software Engineering Intern</strong><span data-recency-context>Company Careers · Toronto, ON</span></div>
+                    <time data-recency-context>8 min ago</time>
+                  </article>
+                  <article class="recency-card" data-recency-card>
+                    <span class="recency-card-index" aria-hidden="true">A02</span>
+                    <div><strong>ML Engineering Intern</strong><span data-recency-context>GitHub List · Remote Canada</span></div>
+                    <time data-recency-context>21 min ago</time>
+                  </article>
+                  <article class="recency-card" data-recency-card>
+                    <span class="recency-card-index" aria-hidden="true">A03</span>
+                    <div><strong>Frontend Intern</strong><span data-recency-context>Public Board · Vancouver, BC</span></div>
+                    <time data-recency-context>37 min ago</time>
+                  </article>
+                  <article class="recency-card" data-recency-card>
+                    <span class="recency-card-index" aria-hidden="true">A04</span>
+                    <div><strong>Software Developer Co-op</strong><span data-recency-context>University Resource · Waterloo, ON</span></div>
+                    <time data-recency-context>48 min ago</time>
+                  </article>
+                </div>
+              </div>
+
+              <div class="recency-board-foot" id="recency-board-caption">
+                <span>Illustrative product view</span>
+                <strong data-recency-board-summary aria-hidden="true">3 existing roles · 1 signal found</strong>
+              </div>
+            </div>
+          </div>
+
+          <ol class="recency-phases" aria-label="How Scout keeps recent roles useful">
+            <li class="is-active" data-recency-phase aria-current="step">
+              <span>Found</span><strong>A new posting appears.</strong><p>Scout records where the public role came from and when it was first seen.</p>
+            </li>
+            <li data-recency-phase>
+              <span>Kept Together</span><strong>Its context travels with it.</strong><p>Source, location, and recency stay connected while the feed updates.</p>
+            </li>
+            <li data-recency-phase>
+              <span>Ready</span><strong>The latest role rises.</strong><p>Your next check begins with what changed, not another round of open tabs.</p>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="handoff-section" aria-labelledby="handoff-title" data-handoff-section>
+        <div class="handoff-stage" data-handoff-stage>
+          <div class="handoff-marquee">
+            <div class="handoff-marquee-window">
+              <div class="handoff-marquee-track" data-handoff-marquee aria-hidden="true">
+                <div class="handoff-marquee-set">
+                  <span>Frontend Systems</span><i></i><span>Machine Learning</span><i></i><span>Backend Infrastructure</span><i></i><span>Product Engineering</span><i></i><span>Data Platforms</span><i></i><span>Developer Tools</span><i></i>
+                </div>
+                <div class="handoff-marquee-set">
+                  <span>Frontend Systems</span><i></i><span>Machine Learning</span><i></i><span>Backend Infrastructure</span><i></i><span>Product Engineering</span><i></i><span>Data Platforms</span><i></i><span>Developer Tools</span><i></i>
+                </div>
+              </div>
+            </div>
+            <button class="handoff-marquee-toggle" type="button" data-handoff-marquee-toggle aria-pressed="false" hidden>Pause Motion</button>
+          </div>
+
+          <div class="handoff-layout">
+            <header class="handoff-copy">
+              <h2 id="handoff-title">
+                <span>Pick the Work</span>
+                <span><span class="handoff-inline-image" aria-hidden="true"><img src="https://picsum.photos/seed/scout-workbench/320/180" alt="" width="320" height="180" loading="lazy" /></span> You Want Next.</span>
+              </h2>
+              <p>Start with the kind of problem you want to spend a summer solving.</p>
+
+              <div class="handoff-choices" aria-label="Choose an internship direction">
+                <button type="button" data-handoff-choice="0" aria-controls="handoff-carousel" aria-pressed="true">Interfaces</button>
+                <button type="button" data-handoff-choice="1" aria-controls="handoff-carousel" aria-pressed="false">Intelligence</button>
+                <button type="button" data-handoff-choice="2" aria-controls="handoff-carousel" aria-pressed="false">Infrastructure</button>
+              </div>
+            </header>
+
+            <div class="handoff-carousel" id="handoff-carousel" data-handoff-carousel aria-describedby="handoff-carousel-description">
+              <p class="sr-only" id="handoff-carousel-description">Three internship directions. Use the direction buttons or Previous and Next controls to explore them.</p>
+              <div class="handoff-slides">
+                <a class="handoff-slide is-active" href="/jobs?view=all&amp;tab=main&amp;sort=posted&amp;q=frontend" data-handoff-slide data-handoff-label="Frontend and product engineering" aria-hidden="false">
+                  <span class="handoff-slide-visual" aria-hidden="true">
+                    <img src="https://picsum.photos/seed/scout-interface-studio/1200/900" alt="" width="1200" height="900" loading="lazy" />
+                    <span class="handoff-slide-grid"></span>
+                  </span>
+                  <span class="handoff-slide-copy">
+                    <span class="handoff-slide-domain">Frontend &amp; Product Engineering</span>
+                    <h3>Build What People Touch.</h3>
+                    <p>Interfaces, design systems, web platforms, and the details that make software feel clear.</p>
+                    <span class="handoff-slide-action">Browse Frontend Roles <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h13M11.5 5.5 16 10l-4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                  </span>
+                </a>
+
+                <a class="handoff-slide" href="/jobs?view=all&amp;tab=main&amp;sort=posted&amp;q=machine%20learning" data-handoff-slide data-handoff-label="Machine learning and data" aria-hidden="true" tabindex="-1">
+                  <span class="handoff-slide-visual" aria-hidden="true">
+                    <img src="https://picsum.photos/seed/scout-signal-lab/1200/900" alt="" width="1200" height="900" loading="lazy" />
+                    <span class="handoff-slide-orbit"></span>
+                  </span>
+                  <span class="handoff-slide-copy">
+                    <span class="handoff-slide-domain">Machine Learning &amp; Data</span>
+                    <h3>Turn Signals Into Decisions.</h3>
+                    <p>Models, pipelines, experiments, and the systems that help teams learn faster.</p>
+                    <span class="handoff-slide-action">Browse ML &amp; Data Roles <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h13M11.5 5.5 16 10l-4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                  </span>
+                </a>
+
+                <a class="handoff-slide" href="/jobs?view=all&amp;tab=main&amp;sort=posted&amp;q=backend" data-handoff-slide data-handoff-label="Backend and infrastructure" aria-hidden="true" tabindex="-1">
+                  <span class="handoff-slide-visual" aria-hidden="true">
+                    <img src="https://picsum.photos/seed/scout-infrastructure/1200/900" alt="" width="1200" height="900" loading="lazy" />
+                    <span class="handoff-slide-nodes"></span>
+                  </span>
+                  <span class="handoff-slide-copy">
+                    <span class="handoff-slide-domain">Backend &amp; Infrastructure</span>
+                    <h3>Make the Invisible Dependable.</h3>
+                    <p>APIs, distributed systems, cloud platforms, and the engineering that keeps everything moving.</p>
+                    <span class="handoff-slide-action">Browse Backend Roles <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h13M11.5 5.5 16 10l-4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg></span>
+                  </span>
+                </a>
+              </div>
+
+              <div class="handoff-carousel-controls">
+                <button type="button" data-handoff-previous disabled>
+                  <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M15 9H3M7.5 4.5 3 9l4.5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                  Previous
+                </button>
+                <p class="handoff-carousel-count" aria-hidden="true"><span data-handoff-current>01</span><i></i><span>03</span></p>
+                <button type="button" data-handoff-next>
+                  Next
+                  <svg viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M3 9h12M10.5 4.5 15 9l-4.5 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" /></svg>
+                </button>
+              </div>
+              <p class="sr-only" aria-live="polite" aria-atomic="true" data-handoff-announcer>Showing frontend and product engineering.</p>
+            </div>
+          </div>
+
+          <div class="handoff-exit">
+            <span>Still Exploring?</span>
+            <a href="/jobs?view=all&amp;tab=main&amp;sort=posted">Browse Every Internship <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M3 10h13M11.5 5.5 16 10l-4.5 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="landing-footer">
+      <span translate="no">Scout · Opportunity Intelligence</span>
+      <a href="/jobs">Browse Internships</a>
+    </footer>
+  </body>
+</html>

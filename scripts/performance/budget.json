@@ -1,0 +1,274 @@
+{
+  "schemaVersion": 1,
+  "calibration": {
+    "capturedAt": "2026-08-18T02:59:46.949Z",
+    "source": "Final 5 cold + 5 warm repeats after bounded startup prewarm on the frozen production database/board-cache protocol; Node v24.18.0, Chromium 151.0.7922.34, Playwright 1.62.1",
+    "notes": "Timing ceilings were recalibrated from the final prewarm run with approximately 45-150% headroom over observed page-navigation maxima, while startup readiness is reported separately and is not folded into page budgets. Payload and contract ceilings retain the prior optimized limits. The paginated roles contract intentionally budgets 8 initial items, one roles request, one changes request, zero legacy /api/data requests, and a bounded card DOM. totalJobsAvailable is reported but not budgeted because it is fixture/data dependent. Recalibrate after intentional contract, fixture, browser, or hardware changes."
+  },
+  "phases": {
+    "cold": {
+      "timeToUsableCardsMs": {
+        "max": 250,
+        "rationale": "Final prewarm five-repeat page-navigation range 52.6-97.7 ms; 250 ms leaves over 2.5x headroom while keeping a regression signal. Server startup/readiness is reported separately."
+      },
+      "shellFcpMs": {
+        "max": 120,
+        "rationale": "Final five-repeat range 28-60 ms; 120 ms leaves 2x headroom for the representative desktop viewport."
+      },
+      "lcpMs": {
+        "max": 120,
+        "rationale": "Final five-repeat range 28-60 ms for the shell's largest content; 120 ms retains 2x rendering headroom."
+      },
+      "apiListTtfbMs": {
+        "max": 150,
+        "rationale": "Final prewarm five-repeat range 25.8-26.9 ms; 150 ms leaves over 5x headroom while detecting list/index regressions after startup prewarm."
+      },
+      "apiListCompletionMs": {
+        "max": 150,
+        "rationale": "Final prewarm five-repeat range 26.2-27.5 ms; 150 ms leaves over 5x headroom while keeping list completion within the usability path."
+      },
+      "apiListBodyBytes": {
+        "max": 22000,
+        "rationale": "Observed 15,467-byte compact page; allows schema metadata drift without returning the pre-optimization full dataset."
+      },
+      "apiListTransferBytes": {
+        "max": 5000,
+        "rationale": "Latest integrated five-repeat range 2,643-2,658-byte compressed page; preserves the compact/compressed response contract."
+      },
+      "changesTtfbMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 8.9-10.3 ms; 100 ms allows substantial local metadata variance while keeping the changes poll lightweight."
+      },
+      "changesCompletionMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 9.2-10.7 ms; 100 ms allows substantial local metadata variance while keeping the changes poll lightweight."
+      },
+      "changesBodyBytes": {
+        "max": 2000,
+        "rationale": "Observed 1,031-byte changes payload; leaves room for status metadata without making it a list payload."
+      },
+      "changesTransferBytes": {
+        "max": 1500,
+        "rationale": "Observed 702-707-byte compressed changes response."
+      },
+      "initialJsBodyBytes": {
+        "max": 55000,
+        "rationale": "Latest integrated app scripts total 44,359 decoded bytes; approximately 24% headroom for intentional client additions."
+      },
+      "initialJsTransferBytes": {
+        "max": 55000,
+        "rationale": "Latest integrated app scripts total 44,752 wire bytes; preserves a small compressed static-asset budget."
+      },
+      "initialApiBodyBytes": {
+        "max": 24000,
+        "rationale": "Observed 16,498-byte roles plus changes body; allows metadata growth while excluding eager details/full data."
+      },
+      "initialApiTransferBytes": {
+        "max": 5000,
+        "rationale": "Latest integrated five-repeat range 3,347-3,361 compressed API bytes."
+      },
+      "initialBodyBytes": {
+        "max": 120000,
+        "rationale": "Latest integrated five-repeat range 90,672-90,694 decoded initial bytes; allows static/API drift while remaining far below the old multi-megabyte list."
+      },
+      "initialTransferBytes": {
+        "max": 100000,
+        "rationale": "Latest integrated five-repeat range 78,297-78,303 initial wire bytes; approximately 28% headroom for intentional assets."
+      },
+      "requestCount": {
+        "max": 8,
+        "rationale": "Observed six initial requests; two slots allow an intentional shell asset while catching duplicate list/poll fetches."
+      },
+      "initialRolesRequestCount": {
+        "max": 1,
+        "rationale": "The initial dashboard must issue one paginated roles request."
+      },
+      "initialChangesRequestCount": {
+        "max": 1,
+        "rationale": "The initial dashboard must issue one status/changes request."
+      },
+      "legacyApiDataRequests": {
+        "max": 0,
+        "rationale": "The optimized dashboard contract must not fall back to the legacy full-data endpoint."
+      },
+      "initialJobsTransferred": {
+        "max": 8,
+        "rationale": "The compact page contract is eight initial role cards; more indicates eager over-fetching."
+      },
+      "initialCardsRendered": {
+        "min": 8,
+        "rationale": "The frozen default view has eight usable initial cards."
+      },
+      "domNodes": {
+        "max": 700,
+        "rationale": "Observed 485 nodes with eight cards and lazy details; approximately 44% room for accessible shell changes without restoring the old unbounded DOM."
+      },
+      "cls": {
+        "max": 0.15,
+        "rationale": "Observed CLS 0.0822; retains headroom while keeping layout instability well below the old 0.476 baseline."
+      },
+      "searchInteractionMs": {
+        "max": 400,
+        "rationale": "Final five-repeat range 259.1-272.7 ms including the deliberate 220 ms debounce and rendered list request; 400 ms retains approximately 47% headroom."
+      },
+      "categoryInteractionMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 37.7-39.4 ms; 100 ms leaves over 2.5x headroom for a representative category request/render."
+      },
+      "filterInteractionMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 36.6-38.5 ms; 100 ms leaves over 2.5x headroom."
+      },
+      "tabInteractionMs": {
+        "max": 150,
+        "rationale": "Final five-repeat range 50.3-64.8 ms; 150 ms leaves over 2x headroom."
+      },
+      "loadMoreMs": {
+        "max": 150,
+        "rationale": "Final five-repeat range 67.2-68.4 ms for the second eight-card page; 150 ms leaves over 2x headroom."
+      },
+      "detailFetchMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 49.3-52.1 ms for the lazy detail request; 100 ms leaves approximately 92% headroom."
+      },
+      "detailOpenMs": {
+        "max": 180,
+        "rationale": "Final five-repeat range 100.0-105.0 ms from opening a card to visible detail content; 180 ms leaves approximately 71% headroom."
+      }
+    },
+    "warm": {
+      "timeToUsableCardsMs": {
+        "max": 150,
+        "rationale": "Final five-repeat range 49.5-50.1 ms after the unreported warm-up navigation; 150 ms leaves approximately 3x headroom."
+      },
+      "shellFcpMs": {
+        "max": 120,
+        "rationale": "Final five-repeat range 32-32 ms; 120 ms retains rendering headroom for the representative desktop viewport."
+      },
+      "lcpMs": {
+        "max": 120,
+        "rationale": "Final five-repeat range 32-32 ms for the shell's largest content; 120 ms retains rendering headroom."
+      },
+      "apiListTtfbMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 24.2-24.8 ms on the warm path; 100 ms leaves over 4x headroom."
+      },
+      "apiListCompletionMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 24.6-25.2 ms; 100 ms leaves approximately 4x headroom."
+      },
+      "apiListBodyBytes": {
+        "max": 22000,
+        "rationale": "Payload size is independent of cache warmth; same compact page ceiling as cold."
+      },
+      "apiListTransferBytes": {
+        "max": 5000,
+        "rationale": "Payload size is independent of cache warmth; same compressed page ceiling as cold."
+      },
+      "changesTtfbMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 9.1-9.3 ms; 100 ms allows substantial local metadata variance while keeping the changes poll lightweight."
+      },
+      "changesCompletionMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 9.3-9.7 ms; 100 ms allows substantial local metadata variance while keeping the changes poll lightweight."
+      },
+      "changesBodyBytes": {
+        "max": 2000,
+        "rationale": "Observed 1,053-byte changes payload."
+      },
+      "changesTransferBytes": {
+        "max": 1500,
+        "rationale": "Observed 711-byte compressed changes response."
+      },
+      "initialJsBodyBytes": {
+        "max": 55000,
+        "rationale": "Latest integrated scripts total 44,359 decoded bytes; payload size is independent of cache warmth."
+      },
+      "initialJsTransferBytes": {
+        "max": 55000,
+        "rationale": "Latest integrated scripts total 44,752 wire bytes; payload size is independent of cache warmth."
+      },
+      "initialApiBodyBytes": {
+        "max": 24000,
+        "rationale": "Payload size is independent of cache warmth; same API ceiling as cold."
+      },
+      "initialApiTransferBytes": {
+        "max": 5000,
+        "rationale": "Payload size is independent of cache warmth; same compressed API ceiling as cold."
+      },
+      "initialBodyBytes": {
+        "max": 120000,
+        "rationale": "Latest integrated warm five-repeat range 90,694 decoded bytes; payload size is independent of cache warmth."
+      },
+      "initialTransferBytes": {
+        "max": 100000,
+        "rationale": "Latest integrated warm five-repeat range 78,303 initial wire bytes; payload size is independent of cache warmth."
+      },
+      "requestCount": {
+        "max": 8,
+        "rationale": "Warm navigation retains the six-request contract; two slots allow intentional shell assets."
+      },
+      "initialRolesRequestCount": {
+        "max": 1,
+        "rationale": "The initial dashboard must issue one paginated roles request."
+      },
+      "initialChangesRequestCount": {
+        "max": 1,
+        "rationale": "The initial dashboard must issue one status/changes request."
+      },
+      "legacyApiDataRequests": {
+        "max": 0,
+        "rationale": "The optimized dashboard contract must not fall back to the legacy full-data endpoint."
+      },
+      "initialJobsTransferred": {
+        "max": 8,
+        "rationale": "The compact page contract is eight initial role cards; more indicates eager over-fetching."
+      },
+      "initialCardsRendered": {
+        "min": 8,
+        "rationale": "The frozen default view has eight usable initial cards."
+      },
+      "domNodes": {
+        "max": 700,
+        "rationale": "Observed 485 nodes with eight cards and lazy details."
+      },
+      "cls": {
+        "max": 0.15,
+        "rationale": "Observed CLS 0.0822; retains headroom while preserving a layout-instability signal."
+      },
+      "searchInteractionMs": {
+        "max": 400,
+        "rationale": "Final five-repeat range 259.2-271.7 ms including debounce and warm list request; 400 ms retains approximately 47% headroom."
+      },
+      "categoryInteractionMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 37.9-40.4 ms; 100 ms leaves over 2.5x headroom."
+      },
+      "filterInteractionMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 36.6-37.6 ms; 100 ms leaves over 2.5x headroom."
+      },
+      "tabInteractionMs": {
+        "max": 150,
+        "rationale": "Final five-repeat range 49.1-60.2 ms; 150 ms leaves approximately 2.5x headroom."
+      },
+      "loadMoreMs": {
+        "max": 150,
+        "rationale": "Final five-repeat range 66.5-68.9 ms for the second eight-card page; 150 ms leaves over 2x headroom."
+      },
+      "detailFetchMs": {
+        "max": 100,
+        "rationale": "Final five-repeat range 48.7-51.1 ms for the lazy detail request; 100 ms leaves approximately 96% headroom."
+      },
+      "detailOpenMs": {
+        "max": 180,
+        "rationale": "Final five-repeat range 100.5-103.5 ms from opening a card to visible detail content; 180 ms leaves approximately 74% headroom."
+      },
+      "warmReloadMs": {
+        "max": 150,
+        "rationale": "Final five-repeat range 49.5-50.1 ms for recorded warm navigations; 150 ms leaves approximately 3x headroom."
+      }
+    }
+  }
+}

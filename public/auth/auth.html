@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="__AUTH_DESCRIPTION__" />
+    <meta name="theme-color" content="#f2f0e9" />
+    <title>__AUTH_TITLE__</title>
+    <link rel="icon" href="/assets/brand/scout-favicon.png" type="image/png" />
+    <link rel="preload" href="/fonts/geist/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/geist/Geist-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/geist/GeistMono-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/auth/auth.css?v=__AUTH_CSS_VERSION__" />
+    <script type="module" src="/auth/auth-page.js?v=__AUTH_PAGE_VERSION__&amp;client=__AUTH_CLIENT_VERSION__"></script>
+  </head>
+  <body data-auth-route="__AUTH_ROUTE__">
+    <!--
+      THESIS: Account access is a precise handoff into an active search workspace, never a floating SaaS card.
+      OWN-WORLD: Warm paper, dark forest structure, lime only for decisive action, hairline rows, 4px controls, and compact Geist typography.
+      STORY: The student understands what the account preserves, completes one clear task, and reaches the intended workspace without uncertainty.
+      FIRST VIEWPORT: A thin masthead spans an asymmetric forest context field and a broad paper form plane; the primary action sits beneath one direct field stack.
+      FORM: Signal handoff, an established-world extension shaped directly from the narrow auth brief; no direction seed was needed.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+    -->
+    <a class="skip-link" href="#main-content">Skip to Account Access</a>
+
+    <div id="auth-app" class="auth-shell" aria-busy="true">
+      <header class="auth-masthead">
+        <a class="auth-brand" href="/" aria-label="Scout Home" translate="no">
+          <span class="auth-brand-mark" aria-hidden="true">
+            <img src="/assets/brand/scout-logo.png" alt="" width="30" height="30" fetchpriority="high" />
+          </span>
+          <span class="auth-brand-copy">
+            <strong translate="no">Scout</strong>
+            <span>Opportunity intelligence</span>
+          </span>
+        </a>
+        <div class="auth-masthead-actions">
+          <span class="auth-route-label">__AUTH_LABEL__</span>
+          <a class="auth-browse-link" href="/jobs">Browse Internships</a>
+        </div>
+      </header>
+
+      <main id="main-content" class="auth-main">
+        <section class="auth-workspace" aria-label="Account access">
+          <noscript>
+            <div class="noscript-message" role="alert">
+              JavaScript is required to securely submit account forms. Enable it, then reload this page.
+            </div>
+          </noscript>
+
+          <div id="configuration-message" class="system-message system-message-error" role="alert" hidden>
+            <strong>Account Access Is Not Configured</strong>
+            <span>This Scout server needs its Supabase environment variables before account forms can be used.</span>
+          </div>
+
+          <section id="login-view" class="auth-view" data-view="login" aria-labelledby="login-title">
+            <header class="auth-heading">
+              <h1 id="login-title">Welcome Back.</h1>
+              <p>Log in to continue your opportunity search where you left it.</p>
+            </header>
+
+            <div id="login-success" class="system-message system-message-success" role="status" aria-live="polite" tabindex="-1" hidden>
+              <strong>Password Updated</strong>
+              <span>Log in below with your new password.</span>
+            </div>
+
+            <form id="login-form" class="auth-form" novalidate>
+              <div class="field-group">
+                <label for="login-email">Email Address</label>
+                <input id="login-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required aria-describedby="login-email-error" />
+                <span id="login-email-error" class="field-error" data-error-for="email" aria-live="polite"></span>
+              </div>
+
+              <div class="field-group">
+                <div class="field-label-row">
+                  <label for="login-password">Password</label>
+                  <a href="/forgot-password">Forgot Password?</a>
+                </div>
+                <div class="password-control">
+                  <input id="login-password" name="password" type="password" autocomplete="current-password" maxlength="1024" required aria-describedby="login-password-error" />
+                  <button class="password-toggle" type="button" aria-label="Show Password" aria-pressed="false" data-password-toggle="login-password">
+                    <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.8 12s3-5.2 8.2-5.2 8.2 5.2 8.2 5.2-3 5.2-8.2 5.2S3.8 12 3.8 12Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.35" stroke="currentColor" stroke-width="1.7"/></svg>
+                    <svg class="eye-closed" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 4 16 16M9.7 7.1A8.7 8.7 0 0 1 12 6.8c5.2 0 8.2 5.2 8.2 5.2a14 14 0 0 1-2.2 2.8M14.2 16.9a8.5 8.5 0 0 1-2.2.3C6.8 17.2 3.8 12 3.8 12a14.7 14.7 0 0 1 2.6-3.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                  </button>
+                </div>
+                <span id="login-password-error" class="field-error" data-error-for="password" aria-live="polite"></span>
+              </div>
+
+              <div class="form-message" data-form-message role="status" aria-live="polite" tabindex="-1" hidden>
+                <span data-form-message-text></span>
+                <button class="text-button" type="button" data-unverified-action hidden>Open Email Verification</button>
+              </div>
+
+              <button class="auth-submit" type="submit" data-ready-label="Log In" disabled>
+                <span class="button-label">Checking Availability…</span>
+                <span class="button-spinner" aria-hidden="true"></span>
+              </button>
+            </form>
+
+            <p class="auth-alternate">New to Scout? <a href="/signup">Create an Account</a></p>
+          </section>
+
+          <section id="signup-view" class="auth-view" data-view="signup" aria-labelledby="signup-title">
+            <header class="auth-heading">
+              <h1 id="signup-title">Build Your Search Memory.</h1>
+              <p>Create one account for saved roles, watchlists, and application progress.</p>
+            </header>
+
+            <form id="signup-form" class="auth-form" novalidate>
+              <div class="field-group">
+                <label for="signup-email">Email Address</label>
+                <input id="signup-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required aria-describedby="signup-email-error" />
+                <span id="signup-email-error" class="field-error" data-error-for="email" aria-live="polite"></span>
+              </div>
+
+              <div class="field-group">
+                <label for="signup-password">Password</label>
+                <div class="password-control">
+                  <input id="signup-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required aria-describedby="signup-password-requirements signup-password-error" />
+                  <button class="password-toggle" type="button" aria-label="Show Password" aria-pressed="false" data-password-toggle="signup-password">
+                    <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.8 12s3-5.2 8.2-5.2 8.2 5.2 8.2 5.2-3 5.2-8.2 5.2S3.8 12 3.8 12Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.35" stroke="currentColor" stroke-width="1.7"/></svg>
+                    <svg class="eye-closed" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 4 16 16M9.7 7.1A8.7 8.7 0 0 1 12 6.8c5.2 0 8.2 5.2 8.2 5.2a14 14 0 0 1-2.2 2.8M14.2 16.9a8.5 8.5 0 0 1-2.2.3C6.8 17.2 3.8 12 3.8 12a14.7 14.7 0 0 1 2.6-3.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                  </button>
+                </div>
+                <ul id="signup-password-requirements" class="password-requirements" aria-label="Password requirements">
+                  <li data-password-rule="length">10 or More Characters</li>
+                  <li data-password-rule="letter">At Least 1 Letter</li>
+                  <li data-password-rule="number">At Least 1 Number</li>
+                </ul>
+                <span class="sr-only" data-password-status aria-live="polite"></span>
+                <span id="signup-password-error" class="field-error" data-error-for="password" aria-live="polite"></span>
+              </div>
+
+              <div class="field-group">
+                <label for="signup-confirm-password">Confirm Password</label>
+                <div class="password-control">
+                  <input id="signup-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required aria-describedby="signup-confirm-password-error" />
+                  <button class="password-toggle" type="button" aria-label="Show Password" aria-pressed="false" data-password-toggle="signup-confirm-password">
+                    <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.8 12s3-5.2 8.2-5.2 8.2 5.2 8.2 5.2-3 5.2-8.2 5.2S3.8 12 3.8 12Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.35" stroke="currentColor" stroke-width="1.7"/></svg>
+                    <svg class="eye-closed" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 4 16 16M9.7 7.1A8.7 8.7 0 0 1 12 6.8c5.2 0 8.2 5.2 8.2 5.2a14 14 0 0 1-2.2 2.8M14.2 16.9a8.5 8.5 0 0 1-2.2.3C6.8 17.2 3.8 12 3.8 12a14.7 14.7 0 0 1 2.6-3.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                  </button>
+                </div>
+                <span id="signup-confirm-password-error" class="field-error" data-error-for="confirmPassword" aria-live="polite"></span>
+              </div>
+
+              <div class="form-message" data-form-message role="status" aria-live="polite" tabindex="-1" hidden>
+                <span data-form-message-text></span>
+              </div>
+
+              <button class="auth-submit" type="submit" data-ready-label="Create Account" disabled>
+                <span class="button-label">Checking Availability…</span>
+                <span class="button-spinner" aria-hidden="true"></span>
+              </button>
+            </form>
+
+            <p class="auth-alternate">Already have an account? <a href="/login">Log In</a></p>
+          </section>
+
+          <section id="verify-view" class="auth-view" data-view="verify-email" aria-labelledby="verify-title">
+            <header class="auth-heading">
+              <div class="state-mark" aria-hidden="true"><span></span></div>
+              <h1 id="verify-title">Check Your Inbox.</h1>
+              <p>Use the verification link in the email we sent. Check spam or promotions if it does not arrive within a few minutes.</p>
+            </header>
+
+            <div id="verification-status" class="system-message" role="status" aria-live="polite" tabindex="-1" hidden>
+              <strong data-status-title></strong>
+              <span data-status-copy></span>
+            </div>
+
+            <form id="verification-form" class="auth-form auth-form-compact" novalidate>
+              <div class="field-group">
+                <label for="verification-email">Verification Email</label>
+                <input id="verification-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required aria-describedby="verification-email-note verification-email-error" />
+                <span id="verification-email-note" class="field-note">You can correct the address here before resending.</span>
+                <span id="verification-email-error" class="field-error" data-error-for="email" aria-live="polite"></span>
+              </div>
+
+              <div class="form-message" data-form-message role="status" aria-live="polite" tabindex="-1" hidden>
+                <span data-form-message-text></span>
+              </div>
+
+              <span id="verification-cooldown-status" class="sr-only" aria-live="polite"></span>
+
+              <button class="auth-submit auth-submit-secondary" type="submit" data-ready-label="Resend Verification Email" disabled>
+                <span class="button-label">Checking Availability…</span>
+                <span class="button-spinner" aria-hidden="true"></span>
+              </button>
+            </form>
+
+            <p class="auth-alternate"><a href="/login">Return to Login</a></p>
+          </section>
+
+          <section id="forgot-view" class="auth-view" data-view="forgot-password" aria-labelledby="forgot-title">
+            <div id="forgot-request-state">
+              <header class="auth-heading">
+                <h1 id="forgot-title">Recover Account Access.</h1>
+                <p>Enter your email. If an account exists, we will send secure password reset instructions.</p>
+              </header>
+
+              <form id="forgot-form" class="auth-form" novalidate>
+                <div class="field-group">
+                  <label for="forgot-email">Email Address</label>
+                  <input id="forgot-email" name="email" type="email" inputmode="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254" required aria-describedby="forgot-email-error" />
+                  <span id="forgot-email-error" class="field-error" data-error-for="email" aria-live="polite"></span>
+                </div>
+
+                <div class="form-message" data-form-message role="status" aria-live="polite" tabindex="-1" hidden>
+                  <span data-form-message-text></span>
+                </div>
+
+                <button class="auth-submit" type="submit" data-ready-label="Send Reset Instructions" disabled>
+                  <span class="button-label">Checking Availability…</span>
+                  <span class="button-spinner" aria-hidden="true"></span>
+                </button>
+              </form>
+            </div>
+
+            <div id="forgot-success-state" class="success-state" hidden>
+              <div class="state-mark state-mark-success" aria-hidden="true"><span></span></div>
+              <h1 id="forgot-success-title" tabindex="-1">Check Your Email.</h1>
+              <p>If an account exists for that address, password reset instructions are on the way.</p>
+              <a class="auth-submit auth-link-button" href="/login">Return to Login</a>
+            </div>
+
+            <p id="forgot-alternate" class="auth-alternate"><a href="/login">Return to Login</a></p>
+          </section>
+
+          <section id="reset-view" class="auth-view" data-view="reset-password" aria-labelledby="reset-title">
+            <div id="reset-loading-state" class="loading-state" role="status" aria-live="polite">
+              <span class="loading-rule" aria-hidden="true"></span>
+              <p id="reset-loading-title">Checking Your Reset Link…</p>
+            </div>
+
+            <div id="reset-invalid-state" class="success-state" hidden>
+              <div class="state-mark state-mark-error" aria-hidden="true"><span></span></div>
+              <h1 id="reset-invalid-title" tabindex="-1">This Link Cannot Be Used.</h1>
+              <p>The password reset link is invalid or has expired. Request a new email to continue securely.</p>
+              <a class="auth-submit auth-link-button" href="/forgot-password">Request a New Link</a>
+            </div>
+
+            <div id="reset-unavailable-state" class="success-state" hidden>
+              <div class="state-mark state-mark-error" aria-hidden="true"><span></span></div>
+              <h1 id="reset-unavailable-title" tabindex="-1">Reset Check Unavailable.</h1>
+              <p>We could not check this reset link right now. Reload the page or request a new link to continue securely.</p>
+              <a class="auth-submit auth-link-button" href="/reset-password">Try Again</a>
+            </div>
+
+            <div id="reset-form-state" hidden>
+              <header class="auth-heading">
+                <h1 id="reset-title">Set a New Password.</h1>
+                <p>Choose a password you have not used for this account.</p>
+              </header>
+
+              <form id="reset-form" class="auth-form" novalidate>
+                <div class="field-group">
+                  <label for="reset-password">New Password</label>
+                  <div class="password-control">
+                    <input id="reset-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="128" required aria-describedby="reset-password-requirements reset-password-error" />
+                    <button class="password-toggle" type="button" aria-label="Show Password" aria-pressed="false" data-password-toggle="reset-password">
+                      <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.8 12s3-5.2 8.2-5.2 8.2 5.2 8.2 5.2-3 5.2-8.2 5.2S3.8 12 3.8 12Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.35" stroke="currentColor" stroke-width="1.7"/></svg>
+                      <svg class="eye-closed" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 4 16 16M9.7 7.1A8.7 8.7 0 0 1 12 6.8c5.2 0 8.2 5.2 8.2 5.2a14 14 0 0 1-2.2 2.8M14.2 16.9a8.5 8.5 0 0 1-2.2.3C6.8 17.2 3.8 12 3.8 12a14.7 14.7 0 0 1 2.6-3.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                    </button>
+                  </div>
+                  <ul id="reset-password-requirements" class="password-requirements" aria-label="Password requirements">
+                    <li data-password-rule="length">10 or More Characters</li>
+                    <li data-password-rule="letter">At Least 1 Letter</li>
+                    <li data-password-rule="number">At Least 1 Number</li>
+                  </ul>
+                  <span class="sr-only" data-password-status aria-live="polite"></span>
+                  <span id="reset-password-error" class="field-error" data-error-for="password" aria-live="polite"></span>
+                </div>
+
+                <div class="field-group">
+                  <label for="reset-confirm-password">Confirm New Password</label>
+                  <div class="password-control">
+                    <input id="reset-confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="10" maxlength="128" required aria-describedby="reset-confirm-password-error" />
+                    <button class="password-toggle" type="button" aria-label="Show Password" aria-pressed="false" data-password-toggle="reset-confirm-password">
+                      <svg class="eye-open" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.8 12s3-5.2 8.2-5.2 8.2 5.2 8.2 5.2-3 5.2-8.2 5.2S3.8 12 3.8 12Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="2.35" stroke="currentColor" stroke-width="1.7"/></svg>
+                      <svg class="eye-closed" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m4 4 16 16M9.7 7.1A8.7 8.7 0 0 1 12 6.8c5.2 0 8.2 5.2 8.2 5.2a14 14 0 0 1-2.2 2.8M14.2 16.9a8.5 8.5 0 0 1-2.2.3C6.8 17.2 3.8 12 3.8 12a14.7 14.7 0 0 1 2.6-3.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+                    </button>
+                  </div>
+                  <span id="reset-confirm-password-error" class="field-error" data-error-for="confirmPassword" aria-live="polite"></span>
+                </div>
+
+                <div class="form-message" data-form-message role="status" aria-live="polite" tabindex="-1" hidden>
+                  <span data-form-message-text></span>
+                </div>
+
+                <button class="auth-submit" type="submit" data-ready-label="Update Password">
+                  <span class="button-label">Update Password</span>
+                  <span class="button-spinner" aria-hidden="true"></span>
+                </button>
+              </form>
+            </div>
+
+            <div id="reset-success-state" class="success-state" hidden>
+              <div class="state-mark state-mark-success" aria-hidden="true"><span></span></div>
+              <h1 id="reset-success-title" tabindex="-1">Password Updated.</h1>
+              <p>Your account is secure with the new password. Redirecting to login in <span id="reset-countdown">3</span> seconds.</p>
+              <a class="auth-submit auth-link-button" href="/login?reset=success">Log In Now</a>
+            </div>
+          </section>
+
+          <section id="account-view" class="auth-view" data-view="account" aria-labelledby="account-title">
+            <header class="auth-heading">
+              <h1 id="account-title">Your Search Workspace.</h1>
+              <p>Your account is verified and ready to carry your search between sessions.</p>
+            </header>
+
+            <div id="account-verified-message" class="system-message system-message-success" role="status" aria-live="polite" tabindex="-1" hidden>
+              <strong>Email Verified</strong>
+              <span>Your Scout account is ready.</span>
+            </div>
+
+            <dl class="account-ledger" aria-label="Account details">
+              <div>
+                <dt>Email Address</dt>
+                <dd id="account-email">Loading…</dd>
+              </div>
+              <div>
+                <dt>Email Status</dt>
+                <dd><span class="verified-indicator"><span aria-hidden="true"></span> Verified</span></dd>
+              </div>
+            </dl>
+
+            <div class="account-actions">
+              <a class="auth-submit auth-link-button" href="/jobs">Browse Internships</a>
+              <button id="account-logout" class="auth-secondary-action" type="button">
+                <span class="button-label">Log Out</span>
+                <span class="button-spinner" aria-hidden="true"></span>
+              </button>
+            </div>
+
+            <div id="account-message" class="form-message" role="status" aria-live="polite" tabindex="-1" hidden>
+              <span data-form-message-text></span>
+            </div>
+          </section>
+        </section>
+
+        <aside class="auth-context" aria-labelledby="context-title">
+          <div class="auth-context-copy">
+            <h2 id="context-title">Keep the Thread of Your Search.</h2>
+            <p>Return to the roles you flagged, the applications you moved forward, and the sources worth watching.</p>
+          </div>
+
+          <div class="signal-ledger" aria-label="Account workspace continuity">
+            <div class="signal-ledger-row">
+              <span>Saved Roles</span>
+              <strong>Ready on Return</strong>
+            </div>
+            <div class="signal-ledger-row">
+              <span>Application Progress</span>
+              <strong>Kept Together</strong>
+            </div>
+            <div class="signal-ledger-row">
+              <span>Source Watchlist</span>
+              <strong>One Workspace</strong>
+            </div>
+          </div>
+
+          <p class="auth-context-note">
+            <span class="signal-dot" aria-hidden="true"></span>
+            Access is handled through a secure email account.
+          </p>
+        </aside>
+      </main>
+    </div>
+  </body>
+</html>

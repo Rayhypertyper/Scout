@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Set the terms, locations, roles, and eligibility details Scout uses to rank internship matches." />
+    <meta name="theme-color" content="#f2f0e9" />
+    <meta name="color-scheme" content="light" />
+    <title>__PREFERENCE_TITLE__</title>
+    <link rel="icon" href="/assets/brand/scout-favicon.png" type="image/png" />
+    <link rel="stylesheet" href="/onboarding/onboarding.css?v=__PREFERENCE_CSS_VERSION__" />
+    <link rel="stylesheet" href="/themed-select.css" />
+  </head>
+  <body data-preference-mode="__PREFERENCE_MODE__">
+    <a class="skip-link" href="#preference-form">Skip to preferences</a>
+
+    <main class="preference-shell">
+      <aside class="preference-context" aria-label="Preference setup progress">
+        <a class="brand" href="/" aria-label="Scout home" translate="no">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="/assets/brand/scout-logo.png" alt="" width="32" height="32" fetchpriority="high" />
+          </span>
+          <span class="brand-copy">
+            <strong>Scout</strong>
+            <span>Opportunity intelligence</span>
+          </span>
+        </a>
+
+        <div class="progress-block">
+          <div class="progress-copy">
+            <span id="step-count">1 of 3</span>
+            <span id="progress-state">Term</span>
+          </div>
+          <div
+            id="onboarding-progress"
+            class="progress-track"
+            role="progressbar"
+            aria-label="Preference setup progress"
+            aria-valuemin="1"
+            aria-valuemax="3"
+            aria-valuenow="1"
+          >
+            <span class="progress-value" aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <ol class="step-index" aria-label="Preference setup steps">
+          <li data-step-index="1" aria-current="step">
+            <span class="step-index-number">1</span>
+            <span><strong>Timing</strong><small>Terms &amp; years</small></span>
+          </li>
+          <li data-step-index="2">
+            <span class="step-index-number">2</span>
+            <span><strong>Search boundary</strong><small>Location, roles &amp; tools</small></span>
+          </li>
+          <li data-step-index="3">
+            <span class="step-index-number">3</span>
+            <span><strong>Eligibility</strong><small>Degree &amp; work status</small></span>
+          </li>
+        </ol>
+
+        <p class="context-note">Your answers are saved to your account after each step and can be changed later.</p>
+        <a class="account-link" href="/account">Account settings <span aria-hidden="true">→</span></a>
+      </aside>
+
+      <section class="preference-workspace" aria-label="Internship preferences">
+        <div id="preference-loading" class="preference-loading" role="status" aria-live="polite">
+          <span class="loading-rule" aria-hidden="true"></span>
+          <p>Loading saved preferences…</p>
+        </div>
+
+        <section id="preference-load-error" class="load-error" role="alert" hidden>
+          <h1>Preferences could not load.</h1>
+          <p id="preference-load-error-message">Check your connection, then try again.</p>
+          <button id="retry-preferences" class="button button-secondary" type="button">Retry Loading</button>
+        </section>
+
+        <form id="preference-form" autocomplete="off" novalidate hidden>
+          <section class="preference-step" data-step="1" aria-labelledby="term-step-title">
+            <header class="step-heading">
+              <h1 id="term-step-title">Choose the terms worth watching.</h1>
+              <p>Add the seasons and years you would realistically accept. You can track more than 1 term.</p>
+            </header>
+
+            <fieldset id="term-group" class="field-group" aria-describedby="term-help term-error">
+              <legend>Internship term</legend>
+              <p id="term-help" class="field-help">Build a short term list. Scout keeps listings with missing timing metadata in consideration.</p>
+              <div class="term-builder">
+                <label class="field-control" for="term-season">
+                  <span>Season</span>
+                  <select id="term-season" name="termSeason" autocomplete="off"></select>
+                </label>
+                <label class="field-control" for="term-year">
+                  <span>Year</span>
+                  <select id="term-year" name="termYear" autocomplete="off"></select>
+                </label>
+                <button id="add-term" class="button button-secondary term-add" type="button">Add Term</button>
+              </div>
+              <p id="term-error" class="field-error" role="alert" hidden></p>
+              <div class="selection-ledger" aria-labelledby="selected-terms-title">
+                <div class="selection-ledger-heading">
+                  <h2 id="selected-terms-title">Selected terms</h2>
+                  <span id="term-selection-count" aria-live="polite">0 selected</span>
+                </div>
+                <ul id="selected-terms" class="selected-list" aria-live="polite"></ul>
+              </div>
+            </fieldset>
+          </section>
+
+          <section class="preference-step" data-step="2" aria-labelledby="search-step-title" hidden>
+            <header class="step-heading">
+              <h1 id="search-step-title">Set the search boundary.</h1>
+              <p>Choose where you can work and the roles you want ranked first. Technologies improve order; they do not become strict filters.</p>
+            </header>
+
+            <fieldset id="location-group" class="field-group" aria-describedby="location-help location-error">
+              <legend>Location</legend>
+              <p id="location-help" class="field-help">Combine countries, cities, and remote work in any way that fits your search.</p>
+              <div id="country-options" class="choice-grid location-choice-grid"></div>
+              <p id="location-error" class="field-error" role="alert" hidden></p>
+
+              <div class="search-select" data-search-select="cities">
+                <label class="field-control" for="city-search">
+                  <span>Specific cities <small>Optional</small></span>
+                  <input
+                    id="city-search"
+                    name="citySearch"
+                    type="search"
+                    placeholder="Search cities…"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="city-options"
+                    aria-expanded="false"
+                  />
+                </label>
+                <div id="city-options" class="search-options" role="listbox" aria-label="City options" aria-multiselectable="true" hidden></div>
+                <ul id="selected-cities" class="selected-list compact" aria-label="Selected cities" aria-live="polite"></ul>
+              </div>
+            </fieldset>
+
+            <fieldset id="role-group" class="field-group" aria-describedby="role-help role-error">
+              <legend>Role categories</legend>
+              <p id="role-help" class="field-help">Choose at least 1. These categories come directly from the current listing taxonomy.</p>
+              <div id="role-options" class="choice-grid role-choice-grid"></div>
+              <p id="role-error" class="field-error" role="alert" hidden></p>
+            </fieldset>
+
+            <fieldset class="field-group" aria-describedby="technology-help">
+              <legend>Technologies <span>Optional</span></legend>
+              <p id="technology-help" class="field-help">Search the technologies extracted from current postings and select up to 12.</p>
+              <div class="search-select" data-search-select="technologies">
+                <label class="field-control" for="technology-search">
+                  <span>Technology search</span>
+                  <input
+                    id="technology-search"
+                    name="technologySearch"
+                    type="search"
+                    placeholder="Search Python, React, AWS…"
+                    autocomplete="off"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="technology-options"
+                    aria-expanded="false"
+                  />
+                </label>
+                <div id="technology-options" class="search-options" role="listbox" aria-label="Technology options" aria-multiselectable="true" hidden></div>
+                <div id="popular-technologies" class="popular-technologies" aria-labelledby="popular-technologies-label">
+                  <span id="popular-technologies-label" class="popular-technologies-label">Popular technologies</span>
+                  <div id="popular-technologies-options" class="popular-technologies-options"></div>
+                </div>
+                <ul id="selected-technologies" class="selected-list compact" aria-label="Selected technologies" aria-live="polite"></ul>
+              </div>
+            </fieldset>
+          </section>
+
+          <section class="preference-step" data-step="3" aria-labelledby="eligibility-step-title" hidden>
+            <header class="step-heading">
+              <h1 id="eligibility-step-title">Check eligibility once.</h1>
+              <p>Use the status that applies today. Scout compares structured listing requirements and treats missing employer metadata as unknown.</p>
+            </header>
+
+            <fieldset id="education-group" class="field-group" aria-describedby="education-help education-error">
+              <legend>Education</legend>
+              <p id="education-help" class="field-help">Your degree and expected graduation year help remove clearly incompatible listings.</p>
+              <div class="education-grid">
+                <label class="field-control" for="degree">
+                  <span>Current degree</span>
+                  <select id="degree" name="degree" autocomplete="off">
+                    <option value="">Choose Degree</option>
+                  </select>
+                </label>
+                <label class="field-control" for="graduation-year">
+                  <span>Expected graduation</span>
+                  <select id="graduation-year" name="graduationYear" autocomplete="off">
+                    <option value="">Choose Year</option>
+                  </select>
+                </label>
+              </div>
+              <p id="education-error" class="field-error" role="alert" hidden></p>
+            </fieldset>
+
+            <div id="regional-eligibility" class="regional-eligibility">
+              <p id="regional-eligibility-note" class="field-help" hidden>No country-specific answer is required for a remote-only search.</p>
+            </div>
+
+            <p class="legal-note">These answers support matching only. Scout does not provide immigration or legal advice.</p>
+          </section>
+
+          <footer class="form-actions">
+            <button id="back-button" class="button button-back" type="button" hidden>
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m14.5 6-6 6 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              Back
+            </button>
+            <p id="save-state" class="save-state" role="status" aria-live="polite">Saved after each step</p>
+            <button id="continue-button" class="button button-primary" type="submit">Save &amp; Continue</button>
+          </footer>
+          <p id="form-error" class="form-error" role="alert" aria-live="assertive" hidden></p>
+        </form>
+      </section>
+    </main>
+
+    <script type="module" src="/themed-select.js"></script>
+    <script type="module" src="/onboarding/onboarding.js?v=__PREFERENCE_SCRIPT_VERSION__" data-selector-version="__MULTI_SELECT_VERSION__"></script>
+  </body>
+</html>

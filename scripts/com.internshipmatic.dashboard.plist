@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.internshipmatic.dashboard</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/node</string>
+		<string>--env-file=/Users/rayxu/Documents/Internshipmatic/.env</string>
+		<string>/Users/rayxu/Documents/Internshipmatic/dist/src/dashboard.js</string>
+		<string>--database</string>
+		<string>/Users/rayxu/Documents/Internshipmatic/output/live/internships.db</string>
+		<string>--output-dir</string>
+		<string>/Users/rayxu/Documents/Internshipmatic/output/live</string>
+		<string>--port</string>
+		<string>4173</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/rayxu/Documents/Internshipmatic</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<!-- The calendar scout already crawls. An in-process startup scan pegs
+	     this HTTP server's event loop, so opening http://127.0.0.1:4173 can
+	     sit on a blank tab with the refresh button replaced by X. -->
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>DASHBOARD_SKIP_STARTUP_SCAN</key>
+		<string>1</string>
+	</dict>
+	<key>StandardOutPath</key>
+	<string>/Users/rayxu/Documents/Internshipmatic/output/live/dashboard.stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/rayxu/Documents/Internshipmatic/output/live/dashboard.stderr.log</string>
+	<!-- Interactive keeps the localhost HTTP server eligible to run while the
+	     session is active. Background lets macOS App Nap the process after it
+	     goes idle: TCP still accepts, but HTTP bytes sit unread and the
+	     browser shows a spinning X instead of refresh. -->
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>

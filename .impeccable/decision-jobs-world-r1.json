@@ -1,0 +1,144 @@
+{
+  "title": "Choose the visual world for /jobs",
+  "question": "Fresh hand. The roll assigned Scantron Floor. Keep it, take an alternate, or re-roll. /jobs stays scan-and-act: apply, mark applied, hide, save.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Scantron Floor",
+      "kicker": "THE ROLL",
+      "lineage": "classroom scantron sheets and exam seating charts",
+      "thesis": "Each internship is a numbered exam item. You fill one bubble: Apply, Applied, Can't fit, Save.",
+      "palette": ["#d7dde4", "#1a1c1e", "#9a2b2b", "#c45c4a"],
+      "materials": ["cool exam stock", "carbon-black marks", "timing-track ticks"],
+      "viewport": "No hero. A full-bleed exam sheet: left timing track as nav, numbered CLOCK/TEAM/PLAY stems, four full-height bubbles on every row.",
+      "risk": "Reads as a joke test if the sheet is sparse instead of a dense market of items.",
+      "raised": [
+        {
+          "from": "Monochrome product marketing",
+          "raise": "Four Marks: the only color on the sheet is the four action bubbles, used nowhere else."
+        },
+        {
+          "from": "Drum-machine step row",
+          "raise": "Chase Pip: a running mark always sits on the newest listing, like the step that is now."
+        },
+        {
+          "from": "Drawcord cape",
+          "raise": "One Pull: filling a bubble is the only transform; no hover chrome does the work."
+        },
+        {
+          "from": "Cyclorama dawn",
+          "raise": "Named Bands: recency is Today / This week / Older, never color alone."
+        }
+      ],
+      "comp": ".impeccable/mocks/decision/assigned-r1.png"
+    },
+    {
+      "id": "model-pick",
+      "label": "Wire Copy",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "AP/Reuters teleprinter news wire",
+      "thesis": "The market arrives as copy: timestamped slugs you file, spike, or send.",
+      "palette": ["#11130f", "#d2c7a6", "#2f6b4f", "#8a1f1f"],
+      "materials": ["teleprinter paper", "inked slug lines", "file/spike stamps"],
+      "viewport": "A continuous wire: time, desk, slug. Apply is SEND, Mark applied is FILED, Can't fit is SPIKE, Save is HOLD.",
+      "risk": "Also a familiar live-feed landing: incoming data dressed as a newsroom.",
+      "comp": ".impeccable/mocks/decision/model-pick-r1.png"
+    },
+    {
+      "id": "challenger-design-canon-creator-hardware-bench",
+      "label": "Creator Bench",
+      "verdict": "competitive",
+      "lineage": "creator-hardware desk instrument",
+      "thesis": "Roles sit on bone keycaps in a gunmetal grid; the one safety-orange key is Apply.",
+      "palette": ["#8a8680", "#2b2e32", "#ff5a1f", "#e8b84a"],
+      "materials": ["bone keycaps", "knurled knobs", "amber status screen"],
+      "viewport": "A keycap grid of internships, families by row, a knurled knob for filters, one orange APPLY key, amber screen showing the live count.",
+      "case": "Holds product clarity: commit is one obvious orange key. Loses audience identification: intern hunters are not at a stream-deck bench.",
+      "risk": "Titles truncated onto keycaps hide the market you came to read.",
+      "comp": ".impeccable/mocks/decision/challenger-design-canon-creator-hardware-bench.png",
+      "hero": "https://impeccable.style/worlds/cards/design-canon-creator-hardware-bench-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/design-canon-creator-hardware-bench.webp"
+    },
+    {
+      "id": "challenger-medium-native-ascii-live-scene-render",
+      "label": "Glyph Grid",
+      "verdict": "competitive",
+      "lineage": "live ASCII scene render",
+      "thesis": "The catalog is a phosphor grid: internships as selectable lines of text, density standing in for rank.",
+      "palette": ["#0b120c", "#41ff6a", "#0a0a0a"],
+      "materials": ["amber-or-green phosphor", "strict monospace cells"],
+      "viewport": "One character grid. RoleRadar as a header line, listings as rows of monospace copy, APPLY/FILE/SPIKE/HOLD as commands in the same grid.",
+      "case": "Holds audience identification: SWE intern hunters already live in terminals. Loses product clarity: glyph sculpture is not a scannable market of titles and locations.",
+      "risk": "Reads as a demo-scene toy when the grid is decorative instead of the actual list.",
+      "comp": ".impeccable/mocks/decision/challenger-medium-native-ascii-live-scene-render.png",
+      "hero": "https://impeccable.style/worlds/cards/medium-native-ascii-live-scene-render-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/medium-native-ascii-live-scene-render.webp"
+    },
+    {
+      "id": "challenger-digital-design-canon-monochrome-product-marketing",
+      "label": "Monochrome Proof",
+      "verdict": "declined",
+      "lineage": "monochrome product marketing",
+      "palette": ["#f4f4f2", "#111111", "#2563eb"],
+      "materials": ["near-white field", "one accent, four uses"],
+      "case": "Loses both: claim-and-proof marketing is not a scan-and-act market, and identification is generic SaaS.",
+      "kept": "Four Marks: a single accent used only on the four actions.",
+      "hero": "https://impeccable.style/worlds/cards/digital-design-canon-monochrome-product-marketing-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/digital-design-canon-monochrome-product-marketing.webp"
+    },
+    {
+      "id": "challenger-signals-instruments-drum-machine-step-row",
+      "label": "Step Row",
+      "verdict": "declined",
+      "lineage": "early-80s drum-machine step row",
+      "palette": ["#2a2a28", "#e23d28", "#f0ead8"],
+      "materials": ["candy step keys", "chase light"],
+      "case": "Loses both: sixteen steps cannot hold a live market, and intern hunters are not writing drum patterns.",
+      "kept": "Chase Pip: a running mark that always says which listing is now.",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-drum-machine-step-row-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/signals-instruments-drum-machine-step-row.webp"
+    },
+    {
+      "id": "challenger-textiles-weave-drape-fashion-drawcord-transforming-cape",
+      "label": "Drawcord Cape",
+      "verdict": "declined",
+      "lineage": "silk cape with hidden drawcords",
+      "palette": ["#111111", "#c9a227", "#4a4a4a"],
+      "materials": ["matte black silk", "gold cord"],
+      "case": "Loses both: cloth transformation cannot carry listing facts or scan-and-act.",
+      "kept": "One Pull: filling a bubble is the only transform.",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-drawcord-transforming-cape-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-drawcord-transforming-cape.webp"
+    },
+    {
+      "id": "challenger-stagecraft-theater-lighting-cyclorama-dawn",
+      "label": "Cyclorama Dawn",
+      "verdict": "declined",
+      "lineage": "theater cyclorama lighting",
+      "palette": ["#050508", "#1e4f8a", "#e8b4b4"],
+      "materials": ["cyc black", "cobalt horizon", "rose wash"],
+      "case": "Loses both: atmosphere bands are not a job market, and color-as-time fights Operate scan.",
+      "kept": "Named Bands: recency as Today / This week / Older, never color alone.",
+      "hero": "https://impeccable.style/worlds/cards/stagecraft-theater-lighting-cyclorama-dawn-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/stagecraft-theater-lighting-cyclorama-dawn.webp"
+    }
+  ],
+  "reroll": {
+    "registers": ["safer", "bolder"]
+  },
+  "buildPath": {
+    "value": "comp",
+    "toggle": true
+  },
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "A Handshake / Simplify / LinkedIn intern board executed at full craft: sidebar, filters, card rows, primary Apply.",
+    "palette": ["#ffffff", "#111827", "#2563eb"],
+    "materials": ["clean product grid", "soft cards", "blue primary"],
+    "viewport": "Left nav, top search, filter chips, featured card, then a list of internships with Apply on the right.",
+    "risk": "Indistinguishable from the competition by design.",
+    "comp": ".impeccable/mocks/decision/canon.png"
+  },
+  "steer": true
+}

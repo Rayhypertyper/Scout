@@ -1,0 +1,57 @@
+{
+  "title": "Choose the visual world for /jobs",
+  "question": "Safer hand: three familiar grounded worlds, plus the category standard played against Handshake, Simplify, and LinkedIn. The dice are suspended this round — you pick. /jobs stays scan-and-act.",
+  "options": [
+    {
+      "id": "career-fair",
+      "label": "Career Fair Aisle",
+      "lineage": "university career-fair booth rows and table tents",
+      "thesis": "The market is an aisle of booths: walk, stop, take a flyer, or keep moving.",
+      "palette": ["#e7e2d6", "#1f2a44", "#c45c2a", "#f4f1ea"],
+      "materials": ["laminated table tents", "booth carpet", "handout paper"],
+      "viewport": "A horizontal aisle of company booths as listing rows. Logo on a tent card, title on the handout, Apply is TAKE FLYER spanning the booth height, Mark applied / Can't fit / Save as table-edge stamps.",
+      "risk": "Reads as event branding if the aisle is decorative instead of a dense walkable market.",
+      "comp": ".impeccable/mocks/decision/safer-career-fair.png"
+    },
+    {
+      "id": "classifieds",
+      "label": "Help-Wanted",
+      "lineage": "newspaper help-wanted classified columns",
+      "thesis": "Internships run as classifieds: dense columns you circle, X out, or clip.",
+      "palette": ["#efe8d6", "#1b1b1b", "#3d5a3a", "#8b1e1e"],
+      "materials": ["newsprint", "column rules", "pencil circles"],
+      "viewport": "Full-bleed newsprint. Tight columns of company + role + location. Right edge of each ad: CIRCLE Apply, CHECK Mark applied, X Can't fit, CLIP Save, all the height of the ad.",
+      "risk": "Nostalgia costume if the type is not actually the density of a classified page.",
+      "comp": ".impeccable/mocks/decision/safer-classifieds.png"
+    },
+    {
+      "id": "pigeonholes",
+      "label": "Sorting Case",
+      "lineage": "mailroom pigeonholes and sorting cases",
+      "thesis": "Every role is a slot. You sort it: Apply, Applied, Can't fit, or Hold.",
+      "palette": ["#6b4f3a", "#f3efe6", "#1e1e1e", "#2f5d46"],
+      "materials": ["oak pigeonhole grid", "paper slips", "brass labels"],
+      "viewport": "A wall of labeled slots. Each intern listing is a slip in a cell; the four actions are the four columns you sort into, full height of the slip.",
+      "risk": "Cute furniture if the grid is a picture of boxes rather than the actual sort.",
+      "comp": ".impeccable/mocks/decision/safer-pigeonholes.png"
+    }
+  ],
+  "reroll": {
+    "registers": ["safer", "bolder"]
+  },
+  "buildPath": {
+    "value": "comp",
+    "toggle": true
+  },
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "Handshake, Simplify, and LinkedIn intern boards, played straight: sidebar, filters, cards, primary Apply — at their craft level, not a parody.",
+    "palette": ["#ffffff", "#111827", "#2563eb"],
+    "materials": ["clean product grid", "soft cards", "blue primary"],
+    "viewport": "Left nav, top search, filter chips, featured card, then internships with Apply on the right — the arrangement those three products already taught.",
+    "risk": "Indistinguishable from Handshake, Simplify, and LinkedIn by design.",
+    "comp": ".impeccable/mocks/decision/canon.png"
+  },
+  "steer": true
+}

@@ -1,0 +1,837 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Live internship and co-op opportunities tracked by Scout." />
+    <meta property="og:title" content="Scout" />
+    <meta property="og:description" content="Live internship and co-op opportunities tracked by Scout." />
+    <meta name="theme-color" content="#f2f0e9" />
+    <title>Scout</title>
+    <link rel="icon" href="/assets/brand/scout-favicon.png" type="image/png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://picsum.photos" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/redesign.css" />
+    <link rel="stylesheet" href="/themed-select.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">Skip to dashboard content</a>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Primary">
+        <a class="brand" href="/" aria-label="Scout home" translate="no">
+          <span class="brand-mark" aria-hidden="true">
+            <img src="/assets/brand/scout-logo.png" alt="" width="30" height="30" fetchpriority="high" />
+          </span>
+          <span class="brand-copy">
+          <span class="brand-name">Scout</span>
+            <span class="brand-description">Opportunity intelligence</span>
+          </span>
+        </a>
+
+        <nav class="sidebar-nav" aria-label="Dashboard navigation">
+          <div class="nav-group" role="group" aria-labelledby="nav-workspace-label">
+            <p class="nav-section" id="nav-workspace-label">Workspace</p>
+            <a class="nav-item active" href="#dashboard" data-nav="dashboard" aria-current="page">
+              <span class="nav-label">Dashboard</span>
+            </a>
+            <a class="nav-item" href="#roles" data-nav="roles" data-role-tab-link="main">
+              <span class="nav-label">Roles</span>
+            </a>
+            <a class="nav-item" href="#watchlist" data-nav="watchlist">
+              <span class="nav-label">Watchlist</span><span class="nav-count" id="watchlist-count" hidden>0</span>
+            </a>
+          </div>
+
+          <div class="nav-group" role="group" aria-labelledby="nav-progress-label">
+            <p class="nav-section" id="nav-progress-label">Progress</p>
+            <a class="nav-item" href="#applications" data-nav="applications">
+              <span class="nav-label">Applications</span>
+            </a>
+            <button class="nav-item" type="button" data-nav="interview" aria-disabled="true" aria-describedby="interview-prep-status" title="Interview Prep is not available yet">
+              <span class="nav-label">Interview Prep</span>
+            </button>
+            <p id="interview-prep-status" class="sr-only">Interview Prep is not available in this workspace yet.</p>
+          </div>
+
+          <div class="nav-group" role="group" aria-labelledby="nav-system-label">
+            <p class="nav-section" id="nav-system-label">System</p>
+            <a class="nav-item" href="#sources" data-nav="sources">
+              <span class="nav-label">Sources</span>
+            </a>
+            <a class="nav-item" href="#analytics" data-nav="analytics">
+              <span class="nav-label">Analytics</span>
+            </a>
+            <a class="nav-item" href="#settings" data-nav="settings">
+              <span class="nav-label">Settings</span>
+            </a>
+          </div>
+        </nav>
+
+        <div class="sidebar-footer">
+          <section class="plan-card" aria-label="Scan usage">
+            <div class="plan-head">
+              <strong>Scan capacity</strong>
+              <p class="plan-usage" id="plan-usage">— / — scans</p>
+            </div>
+            <div class="plan-track" aria-hidden="true"><span class="plan-fill" id="plan-fill"></span></div>
+            <div class="plan-actions">
+              <span id="plan-renewal">No completed crawl yet</span>
+              <button class="plan-upgrade" id="upgrade-plan" type="button">Manage capacity</button>
+            </div>
+          </section>
+          <div class="sidebar-support">
+            <button class="help-row" id="need-help" type="button">Need help?</button>
+            <a class="logo-attribution" href="https://hunter.io" target="_blank" rel="noopener noreferrer">Company logos by Hunter</a>
+          </div>
+        </div>
+      </aside>
+
+      <header class="topbar">
+        <label class="global-search">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.2" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          <span class="sr-only">Search roles, companies, skills, or locations</span>
+          <input id="global-search" name="globalSearch" type="search" placeholder="Search roles, companies, skills, or locations…" autocomplete="off" />
+          <kbd id="search-hotkey">⌘K</kbd>
+        </label>
+        <div class="topbar-actions">
+          <button id="add-source-button" class="button button-subtle" type="button">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 6v12M6 12h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            Add source
+          </button>
+          <button id="theme-toggle" class="icon-button" type="button" aria-label="Switch to dark theme" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.4" stroke="currentColor" stroke-width="1.7"/><path d="M12 3.4v1.8M12 18.8v1.8M4.9 4.9l1.3 1.3M17.8 17.8l1.3 1.3M3.4 12h1.8M18.8 12h1.8M4.9 19.1l1.3-1.3M17.8 6.2l1.3-1.3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+          </button>
+          <div class="notification-menu" data-menu="notifications">
+            <button id="notifications-button" class="icon-button" type="button" aria-label="Notifications" aria-haspopup="dialog" aria-expanded="false" aria-controls="notifications-popover">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6.2 9.4a5.8 5.8 0 0 1 11.6 0c0 4.2 1.7 5.6 1.7 5.6H4.5s1.7-1.4 1.7-5.6Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M10 18.4a2 2 0 0 0 4 0" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+              <span id="notifications-badge" class="notification-badge" hidden aria-hidden="true"></span>
+            </button>
+            <section id="notifications-popover" class="notification-popover" hidden role="dialog" aria-labelledby="notifications-title">
+              <div class="notification-popover-heading">
+                <div>
+                  <h2 id="notifications-title">Notifications</h2>
+                  <p id="notifications-summary">Stay up to date</p>
+                </div>
+                <button id="mark-all-notifications" class="notification-mark-read" type="button">Mark all as read</button>
+              </div>
+              <div id="notifications-list" class="notifications-list"></div>
+            </section>
+          </div>
+          <div class="user-menu" data-menu="user">
+            <button id="user-menu-button" class="user-chip" type="button" aria-label="Open account menu" aria-haspopup="menu" aria-expanded="false" aria-controls="user-menu-popover">
+              <span id="dashboard-user-avatar" class="user-avatar" aria-hidden="true">AC</span>
+              <span id="dashboard-user-name" class="user-name">Account</span>
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 10 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <div id="user-menu-popover" class="user-menu-popover" role="menu" aria-labelledby="user-menu-button" hidden>
+              <div class="user-menu-profile">
+                <span id="dashboard-profile-avatar" class="user-menu-profile-avatar" aria-hidden="true">AC</span>
+                <div class="user-menu-profile-copy">
+                  <strong id="dashboard-profile-name">Account</strong>
+                  <span id="dashboard-profile-email">Checking account status…</span>
+                </div>
+                <span id="dashboard-profile-status" class="user-menu-local-status">Checking</span>
+              </div>
+              <div class="user-menu-divider" role="separator"></div>
+              <div class="user-menu-list">
+                <button class="user-menu-item" type="button" role="menuitem" data-user-menu-action="settings">
+                  <span class="user-menu-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8.4a3.6 3.6 0 1 0 0 7.2 3.6 3.6 0 0 0 0-7.2Z" stroke="currentColor" stroke-width="1.7"/><path d="m19.1 13.6 1.2 1-.9 1.6-1.5-.5a7.5 7.5 0 0 1-1.5 1.1l-.2 1.6h-1.8l-.4-1.5a7.5 7.5 0 0 1-1.8.1l-.9 1.3-1.7-.6.2-1.6a7.6 7.6 0 0 1-1.5-1.2l-1.5.4-.9-1.6 1.2-1a7.4 7.4 0 0 1-.1-1.9l-1.3-.9.6-1.7 1.6.2a7.5 7.5 0 0 1 1.2-1.5l-.4-1.5 1.6-.9 1 1.2a7.5 7.5 0 0 1 1.9-.1l.9-1.3 1.7.6-.2 1.6a7.5 7.5 0 0 1 1.5 1.2l1.5-.4.9 1.6-1.2 1a7.5 7.5 0 0 1 .1 1.9Z" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></svg></span>
+                  <span class="user-menu-item-copy"><strong>Workspace settings</strong><small>Theme, feed, and alerts</small></span>
+                  <svg class="user-menu-item-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </button>
+                <a class="user-menu-item" href="/preferences" role="menuitem" data-user-menu-action="preferences">
+                  <span class="user-menu-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5.5 7.2h13M5.5 12h13M5.5 16.8h13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><circle cx="9" cy="7.2" r="1.7" fill="var(--surface-strong)" stroke="currentColor" stroke-width="1.5"/><circle cx="15" cy="12" r="1.7" fill="var(--surface-strong)" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="16.8" r="1.7" fill="var(--surface-strong)" stroke="currentColor" stroke-width="1.5"/></svg></span>
+                  <span class="user-menu-item-copy"><strong>Edit internship preferences</strong><small>Keep your matches relevant</small></span>
+                  <svg class="user-menu-item-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </a>
+                <a class="user-menu-item" href="/account" role="menuitem" data-user-menu-action="account">
+                  <span class="user-menu-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="8.2" r="3" stroke="currentColor" stroke-width="1.7"/><path d="M5.8 19.1c.6-3.1 2.6-4.7 6.2-4.7s5.6 1.6 6.2 4.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+                  <span class="user-menu-item-copy"><strong>Account &amp; security</strong><small>Manage your Scout account</small></span>
+                  <svg class="user-menu-item-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                </a>
+              </div>
+              <div class="user-menu-divider" role="separator"></div>
+              <button id="dashboard-logout" class="user-menu-item user-menu-item-secondary user-menu-logout" type="button" role="menuitem" hidden>
+                <span class="user-menu-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M10 5.5H6.8A1.8 1.8 0 0 0 5 7.3v9.4a1.8 1.8 0 0 0 1.8 1.8H10M14 8l4 4-4 4M18 12H9" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+                <span class="user-menu-item-copy"><strong class="button-label">Log out</strong><small>End this session securely</small></span>
+              </button>
+              <button class="user-menu-item user-menu-item-secondary" type="button" role="menuitem" data-user-menu-action="help">
+                <span class="user-menu-item-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8.2" stroke="currentColor" stroke-width="1.7"/><path d="M9.7 9.3a2.4 2.4 0 1 1 4.1 1.7c-.9.8-1.8 1.2-1.8 2.5M12 16.8v.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+                <span class="user-menu-item-copy"><strong>Need help?</strong><small>Tips for the review loop</small></span>
+                <svg class="user-menu-item-arrow" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m9 6 6 6-6 6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <p class="user-menu-footnote">Saved locally in this browser</p>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <main id="main-content" class="main-pane" aria-labelledby="page-title">
+        <noscript>
+          <div class="noscript-notice" role="status">
+            <strong>JavaScript is required to load internship data.</strong>
+            <span>Enable JavaScript, then reload this page to view roles and crawl status.</span>
+          </div>
+        </noscript>
+
+        <div class="main-chrome" data-role-view="roles">
+          <header class="page-header page-header-editorial">
+            <div class="page-heading-copy">
+              <h1 id="page-title">All internships <span class="title-cutout" aria-hidden="true"></span> in the live market.</h1>
+              <p class="page-subtitle">Browse the full open internship catalog, then narrow it with search, filters, and source context.</p>
+              <nav id="role-view-switch" class="role-view-switch" aria-label="Internship view">
+                <a class="role-view-link" data-role-view-link="matches" href="/jobs?view=matches&tab=main&sort=relevance">Matches for you</a>
+                <a class="role-view-link" data-role-view-link="all" href="/jobs?view=all&tab=main&sort=posted">All internships</a>
+                <a class="role-preferences-link" href="/preferences">Edit preferences</a>
+              </nav>
+              <h2 id="results-heading" class="sr-only">Open roles</h2>
+            </div>
+            <section class="workspace-pulse dashboard-crawl-health" aria-labelledby="dashboard-crawl-health-heading">
+              <div class="dashboard-crawl-health-heading">
+                <div>
+                  <h2 id="dashboard-crawl-health-heading">Crawl Health</h2>
+                  <p class="dashboard-crawl-progress" data-crawl-field="progress" role="status" aria-live="polite" aria-atomic="true">Waiting for a source check…</p>
+                </div>
+                <div class="dashboard-crawl-status">
+                  <span class="status-pill" data-crawl-field="run-status">—</span>
+                  <span class="status-run" data-crawl-field="source-status">Idle</span>
+                </div>
+              </div>
+              <div class="dashboard-crawl-current" data-crawl-current aria-describedby="dashboard-current-source-detail">
+                <div class="dashboard-crawl-source">
+                  <div>
+                    <span class="analytics-label">Active source</span>
+                    <strong class="dashboard-current-source-name" data-crawl-field="source-name">No source is being crawled</strong>
+                  </div>
+                  <div class="dashboard-crawl-elapsed">
+                    <span class="analytics-label">Elapsed</span>
+                    <strong data-crawl-field="source-elapsed">—</strong>
+                  </div>
+                </div>
+                <p id="dashboard-current-source-detail" class="dashboard-current-source-detail" data-crawl-field="source-detail">Start a crawl to see live source timing.</p>
+                <div class="dashboard-crawl-health-metrics">
+                  <div class="status-box-row"><span>Last crawl</span><strong data-crawl-field="last-crawl">—</strong></div>
+                  <div class="status-box-row"><span>Next crawl</span><strong data-crawl-field="next-crawl">—</strong></div>
+                  <div class="status-box-row"><span>Errors (24h)</span><strong class="status-error" data-crawl-field="errors">0</strong></div>
+                  <div class="status-box-row"><span>Average run duration</span><strong data-crawl-field="average-duration">—</strong></div>
+                </div>
+              </div>
+              <div class="dashboard-crawl-actions">
+                <span class="last-sync">Synced <strong id="last-refresh">—</strong></span>
+                <button id="quick-refresh-button" class="quick-crawl-button" type="button">Run crawl</button>
+                <button id="quick-terminate-button" class="quick-terminate-button" type="button" hidden>Terminate Crawl</button>
+              </div>
+              <div class="run-summary dashboard-run-summary" data-crawl-run-summary></div>
+            </section>
+          </header>
+
+          <div class="role-tabs" role="tablist" aria-label="Role lists" aria-orientation="horizontal">
+            <button class="role-tab" id="main-tab" type="button" role="tab" aria-controls="jobs-scroll" aria-selected="false" tabindex="-1" data-role-tab="main">
+              All <span class="role-tab-count" data-role-tab-count="main">—</span>
+            </button>
+            <button class="role-tab" id="saved-tab" type="button" role="tab" aria-controls="jobs-scroll" aria-selected="false" tabindex="-1" data-role-tab="saved">
+              Saved <span class="role-tab-count" data-role-tab-count="saved">0</span>
+            </button>
+            <button class="role-tab active" id="canada-tab" type="button" role="tab" aria-controls="jobs-scroll" aria-selected="true" tabindex="0" data-role-tab="canada">
+              Canada <span class="role-tab-count" data-role-tab-count="canada">—</span>
+            </button>
+            <button class="role-tab" id="summer-tab" type="button" role="tab" aria-controls="jobs-scroll" aria-selected="false" tabindex="-1" data-role-tab="summer">
+              Summer <span class="role-tab-count" data-role-tab-count="summer">—</span>
+            </button>
+            <button class="role-tab" id="internship-tab" type="button" role="tab" aria-controls="jobs-scroll" aria-selected="false" tabindex="-1" data-role-tab="internship">
+              Intern / Internship / Co-op <span class="role-tab-count" data-role-tab-count="internship">—</span>
+            </button>
+            <button class="role-tab" id="quant-tab" type="button" role="tab" aria-controls="jobs-scroll" aria-selected="false" tabindex="-1" data-role-tab="quant">
+              Quant <span class="role-tab-count" data-role-tab-count="quant">—</span>
+            </button>
+            <button class="role-tab" id="non-intern-tab" type="button" role="tab" aria-controls="jobs-scroll" aria-selected="false" tabindex="-1" data-role-tab="non-intern">
+              Non-intern <span class="role-tab-count" data-role-tab-count="non-intern">—</span>
+            </button>
+          </div>
+
+          <section class="filter-toolbar" aria-label="Filters">
+            <label class="filter-search filter-search-proxy">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.2" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+              <span class="sr-only">Search by role, company, tech, or location</span>
+              <input id="search-input" name="roleSearch" type="search" placeholder="Search by role, company, tech, or location…" autocomplete="off" />
+            </label>
+            <label class="filter-select filter-field">
+              <span class="filter-label">Category</span>
+              <select id="category-filter" name="category"><option value="all">All categories</option></select>
+            </label>
+            <label class="filter-select filter-field">
+              <span class="filter-label">Work mode</span>
+              <select id="work-mode-filter" name="workMode">
+                <option value="all">Work mode</option>
+                <option value="onsite">Onsite</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="remote">Remote</option>
+              </select>
+            </label>
+            <label class="filter-select filter-field">
+              <span class="filter-label">Location</span>
+              <select id="location-filter" name="location"><option value="all">Location</option></select>
+            </label>
+            <label class="filter-select filter-field">
+              <span class="filter-label">Season</span>
+              <select id="season-filter" name="season">
+                <option value="all">All seasons</option>
+                <option value="winter">Winter</option>
+                <option value="spring">Spring</option>
+                <option value="summer">Summer</option>
+                <option value="fall">Fall</option>
+                <option value="unknown">Unknown season</option>
+              </select>
+            </label>
+            <div class="filter-menu" data-menu="filters">
+              <button class="filter-chip" id="more-filters-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="more-filters-menu">
+                More filters
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 10 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <div class="menu-popover" id="more-filters-menu" role="dialog" aria-label="More role filters" hidden>
+                <label class="menu-field">
+                  <span>Status</span>
+                  <select id="status-filter" name="status">
+                    <option value="open">Open roles</option>
+                    <option value="new">New</option>
+                    <option value="updated">Updated</option>
+                    <option value="all">All statuses</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div class="filter-menu filter-menu-right" data-menu="views">
+              <button class="filter-chip" id="saved-views-button" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="saved-views-menu">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 4.8h10a1 1 0 0 1 1 1V20l-6-3.2L6 20V5.8a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+                Saved filters
+              </button>
+              <div class="menu-popover" id="saved-views-menu" role="dialog" aria-label="Saved role filters" hidden>
+                <p class="menu-empty" id="saved-views-empty">No saved filters yet.</p>
+                <div id="saved-views-list"></div>
+                <button class="menu-action" id="save-current-view" type="button">Save current filters</button>
+              </div>
+            </div>
+            <label class="filter-select filter-field sort-select">
+              <span class="filter-label">Sort</span>
+              <select id="sort-filter" name="sort">
+                <option value="posted">Newest first</option>
+                <option value="relevance">Best match</option>
+                <option value="season">Season</option>
+                <option value="recent">Recently discovered</option>
+                <option value="last-seen">Recently seen</option>
+                <option value="company">Company A–Z</option>
+              </select>
+            </label>
+          </section>
+          <div id="active-filters" class="active-filters" hidden aria-live="polite" aria-atomic="true"></div>
+
+        </div>
+
+        <section class="jobs-panel" data-role-view="roles" aria-label="Role listings">
+          <div class="results-heading-row">
+            <div id="jobs-status" class="jobs-status" role="status" aria-live="polite" aria-atomic="true"></div>
+            <p id="results-context">Open a role to inspect the source and posting context without losing your place.</p>
+          </div>
+          <div class="jobs-workspace">
+            <div class="jobs-scroll" id="jobs-scroll" role="tabpanel" aria-labelledby="summer-tab" tabindex="0">
+              <section id="featured-match" class="featured-match" hidden aria-label="Featured role"></section>
+              <div id="role-list" class="jobs-list" role="list" aria-busy="true">
+                <div class="jobs-loading-row" role="status" aria-live="polite">
+                  <p class="sr-only">Loading roles</p>
+                  <div class="job-card job-card-skeleton" aria-hidden="true">
+                    <span class="skeleton-logo"></span>
+                    <div class="job-card-body">
+                      <span class="skeleton-line skeleton-title"></span>
+                      <span class="skeleton-line skeleton-company"></span>
+                      <span class="skeleton-line skeleton-meta"></span>
+                    </div>
+                    <div class="job-card-side job-card-side--large">
+                      <div class="listing-row-actions listing-row-actions--large skeleton-actions">
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="job-card job-card-skeleton" aria-hidden="true">
+                    <span class="skeleton-logo"></span>
+                    <div class="job-card-body">
+                      <span class="skeleton-line skeleton-title"></span>
+                      <span class="skeleton-line skeleton-company"></span>
+                      <span class="skeleton-line skeleton-meta"></span>
+                    </div>
+                    <div class="job-card-side job-card-side--large">
+                      <div class="listing-row-actions listing-row-actions--large skeleton-actions">
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="job-card job-card-skeleton" aria-hidden="true">
+                    <span class="skeleton-logo"></span>
+                    <div class="job-card-body">
+                      <span class="skeleton-line skeleton-title"></span>
+                      <span class="skeleton-line skeleton-company"></span>
+                      <span class="skeleton-line skeleton-meta"></span>
+                    </div>
+                    <div class="job-card-side job-card-side--large">
+                      <div class="listing-row-actions listing-row-actions--large skeleton-actions">
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="job-card job-card-skeleton" aria-hidden="true">
+                    <span class="skeleton-logo"></span>
+                    <div class="job-card-body">
+                      <span class="skeleton-line skeleton-title"></span>
+                      <span class="skeleton-line skeleton-company"></span>
+                      <span class="skeleton-line skeleton-meta"></span>
+                    </div>
+                    <div class="job-card-side job-card-side--large">
+                      <div class="listing-row-actions listing-row-actions--large skeleton-actions">
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="job-card job-card-skeleton" aria-hidden="true">
+                    <span class="skeleton-logo"></span>
+                    <div class="job-card-body">
+                      <span class="skeleton-line skeleton-title"></span>
+                      <span class="skeleton-line skeleton-company"></span>
+                      <span class="skeleton-line skeleton-meta"></span>
+                    </div>
+                    <div class="job-card-side job-card-side--large">
+                      <div class="listing-row-actions listing-row-actions--large skeleton-actions">
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                        <span class="skeleton-action"></span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div id="load-more-sentinel" class="load-more-sentinel" role="status" aria-live="polite" aria-atomic="true"></div>
+            </div>
+            <aside id="role-detail-panel" class="role-detail-panel" hidden tabindex="-1" aria-labelledby="role-detail-title">
+              <header class="role-detail-header">
+                <div id="role-detail-summary" class="role-detail-summary"></div>
+                <button id="close-role-detail" class="detail-close-button" type="button" aria-label="Close role details">
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                </button>
+              </header>
+              <details id="role-detail-content" class="details role-detail-content" open>
+                <summary class="sr-only">Full role details</summary>
+                <div class="detail-content" role="status" aria-live="polite">Choose a role to inspect its details.</div>
+              </details>
+            </aside>
+          </div>
+        </section>
+
+        <section id="applications-view" class="applications-view" data-role-view="applications" hidden aria-labelledby="applications-title">
+          <header class="applications-header">
+            <div>
+              <h1 id="applications-title">Applications</h1>
+              <p class="applications-subtitle">Move each applied role from first submission to its final outcome.</p>
+            </div>
+            <button id="applications-refresh-button" class="button button-subtle" type="button">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 8.5A7.5 7.5 0 1 0 19.2 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 4.5v4h-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Refresh applications
+            </button>
+          </header>
+
+          <div id="application-summary" class="application-summary" role="group" aria-label="Application stage summary"></div>
+
+          <div class="applications-toolbar">
+            <label class="applications-search">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="11" cy="11" r="6.2" stroke="currentColor" stroke-width="1.7"/><path d="m16 16 4 4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+              <span class="sr-only">Search applications</span>
+              <input id="applications-search-input" name="applicationSearch" type="search" placeholder="Search applied roles or companies…" autocomplete="off" />
+            </label>
+            <label class="applications-stage-filter">
+              <span class="sr-only">Filter applications by stage</span>
+              <select id="applications-stage-filter" name="applicationStage">
+                <option value="all">All stages</option>
+                <option value="applied">Applied</option>
+                <option value="oa">OA</option>
+                <option value="recruiter">Recruiter</option>
+                <option value="interview">Interview</option>
+                <option value="final">Final</option>
+                <option value="offer">Offer</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </label>
+          </div>
+
+          <p id="applications-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+          <div id="applications-list" class="applications-list" role="list" aria-busy="true">
+            <div class="applications-loading" role="status">Loading applications…</div>
+          </div>
+        </section>
+
+        <section id="analytics-view" class="analytics-view" data-role-view="analytics" hidden aria-labelledby="analytics-title">
+          <header class="analytics-header">
+            <div>
+              <h1 id="analytics-title">Analytics</h1>
+              <p class="analytics-subtitle">Track crawl coverage, listing changes, and source health in one place.</p>
+            </div>
+            <div class="analytics-updated" aria-live="polite">
+              <span>Last updated</span>
+              <strong id="analytics-updated-value">—</strong>
+            </div>
+          </header>
+
+          <section class="analytics-panel analytics-statistics-panel" aria-labelledby="crawl-statistics-heading">
+            <div class="analytics-panel-heading">
+              <div>
+                <h2 id="crawl-statistics-heading">Crawl Statistics</h2>
+                <p>Current listing totals and decisions across the crawler.</p>
+              </div>
+              <span class="analytics-panel-kicker">Live snapshot</span>
+            </div>
+            <div id="crawl-statistics" class="crawl-statistics-grid analytics-kpi-grid" aria-label="Crawl statistics">
+              <div class="crawl-stat-row crawl-stat-row-top">
+                <div class="crawl-stat loading-card" aria-hidden="true"><span class="loading-block loading-block-value"></span><span class="loading-block loading-block-label"></span></div>
+                <div class="crawl-stat loading-card" aria-hidden="true"><span class="loading-block loading-block-value"></span><span class="loading-block loading-block-label"></span></div>
+                <div class="crawl-stat loading-card" aria-hidden="true"><span class="loading-block loading-block-value"></span><span class="loading-block loading-block-label"></span></div>
+              </div>
+              <div class="crawl-stat-row crawl-stat-row-bottom">
+                <div class="crawl-stat loading-card" aria-hidden="true"><span class="loading-block loading-block-value"></span><span class="loading-block loading-block-label"></span></div>
+                <div class="crawl-stat loading-card" aria-hidden="true"><span class="loading-block loading-block-value"></span><span class="loading-block loading-block-label"></span></div>
+                <div class="crawl-stat loading-card" aria-hidden="true"><span class="loading-block loading-block-value"></span><span class="loading-block loading-block-label"></span></div>
+              </div>
+            </div>
+          </section>
+
+          <div class="analytics-grid analytics-grid-top">
+            <section class="analytics-panel crawl-panel analytics-health-panel" data-collapsed="false" aria-labelledby="crawl-health-heading">
+              <div class="analytics-panel-heading">
+                <div>
+                  <h2 id="crawl-health-heading">Crawl Health</h2>
+                  <p id="scan-progress" class="analytics-progress" data-crawl-field="progress" role="status" aria-live="polite" aria-atomic="true">Waiting for a source check…</p>
+                </div>
+                <div class="analytics-status-stack">
+                  <span id="run-status" class="status-pill" data-crawl-field="run-status">—</span>
+                  <span id="current-source-status" class="status-run" data-crawl-field="source-status">Idle</span>
+                </div>
+              </div>
+              <div id="crawl-health-body">
+                <div id="current-crawl" class="analytics-current-crawl" data-crawl-current aria-describedby="current-source-detail">
+                  <div class="analytics-current-source">
+                    <div>
+                      <span class="analytics-label">Active source</span>
+                      <strong id="current-source-name" class="current-source-name" data-crawl-field="source-name">No source is being crawled</strong>
+                    </div>
+                    <div class="analytics-current-elapsed">
+                      <span class="analytics-label">Elapsed</span>
+                      <strong id="current-source-elapsed" data-crawl-field="source-elapsed">—</strong>
+                    </div>
+                  </div>
+                  <p id="current-source-detail" class="current-source-detail" data-crawl-field="source-detail">Start a crawl to see live source timing.</p>
+                  <div class="analytics-health-metrics">
+                    <div class="status-box-row"><span>Last crawl</span><strong id="crawl-last-value" data-crawl-field="last-crawl">—</strong></div>
+                    <div class="status-box-row"><span>Next crawl</span><strong id="crawl-next-value" data-crawl-field="next-crawl">—</strong></div>
+                    <div class="status-box-row"><span>Errors (24h)</span><strong id="crawl-errors-value" class="status-error" data-crawl-field="errors">0</strong></div>
+                    <div class="status-box-row"><span>Average run duration</span><strong id="crawl-duration-value" data-crawl-field="average-duration">—</strong></div>
+                  </div>
+                </div>
+                <div class="crawl-actions analytics-actions">
+                  <button id="refresh-button" class="run-button" type="button">
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 6.8v10.4L18.2 12 8 6.8Z"/></svg>
+                    Crawl Now
+                  </button>
+                  <button id="terminate-button" class="terminate-button" type="button" hidden>
+                    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6.5" y="6.5" width="11" height="11" rx="1.2"/></svg>
+                    Terminate Crawl
+                  </button>
+                </div>
+                <div id="run-summary" class="run-summary" data-crawl-run-summary></div>
+              </div>
+            </section>
+
+            <section class="analytics-panel analytics-runs-panel" aria-labelledby="recent-runs-heading">
+              <div class="analytics-panel-heading">
+                <div>
+                  <h2 id="recent-runs-heading">Recent Runs</h2>
+                  <p>Latest crawler activity and throughput.</p>
+                </div>
+                <button class="text-link" id="view-all-runs" type="button">View all</button>
+              </div>
+              <div id="recent-runs" class="recent-runs"></div>
+            </section>
+          </div>
+
+          <section class="analytics-panel sources-card analytics-sources-panel" aria-labelledby="sources-heading">
+            <div class="analytics-panel-heading">
+              <div>
+                <h2 id="sources-heading">Source Health</h2>
+                <p>Per-source results from the latest crawl.</p>
+              </div>
+              <button class="text-link" id="view-all-sources" type="button">View all</button>
+            </div>
+            <p class="source-summary" id="source-count">—</p>
+            <div id="source-list" class="source-list analytics-source-list">
+              <div class="loading-list" aria-hidden="true"><span class="loading-block"></span><span class="loading-block"></span><span class="loading-block"></span></div>
+            </div>
+            <div class="analytics-failures" aria-labelledby="failures-heading">
+              <div class="analytics-subheading">
+                <h3 id="failures-heading">Failure details</h3>
+                <span>Latest run</span>
+              </div>
+              <div id="failure-list" class="failure-list"></div>
+              <p id="failure-recovery" class="failure-recovery" hidden>Review the failed source below, then run another crawl. Saved sources remain available for retry.</p>
+            </div>
+          </section>
+        </section>
+
+        <section id="settings-view" class="settings-view" data-role-view="settings" hidden aria-labelledby="settings-title">
+          <header class="settings-header">
+            <div class="settings-heading">
+              <h1 id="settings-title">Settings</h1>
+              <p class="settings-subtitle">Tune how Scout looks, what it shows first, and which local alerts reach you.</p>
+            </div>
+            <div class="settings-header-actions">
+              <span id="settings-save-status" class="settings-save-status" role="status">Saved on this device</span>
+              <button id="reset-settings-button" class="button button-subtle" type="button">Reset preferences</button>
+            </div>
+          </header>
+
+          <div class="settings-layout">
+            <div class="settings-main-column">
+              <section class="settings-panel settings-profile-panel" aria-labelledby="settings-profile-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-profile-heading">Workspace</h2>
+                    <p>Your Scout account keeps this workspace connected across sessions.</p>
+                  </div>
+                  <span id="settings-account-kicker" class="settings-panel-kicker">Account</span>
+                </div>
+                <div class="settings-profile-row">
+                  <span id="settings-profile-avatar" class="settings-profile-avatar" aria-hidden="true">AC</span>
+                  <div class="settings-profile-copy">
+                    <strong id="settings-profile-name">Account</strong>
+                    <span id="settings-profile-email">Checking account status…</span>
+                  </div>
+                  <span id="settings-account-status" class="settings-readonly-note">Checking account…</span>
+                </div>
+              </section>
+
+              <section class="settings-panel" aria-labelledby="settings-appearance-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-appearance-heading">Appearance</h2>
+                    <p>Choose a comfortable reading mode for this browser.</p>
+                  </div>
+                </div>
+                <div class="settings-form-grid">
+                  <label class="settings-field">
+                    <span>Color theme</span>
+                    <select id="settings-theme" name="theme">
+                      <option value="light">Light</option>
+                      <option value="dark">Dark</option>
+                      <option value="system">Use system setting</option>
+                    </select>
+                    <small>Applied immediately and saved locally.</small>
+                  </label>
+                  <label class="settings-field">
+                    <span>Motion</span>
+                    <select id="settings-motion" name="motion">
+                      <option value="full">Full motion</option>
+                      <option value="reduced">Reduce motion</option>
+                    </select>
+                    <small>Also respects your operating system preference.</small>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-panel" aria-labelledby="settings-feed-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-feed-heading">Role feed</h2>
+                    <p>Set the view and ordering used when you open the dashboard.</p>
+                  </div>
+                </div>
+                <div class="settings-form-grid settings-feed-grid">
+                  <label class="settings-field">
+                    <span>Default role list</span>
+                    <select id="settings-default-tab" name="defaultRoleList">
+                      <option value="canada">Canada</option>
+                      <option value="summer">Summer</option>
+                      <option value="main">All roles</option>
+                      <option value="internship">Intern / Internship / Co-op</option>
+                      <option value="quant">Quant</option>
+                      <option value="non-intern">Non-intern</option>
+                      <option value="saved">Saved</option>
+                    </select>
+                  </label>
+                  <label class="settings-field">
+                    <span>Default sort</span>
+                    <select id="settings-default-sort" name="defaultSort">
+                      <option value="posted">Newest first</option>
+                      <option value="relevance">Best match</option>
+                      <option value="season">Season</option>
+                      <option value="recent">Recently discovered</option>
+                      <option value="last-seen">Recently seen</option>
+                      <option value="company">Company A–Z</option>
+                    </select>
+                  </label>
+                  <label class="settings-field">
+                    <span>Default status</span>
+                    <select id="settings-default-status" name="defaultStatus">
+                      <option value="open">Open roles</option>
+                      <option value="new">New</option>
+                      <option value="updated">Updated</option>
+                      <option value="all">All statuses</option>
+                      <option value="closed">Closed</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-panel" aria-labelledby="settings-notifications-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-notifications-heading">Notifications</h2>
+                    <p>These alerts stay in this browser and never leave your local dashboard.</p>
+                  </div>
+                </div>
+                <div class="settings-switch-list">
+                  <label class="settings-switch-row">
+                    <span class="settings-switch-copy"><strong>Crawl completed</strong><small>Show a notification when a source check finishes.</small></span>
+                    <input id="settings-notify-completed" class="settings-checkbox" name="notifyCompleted" type="checkbox" />
+                  </label>
+                  <label class="settings-switch-row">
+                    <span class="settings-switch-copy"><strong>Crawl failed</strong><small>Keep failures visible so source health is easy to recover.</small></span>
+                    <input id="settings-notify-failed" class="settings-checkbox" name="notifyFailed" type="checkbox" />
+                  </label>
+                  <label class="settings-switch-row">
+                    <span class="settings-switch-copy"><strong>New role alerts</strong><small>Include newly discovered roles in completion alerts.</small></span>
+                    <input id="settings-notify-new" class="settings-checkbox" name="notifyNewRoles" type="checkbox" />
+                  </label>
+                  <label class="settings-switch-row">
+                    <span class="settings-switch-copy"><strong>Closing-soon alerts</strong><small>Notify me when an open role closes within the next 24 hours.</small></span>
+                    <input id="settings-notify-deadline-soon" class="settings-checkbox" name="notifyDeadlineSoon" type="checkbox" />
+                  </label>
+                </div>
+              </section>
+
+              <section class="settings-panel settings-data-panel" aria-labelledby="settings-data-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-data-heading">Local data</h2>
+                    <p>Manage browser-only preferences and saved dashboard items.</p>
+                  </div>
+                </div>
+                <div class="settings-action-list">
+                  <div class="settings-action-row">
+                    <div><strong>Watchlist</strong><span id="settings-watchlist-summary">0 saved roles</span></div>
+                    <button class="settings-danger-button" type="button" data-settings-action="clear-watchlist">Clear watchlist</button>
+                  </div>
+                  <div class="settings-action-row">
+                    <div><strong>Saved filters</strong><span id="settings-saved-views-summary">0 saved filters</span></div>
+                    <button class="settings-danger-button" type="button" data-settings-action="clear-saved-views">Clear saved filters</button>
+                  </div>
+                  <div class="settings-action-row">
+                    <div><strong>Notification history</strong><span id="settings-notifications-summary">0 alerts stored</span></div>
+                    <button class="settings-danger-button" type="button" data-settings-action="clear-notifications">Clear history</button>
+                  </div>
+                </div>
+                <p class="settings-data-note">Clearing local data cannot be undone, but it does not remove your crawler database or source catalog.</p>
+              </section>
+            </div>
+
+            <aside class="settings-side-column" aria-label="Workspace snapshot">
+              <section class="settings-panel settings-snapshot-panel" aria-labelledby="settings-snapshot-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-snapshot-heading">Workspace snapshot</h2>
+                    <p>A quick read on the data behind this dashboard.</p>
+                  </div>
+                </div>
+                <div class="settings-stat-grid">
+                  <div class="settings-stat"><span>Configured sources</span><strong id="settings-source-count">—</strong></div>
+                  <div class="settings-stat"><span>Saved roles</span><strong id="settings-watchlist-count">0</strong></div>
+                  <div class="settings-stat"><span>Unread alerts</span><strong id="settings-unread-count">0</strong></div>
+                  <div class="settings-stat"><span>Last crawl</span><strong id="settings-last-crawl">—</strong></div>
+                </div>
+                <button id="settings-manage-sources" class="settings-inline-button" type="button">Manage sources <span aria-hidden="true">→</span></button>
+              </section>
+
+              <section class="settings-panel settings-shortcuts-panel" aria-labelledby="settings-shortcuts-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-shortcuts-heading">Shortcuts</h2>
+                    <p>Small ways to keep the review loop moving.</p>
+                  </div>
+                </div>
+                <div class="settings-shortcut-list">
+                  <div><span>Search roles</span><kbd id="settings-search-shortcut">⌘ K</kbd></div>
+                  <div><span>Undo last decision</span><kbd>⌘ Z</kbd></div>
+                  <div><span>Close a panel</span><kbd>Esc</kbd></div>
+                </div>
+              </section>
+
+              <section class="settings-panel settings-about-panel" aria-labelledby="settings-about-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-about-heading">Scout</h2>
+                    <p>Opportunity intelligence for the roles worth a closer look.</p>
+                  </div>
+                  <span class="settings-panel-kicker">v1.0</span>
+                </div>
+                <button id="settings-open-analytics" class="settings-inline-button" type="button">View crawl analytics <span aria-hidden="true">→</span></button>
+              </section>
+            </aside>
+          </div>
+        </section>
+      </main>
+
+    </div>
+    <dialog id="add-source-dialog" class="dialog-backdrop" aria-labelledby="add-source-title" aria-describedby="add-source-description">
+      <section class="source-dialog">
+        <div class="dialog-heading">
+          <div>
+            <h2 id="add-source-title">Add a source</h2>
+          </div>
+          <button id="close-add-source" class="icon-button dialog-close" type="button" aria-label="Close add source dialog">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <p id="add-source-description" class="dialog-description">Paste a public careers page, ATS listing, job board, or GitHub internship list. Scout extracts HTML, JSON-LD, Markdown, and known ATS feeds without using an LLM.</p>
+        <form id="add-source-form" class="source-form">
+          <label class="source-field">
+            <span>Source URL</span>
+            <input id="source-url-input" name="url" type="url" inputmode="url" placeholder="https://company.com/careers…" autocomplete="url" aria-describedby="source-url-help source-url-error" required />
+          </label>
+          <p id="source-url-help" class="source-form-note">Login-only pages, canvas-rendered listings, and sites that hide jobs behind custom interactions may return no roles. The source will still be saved so you can retry it later.</p>
+          <p id="source-url-error" class="source-form-error" role="alert" hidden></p>
+          <div class="dialog-actions">
+            <button id="cancel-add-source" class="dialog-secondary" type="button">Cancel</button>
+            <button id="submit-add-source" class="dialog-primary" type="submit">Add &amp; crawl</button>
+          </div>
+        </form>
+      </section>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">
+      <span id="toast-message"></span>
+      <button id="toast-action" class="toast-action" type="button" hidden></button>
+    </div>
+    <script src="/vendor/gsap.min.js"></script>
+    <script src="/vendor/ScrollTrigger.min.js"></script>
+    <script type="module" src="/themed-select.js"></script>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

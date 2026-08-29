@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.internshipmatic.jobright</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/local/bin/node</string>
+		<string>/Users/rayxu/Documents/Internshipmatic/dist/src/jobrightResolver.js</string>
+		<string>--database</string>
+		<string>/Users/rayxu/Documents/Internshipmatic/output/live/internships.db</string>
+		<string>--output-dir</string>
+		<string>/Users/rayxu/Documents/Internshipmatic/output/live</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/rayxu/Documents/Internshipmatic</string>
+	<key>StartCalendarInterval</key>
+	<array>
+		<dict><key>Hour</key><integer>6</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>17</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>18</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>20</integer><key>Minute</key><integer>0</integer></dict>
+		<dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
+		<dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+	</array>
+	<key>StandardOutPath</key>
+	<string>/Users/rayxu/Documents/Internshipmatic/output/live/jobright-resolver.stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/rayxu/Documents/Internshipmatic/output/live/jobright-resolver.stderr.log</string>
+	<key>ProcessType</key>
+	<!-- Jobright also launches Playwright; use the interactive user session so
+	     Chromium can establish its macOS bootstrap/Mach-port rendezvous. -->
+	<string>Interactive</string>
+</dict>
+</plist>

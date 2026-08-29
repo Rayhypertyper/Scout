@@ -1,0 +1,143 @@
+{
+  "title": "Choose the visual world for /jobs",
+  "question": "The roll assigned Night Game Agate. Keep it, take an alternate, or re-roll. /jobs stays a scan-and-act workspace: apply, mark applied, hide, save. Same capabilities can move.",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Night Game Agate",
+      "kicker": "THE ROLL",
+      "lineage": "late-night stadium box scores and sports-wire agate",
+      "thesis": "The live internship market is a box score you mark, not a dashboard you browse.",
+      "palette": ["#12140f", "#e6e2c9", "#d4a017", "#7d9a3a"],
+      "materials": ["matte LED tiles", "condensed agate type", "ochre live pips"],
+      "viewport": "No hero. A full-bleed scoreboard of CLOCK / TEAM / PLAY rows with a full-height APPLY · SCORE · K · FLAG rail, period tabs as innings across the top.",
+      "risk": "Reads as sports novelty if the LED metaphor decorates a normal list instead of becoming the density of a real box score.",
+      "raised": [
+        {
+          "from": "Depot destination blinds",
+          "raise": "Course Snap: every new or filtered row ticks as one whole-line step, never a fade."
+        },
+        {
+          "from": "Cloud quarry",
+          "raise": "Inning Air: filter groups sit as scored blocks with deep gaps, not one endless tape."
+        },
+        {
+          "from": "Sneaker box stacks",
+          "raise": "End-Label Grid: every listing is a locked CLOCK / TEAM / PLAY line, no wrapping cards."
+        }
+      ],
+      "comp": ".impeccable/mocks/decision/assigned.png"
+    },
+    {
+      "id": "model-pick",
+      "label": "Departure Board",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "airport FIDS and Solari split-flap boards",
+      "thesis": "Open roles are departing flights: scan the board, catch the ones you can still make.",
+      "palette": ["#1c1d1a", "#f0ead2", "#e3b505", "#8a8f82"],
+      "materials": ["split-flap cells", "destination yellow", "mechanical click"],
+      "viewport": "A dark board of destination rows: company as city, role as flight, recency as STD, Apply as GATE. Filters hang as city/status headers above the flaps.",
+      "risk": "Also the direction most runs in this category land on: live data dressed as a transit board.",
+      "comp": ".impeccable/mocks/decision/model-pick.png"
+    },
+    {
+      "id": "challenger-design-annual-s-plate-section",
+      "label": "Printer’s Plate Sheet",
+      "verdict": "competitive",
+      "lineage": "design-annual plate section on uncoated stock",
+      "thesis": "The catalog as one continuous press sheet: internships as plates, actions as filled ink rects.",
+      "palette": ["#F5F4F6", "#16181A", "#DCDDF3", "#C9C7C4"],
+      "materials": ["uncoated near-white stock", "1px registration hairlines", "letterpress stamp"],
+      "viewport": "One sheet. 72px sticky mono token bar. Listings in a 4-up then full-width plate row, Apply a 0-radius black rect, crosshairs at sheet corners.",
+      "case": "Holds product clarity: a hairline sheet is a denser scan surface than a card feed. Loses audience identification: intern hunters do not live in printer’s annuals.",
+      "risk": "Reads as a portfolio when the registration furniture outranks the roles.",
+      "comp": ".impeccable/mocks/decision/challenger-design-annual-s-plate-section.png",
+      "hero": "https://impeccable.style/worlds/cards/design-annual-s-plate-section-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/design-annual-s-plate-section.webp"
+    },
+    {
+      "id": "challenger-pop-culture-shelf-vertical-video-feed-surface",
+      "label": "One-Role Snap Feed",
+      "verdict": "competitive",
+      "lineage": "vertical full-bleed media feed",
+      "thesis": "One role owns the viewport; Apply / Mark / Hide / Save stack as a right rail; the next role is one snap away.",
+      "palette": ["#0a0a0a", "#ffffff", "#d4a017"],
+      "materials": ["full-bleed posting field", "bottom scrim", "white action glyphs"],
+      "viewport": "Company and title low-left over the posting field, four rail glyphs on the right, next listing already loaded below the snap.",
+      "case": "Holds audience identification: students already hunt this way. Loses product clarity: one-at-a-time hides the live market they came to scan.",
+      "risk": "Turns a market into a slot machine and buries filters offstage.",
+      "comp": ".impeccable/mocks/decision/challenger-pop-culture-shelf-vertical-video-feed-surface.png",
+      "hero": "https://impeccable.style/worlds/cards/pop-culture-shelf-vertical-video-feed-surface-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/pop-culture-shelf-vertical-video-feed-surface.webp"
+    },
+    {
+      "id": "challenger-operate-a-cutting-bench-select-rail",
+      "label": "Cutting Bench",
+      "verdict": "competitive",
+      "lineage": "film cutting bench select rail",
+      "thesis": "Roles are frames on a perforated rail: grease-cross Applied, punched-corner Can’t fit, hung-pin Saved, tape-band Apply.",
+      "palette": ["#0b0b0b", "#e4572e", "#f4efe6"],
+      "materials": ["grain-orange film", "perforation pitch", "folded tape flags"],
+      "viewport": "A perforated select rail of filter frames at a fixed height; the listing strip scrubs under it; discarded roles hang on pins in an open bin below.",
+      "case": "Holds product clarity: state is a mark, not a hue, which maps apply / hide / save exactly. Loses audience identification: SWE intern hunters are not editors at a bench.",
+      "risk": "Orange drench and film grain become costume if the rail is not the actual navigation.",
+      "comp": ".impeccable/mocks/decision/challenger-operate-a-cutting-bench-select-rail.png",
+      "hero": "https://impeccable.style/worlds/cards/operate-a-cutting-bench-select-rail-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/operate-a-cutting-bench-select-rail.webp"
+    },
+    {
+      "id": "challenger-operate-c-depot-blind-courses",
+      "label": "Depot Destination Blind",
+      "verdict": "declined",
+      "lineage": "transit depot destination blinds",
+      "palette": ["#0f3d2e", "#e3b505", "#f3efe4"],
+      "materials": ["bottle-green duck cloth", "chrome-yellow legends"],
+      "case": "Loses both: one window cannot show a market, and intern hunters do not wait at a depot bench.",
+      "kept": "Course Snap: whole-row steps, never glides.",
+      "hero": "https://impeccable.style/worlds/cards/operate-c-depot-blind-courses-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/operate-c-depot-blind-courses.webp"
+    },
+    {
+      "id": "challenger-textiles-weave-drape-fashion-sneaker-box-stacks",
+      "label": "Sneaker Box Wall",
+      "verdict": "declined",
+      "lineage": "archive wall of sneaker boxes",
+      "palette": ["#c45c26", "#111111", "#f6f1ea"],
+      "materials": ["burnt-orange box board", "end-label silhouettes"],
+      "case": "Loses both: pulling boxes is slower than scanning rows, and the wall is fashion storage, not a job market.",
+      "kept": "End-Label Grid: a locked three-field line on every listing.",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-sneaker-box-stacks-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-sneaker-box-stacks.webp"
+    },
+    {
+      "id": "challenger-dream-surreal-impossible-worlds-cloud-quarry",
+      "label": "Cloud Quarry",
+      "verdict": "declined",
+      "lineage": "surreal cloud-block quarry",
+      "palette": ["#e8eef6", "#4a6fa5", "#c5cdd6"],
+      "materials": ["cumulus mass", "cut blue voids"],
+      "case": "Loses both: weather blocks cannot carry listing facts or scan-and-act, and identification is zero.",
+      "kept": "Inning Air: sectional density with deep gaps between groups.",
+      "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-cloud-quarry-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-cloud-quarry.webp"
+    }
+  ],
+  "reroll": {
+    "registers": ["safer", "bolder"]
+  },
+  "buildPath": {
+    "value": "comp",
+    "toggle": true
+  },
+  "canon": true,
+  "canonCard": {
+    "label": "The category standard",
+    "thesis": "A Handshake / Simplify / LinkedIn intern board executed at full craft: sidebar, filters, card rows, primary Apply.",
+    "palette": ["#ffffff", "#111827", "#2563eb"],
+    "materials": ["clean product grid", "soft cards", "blue primary"],
+    "viewport": "Left nav, top search, filter chips, featured card, then a list of internships with Apply on the right.",
+    "risk": "Indistinguishable from the competition by design.",
+    "comp": ".impeccable/mocks/decision/canon.png"
+  },
+  "steer": true
+}

@@ -1,0 +1,48 @@
+{
+  "name": "internshipmatic",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A respectful, persistence-aware internship scouting crawler for software roles.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "npm run typecheck && npm run lint && npm test",
+    "lint": "eslint .",
+    "report:final": "node dist/src/finalReport.js",
+    "reprocess:stored": "node dist/src/reprocessStoredInternships.js",
+    "crawl:csjobs:toronto": "tsx scripts/crawl-csjobs-toronto.ts",
+    "crawl:intern-list": "tsx scripts/crawl-intern-list.ts",
+    "sample": "tsx scripts/sample-run.ts",
+    "crawl:useno": "tsx scripts/crawl-useno-summer-2027.ts",
+    "crawl:useno-masterlist": "tsx scripts/crawl-useno-masterlist.ts",
+    "resolve:jobright": "npm run build && node dist/src/jobrightResolver.js",
+    "scout": "npm run build && node dist/src/index.js",
+    "dashboard": "npm run build && node dist/src/dashboard.js",
+    "perf:dashboard": "tsx scripts/performance/dashboard.ts",
+    "benchmark": "tsx scripts/benchmark.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "verify:links": "node dist/src/verifyApplicationLinks.js"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
+    "cheerio": "^1.2.0",
+    "gsap": "^3.13.0",
+    "playwright": "^1.62.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.2.0",
+    "eslint": "^10.8.1",
+    "tsx": "^4.23.12",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.67.0",
+    "vitest": "^4.1.10"
+  }
+}
