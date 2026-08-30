@@ -27,7 +27,12 @@ function optionData(select) {
       value: option.value,
       label: option.textContent.trim(),
       disabled: option.disabled,
+      selected: option.selected,
     }));
+}
+
+function optionButtonDisabled(button) {
+  return Boolean(button?.disabled) || button?.getAttribute("aria-disabled") === "true";
 }
 
 function nativeSelectValueDescriptor() {
@@ -46,6 +51,7 @@ function enhanceSelect(select) {
   const root = document.createElement("div");
   root.className = "themed-select";
   root.dataset.themedSelectRoot = "true";
+  if (select.multiple) root.dataset.multiple = "true";
   if (select.closest(".sort-select")) root.dataset.align = "end";
 
   const trigger = document.createElement("button");
@@ -73,6 +79,7 @@ function enhanceSelect(select) {
   menu.className = "themed-select-menu";
   menu.id = nextElementId("themed-select-menu");
   menu.setAttribute("role", "listbox");
+  if (select.multiple) menu.setAttribute("aria-multiselectable", "true");
   menu.setAttribute("aria-label", selectLabel(select));
   menu.hidden = true;
   trigger.setAttribute("aria-controls", menu.id);
@@ -92,7 +99,10 @@ function enhanceSelect(select) {
       root.classList.add("is-open");
       menu.hidden = false;
       trigger.setAttribute("aria-expanded", "true");
-      if (focus) instance.focusOption(select.selectedIndex >= 0 ? select.selectedIndex : 0);
+      const selectedIndex = select.multiple
+        ? options.findIndex((option) => option.selected)
+        : select.selectedIndex;
+      if (focus) instance.focusOption(selectedIndex >= 0 ? selectedIndex : 0);
     },
     close({ restoreFocus = false } = {}) {
       if (menu.hidden) return;
@@ -103,10 +113,10 @@ function enhanceSelect(select) {
       if (restoreFocus) trigger.focus();
     },
     focusOption(index) {
-      const firstEnabled = instance.optionButtons.findIndex((button) => !button.disabled);
+      const firstEnabled = instance.optionButtons.findIndex((button) => !optionButtonDisabled(button));
       if (firstEnabled < 0) return;
       let nextIndex = Math.max(0, Math.min(index, instance.optionButtons.length - 1));
-      if (instance.optionButtons[nextIndex]?.disabled) nextIndex = firstEnabled;
+      if (optionButtonDisabled(instance.optionButtons[nextIndex])) nextIndex = firstEnabled;
       const optionButton = instance.optionButtons[nextIndex];
       if (!optionButton) return;
       optionButton.focus();
@@ -115,15 +125,38 @@ function enhanceSelect(select) {
     moveOption(current, delta) {
       const enabled = instance.optionButtons
         .map((button, index) => ({ button, index }))
-        .filter(({ button }) => !button.disabled);
+        .filter(({ button }) => !optionButtonDisabled(button));
       if (!enabled.length) return;
       const position = Math.max(0, enabled.findIndex(({ button }) => button === current));
       const next = enabled[(position + delta + enabled.length) % enabled.length];
       instance.focusOption(next.index);
     },
     choose(optionButton) {
-      if (!optionButton || optionButton.disabled) return;
+      if (!optionButton || optionButtonDisabled(optionButton)) return;
       const nextValue = optionButton.dataset.value || "";
+      if (select.multiple) {
+        const options = [...select.options];
+        const selectedOption = options.find((option) => option.value === nextValue);
+        if (!selectedOption) return;
+        const allValue = select.dataset.multiSelectAllValue;
+        const allOption = allValue ? options.find((option) => option.value === allValue) : null;
+        if (allOption && nextValue === allValue) {
+          options.forEach((option) => { option.selected = option === allOption; });
+        } else {
+          selectedOption.selected = !selectedOption.selected;
+          if (allOption) {
+            allOption.selected = false;
+            if (!options.some((option) => option !== allOption && option.selected)) allOption.selected = true;
+          }
+        }
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+        instance.sync();
+        if (!menu.hidden) {
+          const nextIndex = instance.optionButtons.findIndex((button) => button.dataset.value === nextValue);
+          instance.focusOption(nextIndex >= 0 ? nextIndex : 0);
+        }
+        return;
+      }
       select.value = nextValue;
       select.dispatchEvent(new Event("change", { bubbles: true }));
       instance.sync();
@@ -131,20 +164,37 @@ function enhanceSelect(select) {
     },
     render() {
       const options = optionData(select);
-      const selectedValue = select.value;
       menu.replaceChildren();
       instance.optionButtons = [];
-      options.forEach((option, index) => {
-        const optionButton = document.createElement("button");
-        optionButton.type = "button";
+      options.forEach((option) => {
+        const optionButton = document.createElement(select.multiple ? "label" : "button");
+        if (!select.multiple) optionButton.type = "button";
         optionButton.className = "themed-select-option";
         optionButton.id = nextElementId("themed-select-option");
         optionButton.setAttribute("role", "option");
         optionButton.dataset.value = option.value;
-        optionButton.textContent = option.label || "Unnamed option";
-        optionButton.disabled = option.disabled;
-        optionButton.setAttribute("aria-selected", String(option.value === selectedValue && index === select.selectedIndex));
-        optionButton.addEventListener("click", () => instance.choose(optionButton));
+        optionButton.setAttribute("aria-selected", String(option.selected));
+        if (select.multiple) {
+          if (option.disabled) optionButton.setAttribute("aria-disabled", "true");
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.className = "themed-select-option-check";
+          checkbox.checked = option.selected;
+          checkbox.disabled = option.disabled;
+          checkbox.tabIndex = -1;
+          checkbox.setAttribute("aria-hidden", "true");
+          const label = document.createElement("span");
+          label.textContent = option.label || "Unnamed option";
+          optionButton.append(checkbox, label);
+          optionButton.addEventListener("click", (event) => {
+            event.preventDefault();
+            instance.choose(optionButton);
+          });
+        } else {
+          optionButton.textContent = option.label || "Unnamed option";
+          optionButton.disabled = option.disabled;
+          optionButton.addEventListener("click", () => instance.choose(optionButton));
+        }
         optionButton.addEventListener("keydown", (event) => {
           if (event.key === "ArrowDown") {
             event.preventDefault();
@@ -181,9 +231,25 @@ function enhanceSelect(select) {
     },
     sync() {
       const options = optionData(select);
-      const selected = options.find((option, index) => index === select.selectedIndex) || options[0];
-      value.textContent = selected?.label || "No options available";
-      value.title = selected?.label || "No options available";
+      if (select.multiple) {
+        const allValue = select.dataset.multiSelectAllValue;
+        const allOption = allValue ? options.find((option) => option.value === allValue) : null;
+        const selected = options.filter((option) => option.selected && option.value !== allValue);
+        const selectedLabels = selected.map((option) => option.label || "Unnamed option");
+        const summary = allOption?.selected
+          ? allOption.label || "All options"
+          : selectedLabels.length === 0
+            ? "No options selected"
+            : selectedLabels.length <= 2
+              ? selectedLabels.join(", ")
+              : `${selectedLabels.length} selected`;
+        value.textContent = summary || "No options available";
+        value.title = selectedLabels.length > 2 ? selectedLabels.join(", ") : summary;
+      } else {
+        const selected = options.find((option, index) => index === select.selectedIndex) || options[0];
+        value.textContent = selected?.label || "No options available";
+        value.title = selected?.label || "No options available";
+      }
       trigger.disabled = select.disabled;
       if (menu.hidden === false) instance.render();
       else if (instance.optionButtons.length !== options.length) instance.render();

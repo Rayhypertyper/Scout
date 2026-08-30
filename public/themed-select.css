@@ -122,6 +122,40 @@
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 
+.themed-select[data-multiple] .themed-select-option {
+  cursor: pointer;
+}
+
+.themed-select-option-check {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid var(--muted-2, var(--muted, #69736d));
+  border-radius: 2px;
+  background: transparent;
+}
+
+.themed-select-option-check:checked {
+  border-color: var(--accent-strong, var(--signal-strong, #bcd63f));
+  background-color: var(--accent-strong, var(--signal-strong, #bcd63f));
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='m3.25 8.25 3 3 6.5-6.5' fill='none' stroke='%2318200f' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 13px 13px;
+}
+
+.themed-select-option[aria-disabled="true"] .themed-select-option-check {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
+.themed-select-option[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: .48;
+}
+
 .themed-select-option:hover,
 .themed-select-option:focus-visible,
 .themed-select-option[aria-selected="true"] {

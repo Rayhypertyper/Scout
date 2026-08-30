@@ -79,6 +79,7 @@ import {
   isDashboardPostingTooOld,
   DASHBOARD_SEASON_FILTERS,
   parseDashboardSortDate,
+  type DashboardSeasonFilter,
   type DashboardSeason,
 } from "./dashboardSort.js";
 import { sha256 } from "./utils/hash.js";
@@ -518,7 +519,7 @@ interface FastRolesQuery {
   status: FastStatusFilter;
   category: string | null;
   workMode: Internship["remoteStatus"] | null;
-  season: typeof DASHBOARD_SEASON_FILTERS[number] | null;
+  seasons: DashboardSeasonFilter[];
   location: string | null;
   search: string;
   sort: FastSort;
@@ -2776,6 +2777,23 @@ function compareFastEntries(left: FastRoleEntry, right: FastRoleEntry, query: Fa
   return compareFastDefault(left, right, query);
 }
 
+function parseFastSeasonFilters(requestUrl: URL): DashboardSeasonFilter[] {
+  const rawValues = [
+    ...requestUrl.searchParams.getAll("season"),
+    ...requestUrl.searchParams.getAll("seasons"),
+  ];
+  const normalized = [...new Set(rawValues
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim().toLocaleLowerCase())
+    .filter(Boolean))];
+  const invalid = normalized.find((value) => (
+    value !== "all" && !DASHBOARD_SEASON_FILTERS.includes(value as DashboardSeasonFilter)
+  ));
+  if (invalid) throw new DashboardValidationError("season must be winter, spring, summer, fall, unknown, or all");
+  if (normalized.includes("all")) return [];
+  return DASHBOARD_SEASON_FILTERS.filter((season) => normalized.includes(season));
+}
+
 function parseFastQuery(requestUrl: URL): FastRolesQuery {
   const read = (name: string, fallback: string): string => requestUrl.searchParams.get(name)?.trim() || fallback;
   const view = read("view", "all") as FastExperienceView;
@@ -2807,17 +2825,14 @@ function parseFastQuery(requestUrl: URL): FastRolesQuery {
   }
   const locationValue = requestUrl.searchParams.get("location")?.trim().toLocaleLowerCase() ?? "";
   if (locationValue.length > 200) throw new DashboardValidationError("location is too long");
-  const seasonValue = requestUrl.searchParams.get("season")?.trim().toLocaleLowerCase() ?? "";
-  if (seasonValue && seasonValue !== "all" && !DASHBOARD_SEASON_FILTERS.includes(seasonValue as typeof DASHBOARD_SEASON_FILTERS[number])) {
-    throw new DashboardValidationError("season must be winter, spring, summer, fall, unknown, or all");
-  }
+  const seasons = parseFastSeasonFilters(requestUrl);
   return {
     view,
     tab: tabValue as RoleTab,
     status,
     category: categoryValue && categoryValue !== "all" ? categoryValue : null,
     workMode: workModeValue && workModeValue !== "all" ? workModeValue as Internship["remoteStatus"] : null,
-    season: seasonValue && seasonValue !== "all" ? seasonValue as typeof DASHBOARD_SEASON_FILTERS[number] : null,
+    seasons,
     location: locationValue && locationValue !== "all" ? locationValue : null,
     search,
     sort,
@@ -2852,7 +2867,7 @@ function fastFilterCacheKey(index: FastDashboardIndex, query: FastRolesQuery): s
     query.status,
     query.category ?? "",
     query.workMode ?? "",
-    query.season ?? "",
+    query.seasons.join(","),
     query.location ?? "",
     query.search,
     query.sort,
@@ -2882,7 +2897,7 @@ function fastFilterAndPage(
     .filter((entry) => fastStatusMatches(entry, query.status))
     .filter((entry) => query.category === null || entry.role.categories.includes(query.category as Internship["categories"][number]))
     .filter((entry) => query.workMode === null || entry.role.remoteStatus === query.workMode)
-    .filter((entry) => query.season === null || dashboardRoleHasSeason(entry.role, query.season))
+    .filter((entry) => query.seasons.length === 0 || query.seasons.some((season) => dashboardRoleHasSeason(entry.role, season)))
     .filter((entry) => {
       if (requestedLocation === null) return true;
       return entry.role.location.some((value) => value.toLocaleLowerCase().includes(requestedLocation));
@@ -2947,7 +2962,7 @@ function prewarmFastTabPages(index: FastDashboardIndex, relativeBase = Date.now(
       status: "open",
       category: null,
       workMode: null,
-      season: null,
+      seasons: [],
       location: null,
       search: "",
       sort: "relevance",
@@ -3678,7 +3693,8 @@ async function serveFastRoles(
         status: query.status,
         category: query.category,
         workMode: query.workMode,
-        season: query.season,
+        season: query.seasons.length === 1 ? query.seasons[0] : null,
+        seasons: query.seasons,
         location: query.location,
         search: query.search,
         sort: query.sort,

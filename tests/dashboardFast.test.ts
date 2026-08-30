@@ -247,15 +247,17 @@ describe("dashboard fast API", () => {
   it("filters and paginates compact cards server-side", async () => {
     const captured = response();
     await requestHandler(
-      request("GET", "/api/roles?tab=summer&status=open&limit=1") as never,
+      request("GET", "/api/roles?tab=summer&status=open&season=summer&season=unknown&limit=1") as never,
       captured as never,
       databasePath,
     );
     const payload = JSON.parse(captured.body.toString("utf8")) as Record<string, unknown>;
     const pagination = payload.pagination as { total: number; hasMore: boolean };
     const items = payload.items as Array<Record<string, unknown>>;
+    const filters = payload.filters as { season: string | null; seasons: string[] };
     expect(captured.statusCode).toBe(200);
     expect(payload.contract).toBe("dashboard.roles.v1");
+    expect(filters).toMatchObject({ season: null, seasons: ["summer", "unknown"] });
     expect(pagination.total).toBe(2);
     expect(pagination.hasMore).toBe(true);
     expect(items).toHaveLength(1);

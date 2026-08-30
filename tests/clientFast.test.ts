@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 // @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
-import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
+import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
 
 function role(listingId: string) {
   return { listingType: "internship", listingId, id: listingId };
@@ -16,6 +16,9 @@ describe("fast dashboard client state helpers", () => {
     expect(ROLE_WORK_MODES).toEqual(["all", "onsite", "hybrid", "remote"]);
     expect(ROLE_SEASONS).toEqual(["all", "winter", "spring", "summer", "fall", "unknown"]);
     expect(DEFAULT_ROLE_VIEW).toBe("all");
+    expect(DEFAULT_ROLE_SEASONS).toEqual(["summer", "unknown"]);
+    expect(normalizeSeasonFilters(["summer", "unknown", "summer"])).toEqual(["summer", "unknown"]);
+    expect(normalizeSeasonFilters("all")).toEqual([]);
     expect(normalizeRoleView("matches")).toBe("matches");
     expect(normalizeRoleView("unexpected")).toBe("all");
     expect(readRoleUrlState("/jobs?view=matches&workMode=remote&season=unknown&location=Toronto%2C%20Canada&q=TypeScript")).toMatchObject({
@@ -25,6 +28,11 @@ describe("fast dashboard client state helpers", () => {
       location: "Toronto, Canada",
       search: "TypeScript",
     });
+    expect(readRoleUrlState("/jobs?season=summer&season=unknown")).toMatchObject({
+      seasons: ["summer", "unknown"],
+      season: "all",
+    });
+    expect(readRoleUrlState("/jobs").seasons).toEqual(DEFAULT_ROLE_SEASONS);
     expect(readRoleUrlState("/jobs?view=all&workMode=invalid&location=all")).toMatchObject({ view: "all", workMode: "all", location: "all" });
     const matchesQuery = buildRolesQuery({ view: "matches", tab: "main", sort: "relevance" });
     expect(matchesQuery.get("view")).toBe("matches");
@@ -35,12 +43,15 @@ describe("fast dashboard client state helpers", () => {
     expect(filteredQuery.get("location")).toBe("Toronto, Canada");
     expect(buildRolesQuery({ tab: "main", season: "unknown", sort: "season" }).toString()).toContain("season=unknown");
     expect(buildRolesQuery({ tab: "main", season: "unknown", sort: "season" }).get("sort")).toBe("season");
+    expect(buildRolesQuery({ tab: "main", seasons: ["summer", "unknown"], sort: "season" }).getAll("season")).toEqual(["summer", "unknown"]);
     expect(roleFiltersKey({ view: "matches", tab: "main", workMode: "remote", location: "Toronto" }))
       .not.toBe(roleFiltersKey({ view: "matches", tab: "main", workMode: "onsite", location: "Toronto" }));
     expect(roleFiltersKey({ view: "matches", tab: "main", workMode: "remote", location: "Toronto" }))
       .not.toBe(roleFiltersKey({ view: "matches", tab: "main", workMode: "remote", location: "Vancouver" }));
     expect(roleFiltersKey({ tab: "main", season: "unknown" }))
       .not.toBe(roleFiltersKey({ tab: "main", season: "summer" }));
+    expect(roleFiltersKey({ tab: "main", seasons: ["unknown", "summer"] }))
+      .toBe(roleFiltersKey({ tab: "main", seasons: ["summer", "unknown"] }));
     expect(roleFiltersKey({ view: "matches", tab: "main" })).not.toBe(roleFiltersKey({ view: "all", tab: "main" }));
   });
 
@@ -176,6 +187,9 @@ describe("fast dashboard client state helpers", () => {
     const markup = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     expect(markup).toContain('class="role-tab active" id="canada-tab"');
     expect(markup).toContain('class="role-tab" id="summer-tab"');
+    expect(markup).toContain('<select id="season-filter" name="season" multiple');
+    expect(markup).toContain('<option value="summer" selected>Summer</option>');
+    expect(markup).toContain('<option value="unknown" selected>Unknown season</option>');
     expect(shouldFallbackToCanada({ pagination: { total: 0 }, items: [] })).toBe(true);
     expect(shouldFallbackToCanada({ pagination: { total: 1 }, items: [] })).toBe(false);
     expect(shouldFallbackToCanada({ items: [] })).toBe(true);
@@ -236,10 +250,12 @@ describe("fast dashboard client state helpers", () => {
     const filteredClosed = filterWatchlistRoles(entries, { status: "closed" }) as Array<{ listingId: string }>;
     const filteredCurrent = filterWatchlistRoles(entries, { status: "all" }) as Array<{ listingId: string }>;
     const filteredUnknownSeason = filterWatchlistRoles(entries, { status: "all", season: "unknown" }) as Array<{ listingId: string }>;
+    const filteredSummerOrFall = filterWatchlistRoles(entries, { status: "all", seasons: ["summer", "fall"] }) as Array<{ listingId: string }>;
     expect(filteredAcme.map((role: { listingId: string }) => role.listingId)).toEqual(["acme-1"]);
     expect(filteredClosed.map((role: { listingId: string }) => role.listingId)).toEqual(["beta-1"]);
     expect(filteredCurrent.map((role: { listingId: string }) => role.listingId)).toContain("old-1");
     expect(filteredUnknownSeason.map((role: { listingId: string }) => role.listingId)).toEqual(["old-1"]);
+    expect(filteredSummerOrFall.map((role: { listingId: string }) => role.listingId)).toEqual(["acme-1", "beta-1"]);
     expect(watchlistRoleKey(acme)).toBe("internship:acme-1");
     const remaining = removeWatchlistRole(entries, "internship:acme-1") as Array<{ listingId: string }>;
     expect(remaining.map((role: { listingId: string }) => role.listingId)).toEqual(["old-1", "beta-1"]);

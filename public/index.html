@@ -277,13 +277,13 @@
             </label>
             <label class="filter-select filter-field">
               <span class="filter-label">Season</span>
-              <select id="season-filter" name="season">
+              <select id="season-filter" name="season" multiple data-multi-select-all-value="all">
                 <option value="all">All seasons</option>
                 <option value="winter">Winter</option>
                 <option value="spring">Spring</option>
-                <option value="summer">Summer</option>
+                <option value="summer" selected>Summer</option>
                 <option value="fall">Fall</option>
-                <option value="unknown">Unknown season</option>
+                <option value="unknown" selected>Unknown season</option>
               </select>
             </label>
             <div class="filter-menu" data-menu="filters">

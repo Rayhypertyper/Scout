@@ -18,8 +18,50 @@ export const ROLE_VIEWS = ["matches", "all"];
 export const DEFAULT_ROLE_VIEW = "all";
 export const ROLE_WORK_MODES = ["all", "onsite", "hybrid", "remote"];
 export const ROLE_SEASONS = ["all", ...ROLE_SEASON_FILTERS];
+export const DEFAULT_ROLE_SEASONS = Object.freeze(["summer", "unknown"]);
 export const INITIAL_ROLE_TAB = "canada";
 export const FALLBACK_ROLE_TAB = "canada";
+
+export function normalizeSeasonFilters(value) {
+  const values = Array.isArray(value) ? value : value == null ? [] : [value];
+  const normalized = new Set(values
+    .flatMap((candidate) => String(candidate ?? "").split(","))
+    .map((candidate) => candidate.trim().toLocaleLowerCase())
+    .filter((candidate) => ROLE_SEASONS.includes(candidate)));
+  if (normalized.has("all")) return [];
+  return ROLE_SEASON_FILTERS.filter((season) => normalized.has(season));
+}
+
+function selectedSeasonFilters() {
+  const select = $("#season-filter");
+  if (!select) return [];
+  return normalizeSeasonFilters([...select.options].filter((option) => option.selected).map((option) => option.value));
+}
+
+function setSelectedSeasonFilters(value) {
+  const select = $("#season-filter");
+  if (!select) return;
+  const selected = new Set(normalizeSeasonFilters(value));
+  const allValue = select.dataset.multiSelectAllValue || "all";
+  const allOption = [...select.options].find((option) => option.value === allValue);
+  [...select.options].forEach((option) => {
+    option.selected = selected.size > 0 ? selected.has(option.value) : option === allOption;
+  });
+  if (typeof window !== "undefined") window.refreshThemedSelects?.();
+}
+
+function seasonFilterLabel(value = selectedSeasonFilters()) {
+  const selected = normalizeSeasonFilters(value);
+  if (selected.length === 0) return "All seasons";
+  const select = $("#season-filter");
+  const labels = selected.map((season) => [...(select?.options || [])].find((option) => option.value === season)?.textContent?.trim() || season);
+  return labels.length <= 2 ? labels.join(", ") : `${labels.length} seasons`;
+}
+
+function seasonFiltersMatchRole(role, selected = selectedSeasonFilters()) {
+  const seasons = normalizeSeasonFilters(selected);
+  return seasons.length === 0 || seasons.some((season) => roleHasSeason(role, season));
+}
 const APPLICATION_STAGE_OPTIONS = Object.freeze([
   { value: "applied", label: "Applied" },
   { value: "oa", label: "OA" },
@@ -192,7 +234,11 @@ export function readRoleUrlState(value) {
   const url = value instanceof URL ? value : new URL(String(value || "/jobs"), "http://localhost");
   const params = url.searchParams;
   const rawWorkMode = params.get("workMode")?.trim().toLocaleLowerCase() || "all";
-  const rawSeason = params.get("season")?.trim().toLocaleLowerCase() || "all";
+  const rawSeasons = params.getAll("season");
+  if (rawSeasons.length === 0 && params.has("seasons")) rawSeasons.push(params.get("seasons") || "");
+  const seasons = rawSeasons.length > 0
+    ? normalizeSeasonFilters(rawSeasons)
+    : [...DEFAULT_ROLE_SEASONS];
   return {
     view: normalizeRoleView(params.get("view")),
     tab: params.get("tab"),
@@ -200,7 +246,10 @@ export function readRoleUrlState(value) {
     sort: params.get("sort"),
     category: params.get("category"),
     workMode: ROLE_WORK_MODES.includes(rawWorkMode) ? rawWorkMode : "all",
-    season: ROLE_SEASONS.includes(rawSeason) ? rawSeason : "all",
+    seasons,
+    // Keep the singular field for callers that only understand the legacy
+    // URL/API shape. Multiple selections use the canonical `seasons` field.
+    season: seasons.length === 1 ? seasons[0] : "all",
     location: params.get("location")?.trim() || null,
     search: params.get("q") || "",
   };
@@ -354,12 +403,13 @@ export function filterWatchlistRoles(entries, {
   sort = "posted",
   workMode = "all",
   season = "all",
+  seasons,
   location = "all",
 } = {}) {
   const normalizedSearch = String(search || "").trim().toLocaleLowerCase();
   const normalizedCategory = String(category || "all");
   const normalizedMode = String(workMode || "all").toLocaleLowerCase();
-  const normalizedSeason = String(season || "all").toLocaleLowerCase();
+  const selectedSeasons = normalizeSeasonFilters(seasons === undefined ? season : seasons);
   const normalizedLocation = String(location || "all").toLocaleLowerCase();
   const filtered = (Array.isArray(entries) ? entries : [])
     .filter((role) => {
@@ -368,7 +418,7 @@ export function filterWatchlistRoles(entries, {
       if (normalizedSearch && !watchlistSearchText(role).includes(normalizedSearch)) return false;
       if (normalizedCategory !== "all" && !roleArray(role.categories).some((value) => String(value) === normalizedCategory)) return false;
       if (normalizedMode !== "all" && String(role.remoteStatus || "unknown").toLocaleLowerCase() !== normalizedMode) return false;
-      if (normalizedSeason !== "all" && !roleHasSeason(role, normalizedSeason)) return false;
+      if (!seasonFiltersMatchRole(role, selectedSeasons)) return false;
       if (normalizedLocation !== "all" && !roleArray(role.location).join(" ").toLocaleLowerCase().includes(normalizedLocation)) return false;
       return true;
     });
@@ -394,6 +444,7 @@ export function buildRolesQuery({
   category = "all",
   workMode = "all",
   season = "all",
+  seasons,
   location = "all",
   sort = "relevance",
   limit = INITIAL_PAGE_SIZE,
@@ -413,8 +464,8 @@ export function buildRolesQuery({
   if (normalizedCategory && normalizedCategory !== "all") params.set("category", normalizedCategory);
   const normalizedWorkMode = String(workMode ?? "all").trim().toLocaleLowerCase();
   if (ROLE_WORK_MODES.includes(normalizedWorkMode) && normalizedWorkMode !== "all") params.set("workMode", normalizedWorkMode);
-  const normalizedSeason = String(season ?? "all").trim().toLocaleLowerCase();
-  if (ROLE_SEASONS.includes(normalizedSeason) && normalizedSeason !== "all") params.set("season", normalizedSeason);
+  const selectedSeasons = normalizeSeasonFilters(seasons === undefined ? season : seasons);
+  selectedSeasons.forEach((selectedSeason) => params.append("season", selectedSeason));
   const normalizedLocation = String(location ?? "").trim();
   if (normalizedLocation && normalizedLocation !== "all") params.set("location", normalizedLocation);
   return params;
@@ -507,6 +558,7 @@ export function roleFiltersKey({
   category = "all",
   workMode = "all",
   season = "all",
+  seasons,
   location = "all",
   sort = "relevance",
 } = {}) {
@@ -517,7 +569,7 @@ export function roleFiltersKey({
     String(search ?? "").trim().toLocaleLowerCase(),
     String(category ?? "").trim() || "all",
     String(workMode ?? "all").trim().toLocaleLowerCase() || "all",
-    String(season ?? "all").trim().toLocaleLowerCase() || "all",
+    normalizeSeasonFilters(seasons === undefined ? season : seasons).join(",") || "all",
     String(location ?? "").trim().toLocaleLowerCase() || "all",
   ];
   const key = keyParts.join("|");
@@ -1994,12 +2046,12 @@ export function insertRoleForUndo(items, role, index = 0) {
 
 function displayRoles(items = state.items) {
   const mode = $("#work-mode-filter")?.value || "all";
-  const season = $("#season-filter")?.value || "all";
+  const seasons = selectedSeasonFilters();
   const location = $("#location-filter")?.value || "all";
   return items.filter((role) => {
     if (!hasRequiredListingKeywords(role)) return false;
     if (mode !== "all" && String(role.remoteStatus || "").toLowerCase() !== mode) return false;
-    if (season !== "all" && !roleHasSeason(role, season)) return false;
+    if (!seasonFiltersMatchRole(role, seasons)) return false;
     if (location !== "all") {
       const haystack = roleArray(role.location).join(" ").toLowerCase();
       if (!haystack.includes(location.toLowerCase())) return false;
@@ -3018,13 +3070,13 @@ function activeFilterEntries() {
   const search = String($("#search-input")?.value || "").trim();
   const category = $("#category-filter")?.value || "all";
   const workMode = $("#work-mode-filter")?.value || "all";
-  const season = $("#season-filter")?.value || "all";
+  const seasons = selectedSeasonFilters();
   const location = $("#location-filter")?.value || "all";
   const status = $("#status-filter")?.value || "open";
   if (search) entries.push(["search", `Search: ${search}`]);
   if (category !== "all") entries.push(["category", selectedOptionLabel("#category-filter")]);
   if (workMode !== "all") entries.push(["workMode", selectedOptionLabel("#work-mode-filter")]);
-  if (season !== "all") entries.push(["season", selectedOptionLabel("#season-filter")]);
+  if (seasons.length) entries.push(["season", `Seasons: ${seasonFilterLabel(seasons)}`]);
   if (location !== "all") entries.push(["location", selectedOptionLabel("#location-filter")]);
   if (status !== "open") entries.push(["status", selectedOptionLabel("#status-filter")]);
   return entries;
@@ -3046,7 +3098,7 @@ function clearFilter(name) {
   if (filterName === "all" || filterName === "search") syncSearchInputs("");
   if ((filterName === "all" || filterName === "category") && $("#category-filter")) $("#category-filter").value = "all";
   if ((filterName === "all" || filterName === "workMode") && $("#work-mode-filter")) $("#work-mode-filter").value = "all";
-  if ((filterName === "all" || filterName === "season") && $("#season-filter")) $("#season-filter").value = "all";
+  if (filterName === "all" || filterName === "season") setSelectedSeasonFilters([]);
   if ((filterName === "all" || filterName === "location") && $("#location-filter")) $("#location-filter").value = "all";
   if ((filterName === "all" || filterName === "status") && $("#status-filter")) $("#status-filter").value = "open";
   handleFilterChange();
@@ -3057,7 +3109,7 @@ function watchlistDisplayRoles() {
   return filterWatchlistRoles(state.watchlistRoles, {
     ...filters,
     workMode: $("#work-mode-filter")?.value || "all",
-    season: $("#season-filter")?.value || "all",
+    seasons: selectedSeasonFilters(),
     location: $("#location-filter")?.value || "all",
   });
 }
@@ -3781,7 +3833,7 @@ function readFilters() {
     search: $("#search-input")?.value || "",
     category: $("#category-filter")?.value || "all",
     workMode: $("#work-mode-filter")?.value || "all",
-    season: $("#season-filter")?.value || "all",
+    seasons: selectedSeasonFilters(),
     location: $("#location-filter")?.value || "all",
     sort: $("#sort-filter")?.value || "posted",
   };
@@ -3799,13 +3851,20 @@ function syncUiStateToUrl({ push = false, hash } = {}) {
     sort: $("#sort-filter")?.value || "posted",
     category: $("#category-filter")?.value || "all",
     workMode: $("#work-mode-filter")?.value || "all",
-    season: $("#season-filter")?.value || "all",
     location: $("#location-filter")?.value || "all",
     q: String($("#search-input")?.value || "").trim(),
   };
   for (const [key, value] of Object.entries(roleFilters)) {
-    if (value && !(["category", "workMode", "season", "location"].includes(key) && value === "all")) params.set(key, value);
+    if (value && !(["category", "workMode", "location"].includes(key) && value === "all")) params.set(key, value);
     else params.delete(key);
+  }
+  params.delete("season");
+  params.delete("seasons");
+  const selectedSeasons = selectedSeasonFilters();
+  if (selectedSeasons.length > 0) {
+    selectedSeasons.forEach((season) => params.append("season", season));
+  } else {
+    params.set("season", "all");
   }
   const applicationStage = state.applicationStageFilter || "all";
   const applicationQuery = String(state.applicationSearch || "").trim();
@@ -3828,7 +3887,6 @@ function restoreUiStateFromUrl() {
   const sort = params.get("sort");
   const category = params.get("category");
   const workMode = urlState.workMode;
-  const season = urlState.season;
   const location = urlState.location;
   const query = urlState.search;
   if (ROLE_TABS.includes(tab)) state.activeTab = tab;
@@ -3842,7 +3900,7 @@ function restoreUiStateFromUrl() {
     select.value = category;
   }
   if (ROLE_WORK_MODES.includes(workMode) && $("#work-mode-filter")) $("#work-mode-filter").value = workMode;
-  if (ROLE_SEASONS.includes(season) && $("#season-filter")) $("#season-filter").value = season;
+  setSelectedSeasonFilters(urlState.seasons);
   if (location && $("#location-filter")) {
     const select = $("#location-filter");
     if (![...select.options].some((option) => option.value === location)) {
@@ -4631,7 +4689,7 @@ function applySavedView(view) {
   if ($("#category-filter")) $("#category-filter").value = view.category || "all";
   if ($("#sort-filter")) $("#sort-filter").value = view.sort || "posted";
   if ($("#work-mode-filter")) $("#work-mode-filter").value = view.workMode || "all";
-  if ($("#season-filter")) $("#season-filter").value = ROLE_SEASONS.includes(view.season) ? view.season : "all";
+  setSelectedSeasonFilters(view.seasons === undefined ? view.season : view.seasons);
   if ($("#location-filter") && view.location) {
     if (![...$("#location-filter").options].some((option) => option.value === view.location)) {
       $("#location-filter").insertAdjacentHTML("beforeend", `<option value="${escapeHtml(view.location)}">${escapeHtml(view.location)}</option>`);
@@ -4796,8 +4854,8 @@ function bindEvents() {
   });
   $("#save-current-view")?.addEventListener("click", () => {
     const filters = readFilters();
-    const name = `${filters.tab} · ${filters.sort}${filters.season !== "all" ? ` · ${filters.season}` : ""}${filters.search ? ` · ${filters.search}` : ""}`;
-    writeSavedViews([{ name, ...filters, workMode: $("#work-mode-filter")?.value || "all", season: $("#season-filter")?.value || "all", location: $("#location-filter")?.value || "all" }, ...readSavedViews()]);
+    const name = `${filters.tab} · ${filters.sort}${filters.seasons.length ? ` · ${seasonFilterLabel(filters.seasons)}` : ""}${filters.search ? ` · ${filters.search}` : ""}`;
+    writeSavedViews([{ name, ...filters, workMode: $("#work-mode-filter")?.value || "all", seasons: selectedSeasonFilters(), location: $("#location-filter")?.value || "all" }, ...readSavedViews()]);
     renderSavedViews();
     showToast("Saved current filters on this device.");
   });
