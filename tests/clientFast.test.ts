@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 // @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
-import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
+import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, filterListingRoles, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
 
 function role(listingId: string) {
   return { listingType: "internship", listingId, id: listingId };
@@ -464,6 +464,17 @@ describe("fast dashboard client state helpers", () => {
 
     expect(next).toEqual({ appliedRoleCount: 3, stats: { closed: 4, hidden: 7, open: 20 } });
     expect(data).toEqual({ appliedRoleCount: 2, stats: { closed: 4, hidden: 6, open: 20 } });
+  });
+
+  it("filters locally hidden listings from refreshed pages", () => {
+    const visible = role("visible");
+    const hidden = role("hidden");
+    const grind = { listingType: "grind", listingId: "board-hidden", id: "board-hidden" };
+
+    expect(filterListingRoles([visible, hidden, grind], new Set(["internship:hidden", "grind:board-hidden"])))
+      .toEqual([visible]);
+    expect(filterListingRoles([visible, hidden], ["internship:hidden"]))
+      .toEqual([visible]);
   });
 
   it("keeps full crawl totals when a status poll sends partial stats", () => {

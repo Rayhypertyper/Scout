@@ -110,6 +110,30 @@ describe("authenticated onboarding browser smoke", () => {
           await page.locator("[data-nav='dashboard']").click();
           await roleRows.first().waitFor({ state: "visible", timeout: 8_000 });
 
+          const waitForRolePresence = async (key: string, present: boolean): Promise<void> => {
+            const deadline = Date.now() + 8_000;
+            while (Date.now() < deadline) {
+              const count = await page.locator(`#featured-match [data-listing-key="${key}"], #role-list .job-card[data-listing-key="${key}"]`).count();
+              if ((count > 0) === present) return;
+              await page.waitForTimeout(100);
+            }
+            throw new Error(`Timed out waiting for ${key} to be ${present ? "present" : "absent"}.`);
+          };
+
+          // The featured card is the head of the same queue as the table. Keep
+          // its decision hidden across the background refresh, then verify
+          // Ctrl+Z restores it without waiting for the network response.
+          const featuredRole = page.locator("#featured-match [data-listing-key]").first();
+          await featuredRole.waitFor({ state: "visible", timeout: 8_000 });
+          const featuredKey = await featuredRole.getAttribute("data-listing-key");
+          expect(featuredKey).not.toBeNull();
+          await featuredRole.locator("[data-listing-action='cant_fit']").click();
+          expect(await page.locator(`#featured-match [data-listing-key="${featuredKey}"], #role-list .job-card[data-listing-key="${featuredKey}"]`).count()).toBe(0);
+          await page.waitForTimeout(500);
+          await waitForRolePresence(featuredKey!, false);
+          await page.keyboard.press("Control+Z");
+          await waitForRolePresence(featuredKey!, true);
+
           const firstRow = roleRows.first();
           const firstKey = await firstRow.getAttribute("data-listing-key");
           expect(firstKey).not.toBeNull();
@@ -125,20 +149,10 @@ describe("authenticated onboarding browser smoke", () => {
           expect((await applied.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
           expect((await cantFit.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
 
-          const waitForRolePresence = async (key: string, present: boolean): Promise<void> => {
-            const deadline = Date.now() + 8_000;
-            while (Date.now() < deadline) {
-              const count = await page.locator(`#role-list .job-card[data-listing-key="${key}"]`).count();
-              if ((count > 0) === present) return;
-              await page.waitForTimeout(100);
-            }
-            throw new Error(`Timed out waiting for ${key} to be ${present ? "present" : "absent"}.`);
-          };
-
           await applied.click();
-          await page.locator("#toast-action").waitFor({ state: "visible", timeout: 8_000 });
+          expect(await page.locator(`#role-list .job-card[data-listing-key="${firstKey}"]`).count()).toBe(0);
           await waitForRolePresence(firstKey!, false);
-          await page.locator("#toast-action").click();
+          await page.keyboard.press("Control+Z");
           await waitForRolePresence(firstKey!, true);
 
           const dismissRow = roleRows.nth(1);
@@ -148,9 +162,11 @@ describe("authenticated onboarding browser smoke", () => {
           const dismissButton = dismissRow.locator(".job-card-actions [data-listing-action='cant_fit']");
           expect((await dismissButton.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
           await dismissButton.click();
-          await page.locator("#toast-action").waitFor({ state: "visible", timeout: 8_000 });
+          expect(await page.locator(`#role-list .job-card[data-listing-key="${dismissKey}"]`).count()).toBe(0);
           await waitForRolePresence(dismissKey!, false);
-          await page.locator("#toast-action").click();
+          await page.waitForTimeout(500);
+          await waitForRolePresence(dismissKey!, false);
+          await page.keyboard.press("Control+Z");
           await waitForRolePresence(dismissKey!, true);
 
           const clearAll = page.locator(".clear-filters-button");

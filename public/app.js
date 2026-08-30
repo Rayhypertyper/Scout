@@ -291,8 +291,9 @@ const state = {
   searchTimer: null,
   scanning: false,
   terminating: false,
-  undoing: false,
   pendingActions: new Set(),
+  actionRequests: new Map(),
+  optimisticallyHiddenListings: new Set(),
   undoStack: [],
   currentSourceTimerKey: null,
   currentSourceTimerStartedAt: null,
@@ -328,6 +329,11 @@ function roleArray(value) {
 
 export function listingKey(listingType, listingId) {
   return `${listingType}:${listingId}`;
+}
+
+export function filterListingRoles(items, hiddenKeys = []) {
+  const hidden = hiddenKeys instanceof Set ? hiddenKeys : new Set(hiddenKeys);
+  return (Array.isArray(items) ? items : []).filter((role) => !hidden.has(listingKeyForRole(role)));
 }
 
 function listingKeyForRole(role) {
@@ -924,7 +930,7 @@ function isSavedRoleView() {
 }
 
 function visibleWatchlistRoles() {
-  return state.watchlistRoles;
+  return pendingVisibleRoles(state.watchlistRoles);
 }
 
 function isMatchesRoleView() {
@@ -3106,12 +3112,12 @@ function clearFilter(name) {
 
 function watchlistDisplayRoles() {
   const filters = readFilters();
-  return filterWatchlistRoles(state.watchlistRoles, {
+  return pendingVisibleRoles(filterWatchlistRoles(state.watchlistRoles, {
     ...filters,
     workMode: $("#work-mode-filter")?.value || "all",
     seasons: selectedSeasonFilters(),
     location: $("#location-filter")?.value || "all",
-  });
+  }));
 }
 
 function roleListHeading() {
@@ -3344,7 +3350,7 @@ function renderRoles({ animate = true } = {}) {
   renderViewChrome();
   renderActiveFilters();
   if (isSavedRoleView()) {
-    state.items = state.watchlistRoles;
+    state.items = pendingVisibleRoles(state.watchlistRoles);
     state.loading = false;
     state.loadingMore = false;
     state.pagination = { limit: state.items.length, offset: 0, total: watchlistDisplayRoles().length, hasMore: false, nextOffset: null };
@@ -3698,8 +3704,8 @@ function showToast(message, action = null) {
     actionButton.hidden = !action?.label || typeof action?.onClick !== "function";
     actionButton.textContent = action?.label || "";
     actionButton.onclick = actionButton.hidden ? null : () => {
-      action.onClick();
       toast.classList.remove("visible");
+      action.onClick();
     };
   }
   toast.classList.add("visible");
@@ -3957,7 +3963,7 @@ function applyRolesPayload(payload, pageItems, append, expectedIntent, expectedR
     ? mergeRolePage(state.items, pageItems, renderLimit)
     : mergeRolePage([], pageItems, renderLimit);
   syncWatchlistRoles(pageItems);
-  state.items = mergedItems.filter((role) => !state.pendingActions.has(listingKey(role.listingType || "internship", role.listingId || role.id)));
+  state.items = pendingVisibleRoles(mergedItems);
   state.pagination = normalizeRolePagination(pagination, state.items.length, pageItems.length);
   if (previousVersion && state.version !== previousVersion) {
     abortDetailRequests();
@@ -4129,7 +4135,7 @@ async function loadInitialRoles() {
   const initialPayload = await ensureRolesLoaded(initialIntent);
   if (savedInitialView) {
     state.activeTab = SAVED_ROLE_TAB;
-    state.items = state.watchlistRoles;
+    state.items = pendingVisibleRoles(state.watchlistRoles);
     state.pagination = { limit: state.items.length, offset: 0, total: watchlistDisplayRoles().length, hasMore: false, nextOffset: null };
     state.loading = false;
     state.loadingMore = false;
@@ -4156,7 +4162,10 @@ async function loadInitialRoles() {
 }
 
 function pendingVisibleRoles(items) {
-  return (Array.isArray(items) ? items : []).filter((role) => !state.pendingActions.has(listingKey(role.listingType || "internship", role.listingId || role.id)));
+  return filterListingRoles(items, new Set([
+    ...state.pendingActions,
+    ...state.optimisticallyHiddenListings,
+  ]));
 }
 
 async function prefetchRoleTabSnapshot(
@@ -4361,12 +4370,14 @@ function rememberListingAction(record, context = {}) {
     : Number.isInteger(record.optimisticRoleIndex)
       ? record.optimisticRoleIndex
       : null;
-  state.undoStack.push({
+  const remembered = {
     ...record,
     ...(optimisticRole
       ? { optimisticRole, optimisticFiltersKey, optimisticRoleIndex }
       : {}),
-  });
+  };
+  state.undoStack.push(remembered);
+  return remembered;
 }
 
 function forgetListingAction(key) {
@@ -4379,6 +4390,28 @@ function applyListingActionPayload(payload) {
   // Make the next change poll revalidate the action mutation even if the
   // server-side ETag was already captured by a concurrent poll.
   state.changesEtag = null;
+  renderChrome(state.data);
+}
+
+function optimisticListingActionCounts(action, direction) {
+  const payload = {};
+  const multiplier = direction < 0 ? -1 : 1;
+  if (action?.action === "cant_fit") {
+    const hidden = Number(state.data?.stats?.hidden);
+    if (Number.isFinite(hidden)) payload.hiddenCount = Math.max(0, hidden + multiplier);
+  }
+  if (action?.action === "applied") {
+    const applied = Number(state.data?.appliedRoleCount);
+    if (Number.isFinite(applied)) payload.appliedRoleCount = Math.max(0, applied + multiplier);
+  }
+  return payload;
+}
+
+function applyOptimisticListingActionCounts(action, direction) {
+  if (!state.data) return;
+  const payload = optimisticListingActionCounts(action, direction);
+  if (!Object.keys(payload).length) return;
+  state.data = applyListingActionCounts(state.data, payload);
   renderChrome(state.data);
 }
 
@@ -4436,7 +4469,7 @@ function toggleWatchlist(button) {
     showToast("Saved to watchlist");
   }
   renderWatchlistCount();
-  if (isSavedRoleView()) state.items = state.watchlistRoles;
+  if (isSavedRoleView()) state.items = pendingVisibleRoles(state.watchlistRoles);
   renderRoles();
 }
 
@@ -4447,36 +4480,52 @@ async function saveListingAction(button) {
   const company = button.dataset.listingCompany;
   const title = button.dataset.listingTitle;
   const key = listingType && listingId ? listingKey(listingType, listingId) : "";
-  if (!listingType || !listingId || !action || !company || !title || !state.data || !key || state.pendingActions.has(key)) return;
+  if (!listingType || !listingId || !action || !company || !title || !state.data || !key || state.pendingActions.has(key) || state.actionRequests.has(key)) return;
   const optimisticRoleIndex = state.items.findIndex((role) => listingKey(role.listingType || "internship", role.listingId || role.id) === key);
   const optimisticRole = optimisticRoleIndex >= 0 ? state.items[optimisticRoleIndex] : null;
   const optimisticFiltersKey = roleFiltersKey(readFilters());
-  state.pendingActions.add(key);
-  const previousHiddenForOptimistic = state.data?.stats?.hidden ?? 0;
   const shouldOptimisticallyHide = action === "cant_fit";
   const successMessage = action === "applied" ? `Applied · ${company}` : `Hidden · ${title}`;
-  if (shouldOptimisticallyHide && state.data) {
-    state.data = applyListingActionCounts(state.data, { hiddenCount: previousHiddenForOptimistic + 1 });
-    renderChrome(state.data);
-  }
+  const actionRecord = rememberListingAction({
+    listingKey: key,
+    listingType,
+    listingId,
+    action,
+    company,
+    title,
+    createdAt: new Date().toISOString(),
+  }, {
+    role: optimisticRole,
+    filtersKey: optimisticFiltersKey,
+    index: optimisticRoleIndex,
+  });
+  state.pendingActions.add(key);
+  // Keep every decision suppressed until it is undone. The server response
+  // can arrive before its read-side cache has finished invalidating.
+  state.optimisticallyHiddenListings.add(key);
+  applyOptimisticListingActionCounts(actionRecord, 1);
   removeLocalRole(key);
-  // The role is already gone from the feed optimistically; acknowledge that
-  // immediately instead of making the feedback wait for the API and reload.
-  if (shouldOptimisticallyHide) showToast(successMessage);
+  // The role is already gone from the feed optimistically; make both the
+  // success state and its undo affordance available before the API responds.
+  showToast(successMessage, {
+    label: "Undo",
+    onClick: () => { undoLastListingAction(); },
+  });
+  let requestPromise = null;
   try {
-    const response = await fetch("/api/actions", {
+    requestPromise = fetch("/api/actions", {
       method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" },
       body: JSON.stringify({ listingType, listingId, action, company, title, applicationUrl: button.dataset.listingApplicationUrl || "", postingUrl: button.dataset.listingPostingUrl || "", jobId: button.dataset.listingJobId || "", location: button.dataset.listingLocation || "" }),
-    });
-    const payload = await readJsonResponse(response);
-    if (payload.listingAction) {
-      rememberListingAction(payload.listingAction, {
-        role: optimisticRole,
-        filtersKey: optimisticFiltersKey,
-        index: optimisticRoleIndex,
-      });
-    }
+    }).then((response) => readJsonResponse(response));
+    state.actionRequests.set(key, requestPromise);
+    const payload = await requestPromise;
     state.pendingActions.delete(key);
+    if (actionRecord.undoRequested) {
+      // Undo already restored the local queue. Do not paint the committed
+      // action counts into the UI while its DELETE is waiting behind this POST.
+      invalidateRoleListingState();
+      return;
+    }
     invalidateRoleListingState();
     removeListingNotifications(key);
     applyListingActionPayload(payload);
@@ -4488,63 +4537,78 @@ async function saveListingAction(button) {
     void ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
   } catch (error) {
     state.pendingActions.delete(key);
+    if (actionRecord.undoRequested) return;
+    if (shouldOptimisticallyHide) {
+      // “Can’t fit” is a local triage action. Keep the row hidden and let the
+      // server catch up without surfacing a database/network error here. The
+      // action remains undoable in case the request committed before failing.
+      invalidateRoleListingState();
+      removeListingNotifications(key);
+      void ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
+      return;
+    }
     // The request may have committed successfully even if the response was
     // lost. Rebuild every view from the server's current action state before
     // restoring anything locally.
+    state.optimisticallyHiddenListings.delete(key);
+    forgetListingAction(key);
+    applyOptimisticListingActionCounts(actionRecord, -1);
     invalidateRoleListingState();
-    if (shouldOptimisticallyHide && state.data) {
-      state.data = applyListingActionCounts(state.data, { hiddenCount: previousHiddenForOptimistic });
-      renderChrome(state.data);
-    }
-    if (optimisticRole && !state.items.some((role) => listingKey(role.listingType || "internship", role.listingId || role.id) === key)) {
-      state.items = [optimisticRole, ...state.items];
-      if (state.data) state.data.items = state.data.internships = state.items;
-      renderRoles();
-    }
+    if (optimisticRole) restoreLocalRole(optimisticRole, optimisticRoleIndex);
     await ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
     showToast(error?.message || "Could not save listing decision");
+  } finally {
+    if (!actionRecord.undoRequested && state.actionRequests.get(key) === requestPromise) state.actionRequests.delete(key);
   }
 }
 
-async function undoLastListingAction() {
-  if (state.undoing) return;
+function undoLastListingAction() {
   const action = state.undoStack.at(-1);
   if (!action) return;
-  state.undoing = true;
+  forgetListingAction(action.listingKey);
+  action.undoRequested = true;
+  const saveRequest = state.actionRequests.get(action.listingKey);
+  state.pendingActions.delete(action.listingKey);
+  state.optimisticallyHiddenListings.delete(action.listingKey);
+  applyOptimisticListingActionCounts(action, -1);
+  invalidateRoleListingState();
   let restoredLocally = false;
   if (canRestoreRoleLocally(action)) {
-    invalidateRoleListingState();
     restoredLocally = restoreLocalRole(action.optimisticRole, action.optimisticRoleIndex);
-    if (restoredLocally) {
-      forgetListingAction(action.listingKey);
-      showToast(`Restoring · ${action.title}`);
-    }
   }
+  showToast(`Restored · ${action.title}`);
+  void reconcileUndoneListingAction(action, saveRequest, restoredLocally);
+}
+
+async function reconcileUndoneListingAction(action, saveRequest, restoredLocally) {
   try {
+    // A DELETE sent before the original POST can win the race and leave the
+    // action committed after the user has already seen the local restore.
+    // Always serialize the server-side undo behind the original mutation.
+    if (saveRequest) {
+      try { await saveRequest; } catch { /* DELETE is still safe if POST failed. */ }
+    }
     const query = new URLSearchParams({ listingType: action.listingType, listingId: action.listingId });
     const response = await fetch(`/api/actions?${query.toString()}`, { method: "DELETE", headers: { Accept: "application/json" } });
     const payload = await readJsonResponse(response);
-    if (!restoredLocally) {
-      forgetListingAction(action.listingKey);
-      invalidateRoleListingState();
-    }
+    if (state.actionRequests.get(action.listingKey) === saveRequest) state.actionRequests.delete(action.listingKey);
     applyListingActionPayload(payload);
-    if (restoredLocally) {
-      // The role is already visible. Reconcile quietly so the server can
-      // correct stale ordering, closure, or filtering without blocking undo.
-      void ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
-    } else {
-      await ensureRolesLoaded(state.intentRevision);
-    }
-    showToast(`Restored · ${action.title}`);
+    // The role is already visible when possible. Reconcile quietly so the
+    // server can correct stale ordering, closure, or filtering without
+    // delaying the instant local restore.
+    void ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
   } catch (error) {
     if (restoredLocally) {
+      state.optimisticallyHiddenListings.add(action.listingKey);
       removeLocalRole(action.listingKey);
+      applyOptimisticListingActionCounts(action, 1);
+      action.undoRequested = false;
       rememberListingAction(action);
     }
     showToast(error?.message || "Could not undo listing decision");
+  } finally {
+    if (state.actionRequests.get(action.listingKey) === saveRequest) state.actionRequests.delete(action.listingKey);
   }
-  finally { state.undoing = false; }
 }
 
 function wait(milliseconds) { return new Promise((resolve) => setTimeout(resolve, milliseconds)); }
@@ -4622,7 +4686,7 @@ function handleFilterChange() {
   }
   if (["analytics", "sources", "settings"].includes(state.activeView)) return;
   if (isSavedRoleView()) {
-    state.items = state.watchlistRoles;
+    state.items = pendingVisibleRoles(state.watchlistRoles);
     state.pagination = { limit: state.items.length, offset: 0, total: watchlistDisplayRoles().length, hasMore: false, nextOffset: null };
     state.loading = false;
     state.loadingMore = false;
@@ -4632,7 +4696,7 @@ function handleFilterChange() {
   }
   const snapshot = getTabSnapshot(state.tabSnapshots, roleFiltersKey(readFilters()));
   if (snapshot && Array.isArray(snapshot.items) && snapshot.items.length) {
-    state.items = snapshot.items.filter((role) => !state.pendingActions.has(listingKey(role.listingType || "internship", role.listingId || role.id)));
+    state.items = pendingVisibleRoles(snapshot.items);
     state.pagination = snapshot.pagination || freshPagination();
     state.loading = false;
     state.loadingMore = false;
@@ -5059,9 +5123,9 @@ function bindEvents() {
     if (event.defaultPrevented || event.key.toLowerCase() !== "z" || event.altKey || event.shiftKey || (!event.ctrlKey && !event.metaKey)) return;
     const target = event.target;
     if (target instanceof Element && target.closest("input, textarea, select, [contenteditable='true']")) return;
-    if (state.undoing || state.undoStack.length === 0) return;
+    if (state.undoStack.length === 0) return;
     event.preventDefault();
-    void undoLastListingAction();
+    undoLastListingAction();
   });
   if (typeof window !== "undefined") {
     window.matchMedia?.("(prefers-color-scheme: dark)")?.addEventListener?.("change", () => {

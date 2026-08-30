@@ -6,6 +6,7 @@ import { canonicalizeUrl, normalizedJobUrl } from "../utils/url.js";
  * override cannot leak onto a similarly titled listing.
  */
 const EXACT_APPLICATION_OVERRIDE_ENTRIES: ReadonlyArray<readonly [string, string]> = [
+  ["https://jobright.ai/jobs/info/6a91d9989864261ccd29f558", "https://jobs.intuit.com/job/mountain-view/summer-2027-software-engineering-intern-full-stack/27595/99856180864?jr_id=6a91d9989864261ccd29f558"],
   ["https://jobright.ai/jobs/info/68e6e8c41852e62f0082056d", "https://www.amazon.jobs/en/jobs/3104589/robotics-applied-scientist-ii-intern-co-op-2026-robotics-manipulation-perception-motion-planning-autonomous-mobile-robots-computer-vision-machine-learning-controls-and-more"],
   ["https://jobright.ai/jobs/info/6a5eff6d470d4126fdeaca09", "https://amazon.jobs/en/jobs/10412530/software-development-engineer-intern-aws-data-services-fall-2026-us"],
   ["https://jobright.ai/jobs/info/692fb5c0fa28370be26ad070", "https://www.amazon.jobs/en/jobs/3136266/robotics-software-development-engineer-intern-co-op-2026"],

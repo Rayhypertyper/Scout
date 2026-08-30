@@ -3,6 +3,12 @@ import { describe, expect, it } from "vitest";
 import { directApplicationOverride, knownClosedAggregatorPosting } from "../src/config/directApplicationOverrides.js";
 
 describe("direct application overrides", () => {
+  it("maps the requested Intuit Jobright listing to its Original Job Post href", () => {
+    expect(directApplicationOverride(
+      "https://jobright.ai/jobs/info/6a91d9989864261ccd29f558",
+    )).toBe("https://jobs.intuit.com/job/mountain-view/summer-2027-software-engineering-intern-full-stack/27595/99856180864?jr_id=6a91d9989864261ccd29f558");
+  });
+
   it("maps an exact aggregator job ID to its verified public posting", () => {
     expect(directApplicationOverride(
       "https://jobright.ai/jobs/info/6a10f1de9fdbf21f36cb1a04?visit=machine-learning-intern",

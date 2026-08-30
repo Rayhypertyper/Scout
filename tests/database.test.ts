@@ -88,6 +88,69 @@ describe("SQLite lifecycle", () => {
     check.close();
   });
 
+  it("records actions against the deployed user-scoped action schema", () => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-db-legacy-actions-"));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "legacy-actions.db");
+
+    const bootstrap = new InternshipDatabase(databasePath);
+    bootstrap.close();
+
+    const legacy = new DatabaseSync(databasePath);
+    legacy.exec(`
+      DROP TABLE listing_action_identities;
+      DROP TABLE listing_actions;
+      CREATE TABLE listing_actions (
+        user_id TEXT NOT NULL DEFAULT '__legacy__',
+        listing_key TEXT NOT NULL,
+        listing_type TEXT NOT NULL CHECK (listing_type IN ('internship', 'grind')),
+        listing_id TEXT NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('applied', 'cant_fit')),
+        application_status TEXT NOT NULL DEFAULT 'pending' CHECK (application_status IN ('pending', 'accepted', 'rejected')),
+        application_stage TEXT NOT NULL DEFAULT 'applied' CHECK (application_stage IN ('applied', 'oa', 'recruiter', 'interview', 'final', 'offer', 'rejected')),
+        company TEXT NOT NULL,
+        normalized_company TEXT NOT NULL,
+        title TEXT NOT NULL,
+        application_url TEXT,
+        posting_url TEXT,
+        job_id TEXT,
+        location TEXT,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (user_id, listing_key)
+      );
+      CREATE TABLE listing_action_identities (
+        user_id TEXT NOT NULL DEFAULT '__legacy__',
+        listing_key TEXT NOT NULL,
+        identity_key TEXT NOT NULL,
+        direct_job_ids_json TEXT NOT NULL DEFAULT '[]',
+        PRIMARY KEY (user_id, listing_key, identity_key)
+      );
+    `);
+    legacy.close();
+
+    const database = new InternshipDatabase(databasePath);
+    const action = database.recordListingAction(
+      "internship",
+      "legacy-role",
+      "applied",
+      "Legacy Labs",
+      "Software Engineering Intern",
+    );
+    database.close();
+
+    const check = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      expect(action.listingKey).toBe("internship:legacy-role");
+      expect(check.prepare("SELECT user_id, listing_key, action FROM listing_actions").all()).toEqual([{
+        user_id: "__legacy__",
+        listing_key: "internship:legacy-role",
+        action: "applied",
+      }]);
+    } finally {
+      check.close();
+    }
+  });
+
   it("does not allow overlapping crawl runs to share the database", () => {
     const directory = mkdtempSync(join(tmpdir(), "internshipmatic-db-lock-"));
     temporaryDirectories.push(directory);

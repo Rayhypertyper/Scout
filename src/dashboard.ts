@@ -7,7 +7,8 @@ import { brotliCompressSync, gzipSync } from "node:zlib";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { canonicalizeUrl } from "./utils/url.js";
+import { canonicalizeUrl, isAggregatorUrl, isJobrightUrl } from "./utils/url.js";
+import { directApplicationOverride } from "./config/directApplicationOverrides.js";
 import { MIN_LISTING_SCORE } from "./config/thresholds.js";
 import { isAllowedPostingLocation } from "./parsing/locations.js";
 import {
@@ -191,6 +192,108 @@ interface DashboardInternship extends Internship {
   lastSeenAt?: string;
   statusRunId?: number;
   missCount?: number;
+}
+
+type JobrightDestinationMap = ReadonlyMap<string, string>;
+
+interface JobrightDestinationRow {
+  jobright_url: string;
+  job_id: string | null;
+  destination_url: string;
+}
+
+function canonicalDashboardLink(value: string): string | null {
+  try {
+    const canonical = canonicalizeUrl(value);
+    return /^https?:$/i.test(new URL(canonical).protocol) ? canonical : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Read durable Original Job Post resolutions for legacy dashboard rows. */
+function readJobrightDestinationMap(database: DatabaseSync): Map<string, string> {
+  const destinations = new Map<string, string>();
+  let rows: JobrightDestinationRow[];
+  try {
+    rows = database.prepare(`
+      SELECT jobright_url, job_id, destination_url
+      FROM jobright_destinations
+      WHERE destination_url IS NOT NULL
+    `).all() as unknown as JobrightDestinationRow[];
+  } catch {
+    // Old databases may not have the resolver table yet.
+    return destinations;
+  }
+  for (const row of rows) {
+    const jobrightUrl = canonicalDashboardLink(row.jobright_url);
+    const destination = canonicalDashboardLink(row.destination_url);
+    if (!jobrightUrl || !destination || !isJobrightUrl(jobrightUrl)
+      || isJobrightUrl(destination) || isAggregatorUrl(destination)) continue;
+    for (const key of [jobrightUrl, row.job_id?.trim() ?? ""]) {
+      if (key && !destinations.has(key)) destinations.set(key, destination);
+    }
+  }
+  return destinations;
+}
+
+function resolvedDashboardJobrightLink(
+  value: string,
+  jobId: string | null | undefined,
+  destinations: JobrightDestinationMap,
+): string | null {
+  if (!isJobrightUrl(value)) return null;
+  const override = directApplicationOverride(value);
+  if (override) return override;
+  const normalized = canonicalDashboardLink(value);
+  if (normalized) {
+    const destination = destinations.get(normalized);
+    if (destination) return destination;
+  }
+  const normalizedJobId = jobId?.trim();
+  if (!normalizedJobId) return null;
+  return destinations.get(normalizedJobId) || null;
+}
+
+function dashboardLinkForAction(
+  value: string | null,
+  jobId: string | null | undefined,
+  destinations: JobrightDestinationMap,
+): string | null {
+  if (!value) return null;
+  if (isJobrightUrl(value)) return resolvedDashboardJobrightLink(value, jobId, destinations);
+  return canonicalDashboardLink(value);
+}
+
+/** Replace legacy Jobright wrappers before any role is serialized to clients. */
+function dashboardRoleWithOriginalLinks(
+  role: DashboardInternship,
+  destinations: JobrightDestinationMap,
+): DashboardInternship | null {
+  const qualificationApplicationUrl = role.qualificationDetails.applicationUrl;
+  const links = [role.applicationUrl, role.postingUrl, qualificationApplicationUrl];
+  const jobrightLinks = links.filter((value): value is string => Boolean(value && isJobrightUrl(value)));
+  if (jobrightLinks.length === 0) return role;
+
+  const existingDirectDestination = links
+    .filter((value): value is string => Boolean(value))
+    .map(canonicalDashboardLink)
+    .find((value): value is string => Boolean(value && !isJobrightUrl(value) && !isAggregatorUrl(value))) ?? null;
+  const destination = existingDirectDestination
+    ?? jobrightLinks.map((value) => resolvedDashboardJobrightLink(value, role.jobId, destinations)).find((value): value is string => Boolean(value))
+    ?? null;
+  if (!destination) return null;
+
+  const replace = (value: string): string => isJobrightUrl(value) ? destination : value;
+  return {
+    ...role,
+    applicationUrl: replace(role.applicationUrl),
+    postingUrl: replace(role.postingUrl),
+    qualificationDetails: {
+      ...role.qualificationDetails,
+      applicationUrl: qualificationApplicationUrl ? replace(qualificationApplicationUrl) : null,
+    },
+  };
 }
 
 type DashboardScanStatus = "IDLE" | "RUNNING" | "COMPLETED" | "FAILED";
@@ -1832,16 +1935,22 @@ function toListingActionRecord(row: ListingActionRow): ListingActionRecord {
 
 function toApplicationItem(
   row: ApplicationActionRow,
+  destinations: JobrightDestinationMap,
 ): Record<string, unknown> {
   let role: FastRoleCard | null = null;
+  let roleJobId: string | null = row.job_id;
   if (row.payload_json) {
     try {
       const payload = InternshipSchema.parse(JSON.parse(row.payload_json));
-      role = compactRole({
+      const resolvedRole = dashboardRoleWithOriginalLinks({
         ...payload,
         listingType: row.listing_type,
         listingId: row.listing_id,
-      }, false);
+      }, destinations);
+      if (resolvedRole) {
+        roleJobId = row.job_id ?? resolvedRole.jobId;
+        role = compactRole(resolvedRole, false);
+      }
     } catch {
       // Keep the durable action visible even if its historical role payload is
       // no longer parseable.
@@ -1860,9 +1969,9 @@ function toApplicationItem(
     company: row.company,
     title: row.title,
     location,
-    jobId: row.job_id ?? role?.jobId ?? null,
-    applicationUrl: row.application_url ?? role?.applicationUrl ?? null,
-    postingUrl: row.posting_url ?? role?.postingUrl ?? null,
+    jobId: roleJobId ?? role?.jobId ?? null,
+    applicationUrl: dashboardLinkForAction(row.application_url, roleJobId, destinations) ?? role?.applicationUrl ?? null,
+    postingUrl: dashboardLinkForAction(row.posting_url, roleJobId, destinations) ?? role?.postingUrl ?? null,
     stage,
     // Keep the old field in the response for older dashboard bundles while
     // the stage field becomes the canonical application progress value.
@@ -1930,7 +2039,8 @@ async function serveApplications(
           ORDER BY a.created_at DESC, a.listing_key
         `).all() as unknown as ApplicationActionRow[];
       }
-      const applications = rows.map(toApplicationItem);
+      const destinations = readJobrightDestinationMap(database);
+      const applications = rows.map((row) => toApplicationItem(row, destinations));
       jsonResponse(response, 200, {
         contract: "dashboard.applications.v1",
         generatedAt: new Date().toISOString(),
@@ -2069,6 +2179,12 @@ function dashboardRolePassesHardFilters(
   includeHistoricalPosting = false,
 ): boolean {
   if (role.relevanceScore < MIN_LISTING_SCORE) return false;
+  // A Jobright detail page is discovery metadata, never a user-facing
+  // destination. Legacy rows are normalized before this check; keep the
+  // guard here as a final serialization invariant.
+  if (isJobrightUrl(role.applicationUrl)
+    || isJobrightUrl(role.postingUrl)
+    || isJobrightUrl(role.qualificationDetails.applicationUrl ?? "")) return false;
   if (handled) return false;
   // This gate applies to every visible status, including closed roles. A
   // closed historical record may be retained for lifecycle tracking, but it
@@ -2144,6 +2260,7 @@ async function readDashboardData(databasePath: string, forceGrindRefresh = false
   const generatedAt = new Date().toISOString();
   const database = new DatabaseSync(databasePath, { readOnly: true });
   try {
+    const jobrightDestinations = readJobrightDestinationMap(database);
     const listingActionRows = database.prepare(`
       SELECT listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at
       FROM listing_actions
@@ -2200,7 +2317,7 @@ async function readDashboardData(databasePath: string, forceGrindRefresh = false
     const storedInternships = internshipRows.flatMap((row) => {
       try {
         const payload = InternshipSchema.parse(JSON.parse(row.payload_json));
-        return [{
+        const candidate: DashboardInternship = {
           ...payload,
           sources: visibleProvenanceSources(payload.sources),
           lifecycleStatus: row.lifecycle_status,
@@ -2209,7 +2326,9 @@ async function readDashboardData(databasePath: string, forceGrindRefresh = false
           lastSeenAt: row.last_seen_at,
           statusRunId: row.status_run_id,
           missCount: row.miss_count,
-        }];
+        };
+        const resolved = dashboardRoleWithOriginalLinks(candidate, jobrightDestinations);
+        return resolved ? [resolved] : [];
       } catch {
         return [];
       }
@@ -3054,6 +3173,7 @@ async function readFastDashboardIndexAttempt(
       ...actionContextRows.flatMap((row) => fastActionLinks(row)),
       ...readFastHiddenInternshipLinks(database, actionContextRows),
     ]);
+    const jobrightDestinations = readJobrightDestinationMap(database);
     const storedInternships: DashboardInternship[] = [];
     const internshipRows = database.prepare(`
       SELECT id, payload_json, lifecycle_status, availability_status, first_seen_at,
@@ -3066,7 +3186,7 @@ async function readFastDashboardIndexAttempt(
     for (const row of internshipRows) {
       try {
         const payload = InternshipSchema.parse(JSON.parse(row.payload_json));
-        storedInternships.push({
+        const candidate: DashboardInternship = {
           ...payload,
           sources: visibleProvenanceSources(payload.sources),
           lifecycleStatus: row.lifecycle_status,
@@ -3075,7 +3195,9 @@ async function readFastDashboardIndexAttempt(
           lastSeenAt: row.last_seen_at,
           statusRunId: row.status_run_id,
           missCount: row.miss_count,
-        });
+        };
+        const resolved = dashboardRoleWithOriginalLinks(candidate, jobrightDestinations);
+        if (resolved) storedInternships.push(resolved);
       } catch {
         // A malformed legacy row is not a user-facing listing.
       }
@@ -3413,6 +3535,7 @@ async function readFastRoleDetailAttempt(
       ...hiddenInternshipLinks,
     ]);
     const actionMatcher = readFastDetailActionMatcher(database);
+    const jobrightDestinations = readJobrightDestinationMap(database);
     let role: DashboardInternship | null = null;
     let roleIsNew = false;
     let roleVersion: Record<string, unknown> = { listingType, listingId };
@@ -3445,8 +3568,11 @@ async function readFastRoleDetailAttempt(
         listingType: "internship",
         listingId: row.id,
       };
-      const handled = dashboardRoleIsHandled(candidate, hiddenListingKeys, actionMatcher, hiddenDestinationLinks);
-      if (dashboardRolePassesHardFilters(candidate, handled, verification.urls, true)) role = candidate;
+      const resolvedCandidate = dashboardRoleWithOriginalLinks(candidate, jobrightDestinations);
+      if (resolvedCandidate) {
+        const handled = dashboardRoleIsHandled(resolvedCandidate, hiddenListingKeys, actionMatcher, hiddenDestinationLinks);
+        if (dashboardRolePassesHardFilters(resolvedCandidate, handled, verification.urls, true)) role = resolvedCandidate;
+      }
       roleVersion = {
         listingType,
         listingId,
@@ -3468,12 +3594,17 @@ async function readFastRoleDetailAttempt(
         }
         return null;
       }
-      const candidate = toLiveBoardInternship(job, latestCompletedRun, board.lastSuccessfulSyncAt ?? new Date().toISOString());
+      const candidate = dashboardRoleWithOriginalLinks(
+        toLiveBoardInternship(job, latestCompletedRun, board.lastSuccessfulSyncAt ?? new Date().toISOString()),
+        jobrightDestinations,
+      );
       const listingKey = listingActionKey("grind", listingId);
-      const isNew = candidate.lifecycleStatus === "NEW" || newListingKeys.has(listingKey);
+      const isNew = candidate?.lifecycleStatus === "NEW" || newListingKeys.has(listingKey);
       roleIsNew = isNew;
-      const handled = dashboardRoleIsHandled(candidate, hiddenListingKeys, actionMatcher, hiddenDestinationLinks);
-      if (dashboardRolePassesHardFilters(candidate, handled, verification.urls, true)) role = candidate;
+      if (candidate) {
+        const handled = dashboardRoleIsHandled(candidate, hiddenListingKeys, actionMatcher, hiddenDestinationLinks);
+        if (dashboardRolePassesHardFilters(candidate, handled, verification.urls, true)) role = candidate;
+      }
       roleVersion = {
         listingType,
         listingId,
@@ -3565,6 +3696,7 @@ function readStoredClosingSoonNotifications(
     WHERE availability_status = 'open'
   `).all() as unknown as Array<{ id: string; payload_json: string }>;
   const roles: DeadlineNotificationRole[] = [];
+  const jobrightDestinations = readJobrightDestinationMap(database);
   const actionRows = readFastActionContextRows(database);
   const hiddenListingKeys = new Set(actionRows.map((row) => row.listing_key));
   const hiddenDestinationLinks = new Set([
@@ -3575,7 +3707,11 @@ function readStoredClosingSoonNotifications(
   for (const row of rows) {
     try {
       const role = InternshipSchema.parse(JSON.parse(row.payload_json));
-      const candidate = { ...role, listingType: "internship" as const, listingId: row.id };
+      const candidate = dashboardRoleWithOriginalLinks(
+        { ...role, listingType: "internship" as const, listingId: row.id },
+        jobrightDestinations,
+      );
+      if (!candidate) continue;
       if (dashboardRoleIsHandled(candidate, hiddenListingKeys, actionMatcher, hiddenDestinationLinks)) continue;
       if (!hasRequiredListingKeywords(candidate)) continue;
       roles.push(candidate);
@@ -3952,7 +4088,9 @@ async function recordListingAction(
             @listingKey, @listingType, @listingId, @action, @company, @normalizedCompany, @title,
             @applicationUrl, @postingUrl, @jobId, @location, @createdAt
           )
-          ON CONFLICT(listing_key) DO UPDATE SET
+          -- Deployed legacy databases may key this table by
+          -- (user_id, listing_key), so the upsert must accept either schema.
+          ON CONFLICT DO UPDATE SET
             action = excluded.action,
             company = excluded.company,
             normalized_company = excluded.normalized_company,
@@ -4007,6 +4145,7 @@ async function recordListingAction(
           hiddenCount: readHiddenCount(database),
         };
         database.exec("COMMIT");
+        invalidateDashboardDataCache();
         jsonResponse(response, 200, payload);
       } catch (error) {
         database.exec("ROLLBACK");
@@ -4057,6 +4196,7 @@ function undoListingAction(
           hiddenCount: readHiddenCount(database),
         };
         database.exec("COMMIT");
+        invalidateDashboardDataCache();
         jsonResponse(response, 200, payload);
       } catch (error) {
         database.exec("ROLLBACK");

@@ -333,6 +333,8 @@ export class BrowserManager {
    */
   public async resolveOriginalJobPostUrl(value: string, sourceKey = value): Promise<string | null> {
     if (!isJobrightJobUrl(value)) return null;
+    const override = directApplicationOverride(value);
+    if (override) return override;
     return this.withSourceActivity(sourceKey, () => this.withOperation(async () => {
       throwIfAborted(this.activeSignal());
       await this.start();
@@ -418,6 +420,8 @@ export class BrowserManager {
   }
 
   private async resolveJobrightOriginalPostInContext(value: string, context: BrowserContext): Promise<string | null> {
+    const override = directApplicationOverride(value);
+    if (override) return override;
     const page = await context.newPage();
     const pageDeadlineMs = Math.min(this.settings.navigationTimeoutMs, this.settings.pageTimeoutMs);
     try {

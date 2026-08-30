@@ -1861,6 +1861,92 @@ describe("dashboard fast API", () => {
     }
   });
 
+  it("replaces Jobright links with the Original Job Post URL in roles and applications", async () => {
+    const jobrightDatabasePath = join(directory, "jobright-dashboard.db");
+    const sourceUrl = "https://example.com/jobright-source";
+    const jobrightUrl = "https://jobright.ai/jobs/info/6a91d9989864261ccd29f558";
+    const destinationUrl = "https://jobs.intuit.com/job/mountain-view/summer-2027-software-engineering-intern-full-stack/27595/99856180864?jr_id=6a91d9989864261ccd29f558";
+    const settings = resolveSettings({ databasePath: jobrightDatabasePath, outputDirectory: join(directory, "output") });
+    const options: ScoutRunOptions = {
+      sources: [sourceUrl],
+      settings,
+      filters: { categories: [], newOnly: false, minScore: 60 },
+    };
+    const internship = makeInternship({
+      id: "jobright-dashboard",
+      jobId: "6a91d9989864261ccd29f558",
+      sourceUrl,
+      sources: [sourceUrl],
+      applicationUrl: jobrightUrl,
+      postingUrl: jobrightUrl,
+      qualificationDetails: { applicationUrl: jobrightUrl },
+    });
+    const database = new InternshipDatabase(jobrightDatabasePath);
+    const runId = database.startRun(options);
+    database.persistRun(runId, crawl([internship], sourceUrl), 2);
+    database.close();
+
+    clearFastDashboardCacheForTests();
+    clearDashboardDataCacheForTests();
+    try {
+      const roles = response();
+      await requestHandler(
+        request("GET", "/api/roles?tab=main&status=open&limit=100") as never,
+        roles as never,
+        jobrightDatabasePath,
+      );
+      const rolesPayload = JSON.parse(roles.body.toString("utf8")) as {
+        items: Array<{ id?: string; listingId?: string; applicationUrl: string; postingUrl: string }>;
+      };
+      const role = rolesPayload.items.find((item) => (item.listingId ?? item.id) === internship.id);
+      expect(roles.statusCode).toBe(200);
+      expect(role).toMatchObject({ applicationUrl: destinationUrl, postingUrl: destinationUrl });
+      expect(JSON.stringify(role)).not.toContain("jobright.ai");
+
+      const detail = response();
+      await requestHandler(
+        request("GET", `/api/roles/internship/${internship.id}`) as never,
+        detail as never,
+        jobrightDatabasePath,
+      );
+      const detailPayload = JSON.parse(detail.body.toString("utf8")) as {
+        role: {
+          applicationUrl: string;
+          postingUrl: string;
+          qualificationDetails: { applicationUrl: string | null };
+        };
+      };
+      expect(detail.statusCode).toBe(200);
+      expect(detailPayload.role).toMatchObject({
+        applicationUrl: destinationUrl,
+        postingUrl: destinationUrl,
+        qualificationDetails: { applicationUrl: destinationUrl },
+      });
+
+      const applied = response();
+      await requestHandler(request("POST", "/api/actions", {}, {
+        listingType: "internship",
+        listingId: internship.id,
+        action: "applied",
+        company: internship.company,
+        title: internship.title,
+      }) as never, applied as never, jobrightDatabasePath);
+      expect(applied.statusCode).toBe(200);
+
+      const applications = response();
+      await requestHandler(request("GET", "/api/applications") as never, applications as never, jobrightDatabasePath);
+      const applicationsPayload = JSON.parse(applications.body.toString("utf8")) as {
+        applications: Array<{ listingId: string; applicationUrl: string | null; postingUrl: string | null }>;
+      };
+      const application = applicationsPayload.applications.find((item) => item.listingId === internship.id);
+      expect(applications.statusCode).toBe(200);
+      expect(application).toMatchObject({ applicationUrl: destinationUrl, postingUrl: destinationUrl });
+    } finally {
+      clearFastDashboardCacheForTests();
+      clearDashboardDataCacheForTests();
+    }
+  });
+
   it("changes the polling validator at local midnight for relative-date semantics", async () => {
     const beforeMidnight = new Date(2026, 7, 17, 23, 59, 59, 0);
     const afterMidnight = new Date(2026, 7, 18, 0, 0, 1, 0);

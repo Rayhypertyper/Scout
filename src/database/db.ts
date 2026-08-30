@@ -287,7 +287,10 @@ export class InternshipDatabase {
           @listingKey, @listingType, @listingId, @action, @company, @normalizedCompany, @title,
           @applicationUrl, @postingUrl, @jobId, @location, @createdAt
         )
-        ON CONFLICT(listing_key) DO UPDATE SET
+        -- Do not name the conflict target here. Some deployed databases use
+        -- a legacy composite primary key (user_id, listing_key), while the
+        -- current single-user schema keys the row by listing_key.
+        ON CONFLICT DO UPDATE SET
           action = excluded.action,
           company = excluded.company,
           normalized_company = excluded.normalized_company,
@@ -602,11 +605,137 @@ export class InternshipDatabase {
         resolvedAt: new Date().toISOString(),
         errorMessage,
       });
+      if (canonicalDestination) {
+        this.promoteStoredJobrightDestination(canonicalJobrightUrl, jobId, canonicalDestination);
+      }
       this.database.exec("COMMIT");
     } catch (error) {
       this.database.exec("ROLLBACK");
       throw error;
     }
+  }
+
+  /**
+   * Apply a verified destination to records written before the resolver was
+   * available. The dashboard also resolves from the cache at read time, but
+   * promoting the durable row keeps exports and stored application context
+   * from retaining an aggregator-only URL.
+   */
+  private promoteStoredJobrightDestination(
+    canonicalJobrightUrl: string,
+    jobId: string | null,
+    destinationUrl: string,
+  ): void {
+    const normalizedSource = normalizedJobUrl(canonicalJobrightUrl);
+    const internshipRows = this.database.prepare(`
+      SELECT id, job_id, external_job_id, application_url, posting_url, payload_json
+      FROM internships
+      WHERE application_url = @jobrightUrl
+         OR posting_url = @jobrightUrl
+         OR canonical_application_url = @jobrightUrl
+         OR canonical_posting_url = @jobrightUrl
+         OR (@jobId IS NOT NULL AND (job_id = @jobId OR external_job_id = @jobId))
+    `).all({ jobrightUrl: canonicalJobrightUrl, jobId }) as unknown as Array<{
+      id: string;
+      job_id: string | null;
+      external_job_id: string | null;
+      application_url: string;
+      posting_url: string;
+      payload_json: string;
+    }>;
+
+    const replaceUrl = (value: string | null, rowMatchesByJobId: boolean): string | null => {
+      if (!value || !isJobrightUrl(value)) return value;
+      try {
+        return normalizedJobUrl(value) === normalizedSource || rowMatchesByJobId ? destinationUrl : value;
+      } catch {
+        return value;
+      }
+    };
+    const updateInternship = this.database.prepare(`
+      UPDATE internships
+      SET application_url = @applicationUrl,
+          posting_url = @postingUrl,
+          payload_json = @payload,
+          content_hash = @contentHash,
+          canonical_url = @canonicalUrl,
+          canonical_application_url = @canonicalApplicationUrl,
+          canonical_posting_url = @canonicalPostingUrl,
+          provider_identity = @providerIdentity
+      WHERE id = @id
+    `);
+    let internshipsChanged = false;
+    for (const row of internshipRows) {
+      const rowMatchesByJobId = Boolean(jobId && (row.job_id === jobId || row.external_job_id === jobId));
+      let existing: Internship;
+      try {
+        existing = InternshipSchema.parse(JSON.parse(row.payload_json));
+      } catch {
+        continue;
+      }
+      const applicationUrl = replaceUrl(existing.applicationUrl, rowMatchesByJobId) ?? existing.applicationUrl;
+      const postingUrl = replaceUrl(existing.postingUrl, rowMatchesByJobId) ?? existing.postingUrl;
+      const nestedApplicationUrl = replaceUrl(existing.qualificationDetails.applicationUrl, rowMatchesByJobId);
+      if (applicationUrl === existing.applicationUrl
+        && postingUrl === existing.postingUrl
+        && nestedApplicationUrl === existing.qualificationDetails.applicationUrl) continue;
+      const updated = InternshipSchema.parse({
+        ...existing,
+        applicationUrl,
+        postingUrl,
+        qualificationDetails: {
+          ...existing.qualificationDetails,
+          applicationUrl: nestedApplicationUrl,
+        },
+      });
+      const canonicalApplicationUrl = normalizedJobUrl(updated.applicationUrl);
+      const canonicalPostingUrl = normalizedJobUrl(updated.postingUrl);
+      updateInternship.run({
+        id: row.id,
+        applicationUrl: updated.applicationUrl,
+        postingUrl: updated.postingUrl,
+        payload: JSON.stringify(updated),
+        contentHash: internshipContentHash(updated),
+        canonicalUrl: canonicalPostingUrl || canonicalApplicationUrl,
+        canonicalApplicationUrl,
+        canonicalPostingUrl,
+        providerIdentity: providerJobIdentityKeys(updated)[0] ?? null,
+      });
+      internshipsChanged = true;
+    }
+
+    const actionRows = this.database.prepare(`
+      SELECT listing_key, application_url, posting_url, job_id
+      FROM listing_actions
+      WHERE application_url = @jobrightUrl
+         OR posting_url = @jobrightUrl
+         OR (@jobId IS NOT NULL AND job_id = @jobId)
+    `).all({ jobrightUrl: canonicalJobrightUrl, jobId }) as unknown as Array<{
+      listing_key: string;
+      application_url: string | null;
+      posting_url: string | null;
+      job_id: string | null;
+    }>;
+    const updateAction = this.database.prepare(`
+      UPDATE listing_actions
+      SET application_url = @applicationUrl,
+          posting_url = @postingUrl
+      WHERE listing_key = @listingKey
+    `);
+    let actionsChanged = false;
+    for (const row of actionRows) {
+      const rowMatchesByJobId = Boolean(jobId && row.job_id === jobId);
+      const applicationUrl = replaceUrl(row.application_url, rowMatchesByJobId);
+      const postingUrl = replaceUrl(row.posting_url, rowMatchesByJobId);
+      if (applicationUrl === row.application_url && postingUrl === row.posting_url) continue;
+      updateAction.run({
+        listingKey: row.listing_key,
+        applicationUrl,
+        postingUrl,
+      });
+      actionsChanged = true;
+    }
+    if (internshipsChanged || actionsChanged) backfillListingActionIdentities(this.database);
   }
 
   /**
