@@ -302,6 +302,7 @@ const CATEGORY_LABELS: Record<Category, string> = {
   quant: "Quant / Trading",
   research: "Research",
   "other-code": "Other Technical Roles",
+  "other-internship": "Other Internships",
 };
 
 const CITY_OPTIONS: Array<CityPreference & { region: string }> = SUPPORTED_CITY_OPTIONS.map(({ name, country, region }) => ({

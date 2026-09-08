@@ -33,6 +33,63 @@ describe("source failure semantics", () => {
     expect(isRetryableFailure({ errorType: "http_error", statusCode: 503 })).toBe(true);
     expect(isRetryableFailure({ errorType: "page_timeout", statusCode: null })).toBe(true);
   });
+
+  it("treats a static detail 404 as a closed posting instead of a source failure", async () => {
+    const source = "https://interninsider.me/internships/new";
+    const detail = "https://interninsider.me/internships/acme/software-engineering-intern-123";
+    const staticAdapters = {
+      profile: () => ({ name: "InternInsider", detailPath: /^\/internships\/[^/]+\/[^/]+/i }),
+      collectListing: async () => ({
+        listingSnapshots: [{
+          requestedUrl: source,
+          url: source,
+          status: 200,
+          contentType: "text/html",
+          title: "New internships",
+          html: "<main>New internships</main>",
+          text: "New internships",
+          links: [],
+          fetchedAt: new Date().toISOString(),
+        }],
+        detailCandidates: [{ url: detail, title: "Software Engineering Intern", snippet: "Software Engineering Intern", sourceUrl: source }],
+        retrievalMethod: "InternInsider static HTTP",
+        retrievalUrls: [source],
+        attempts: 1,
+        httpStatus: 200,
+        notes: [],
+        failures: [],
+      }),
+      fetchDetails: async () => ({
+        snapshots: [],
+        retrievalMethod: "InternInsider static HTTP details",
+        retrievalUrls: [],
+        attempts: 1,
+        httpStatus: null,
+        notes: ["A detail page could not be retrieved: HTTP 404 not found"],
+        failures: [{
+          sourceUrl: source,
+          url: detail,
+          errorType: "not_found",
+          message: "HTTP 404 not found",
+          statusCode: 404,
+          retryCount: 0,
+          occurredAt: new Date().toISOString(),
+        }],
+      }),
+    };
+    const crawler = new InternshipCrawler(resolveSettings({ respectRobotsTxt: false }), new Logger("error"));
+    (crawler as unknown as { staticAdapters: unknown }).staticAdapters = staticAdapters;
+
+    const crawl = await crawler.crawl([source]);
+
+    expect(crawl.sourceResults[0]).toMatchObject({
+      status: "no_internships_found",
+      completed: true,
+      failures: [],
+      closedPages: [{ url: detail, reason: "HTTP 404", statusCode: 404 }],
+      coverageNotes: ["1 detail listing URL(s) returned HTTP 404 and were treated as closed postings."],
+    });
+  });
 });
 
 describe("source timing", () => {

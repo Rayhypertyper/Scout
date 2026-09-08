@@ -245,4 +245,53 @@ describe("incremental crawl state", () => {
     expect(() => database.persistRun(database.startRun(options), crawl(source, job), 2)).not.toThrow();
     database.close();
   });
+
+  it("merges historical other-internship payloads without failing the run", () => {
+    const setupResult = setup();
+    const { options, source } = setupResult;
+    let { database } = setupResult;
+    const job = makeInternship({
+      id: "historical-nontechnical-category",
+      jobId: "REQ-HISTORICAL-NONTECHNICAL",
+      categories: ["swe", "other-internship"],
+    });
+
+    database.persistRun(database.startRun(options), crawl(source, job), 2);
+    database.close();
+    database = new InternshipDatabase(options.settings.databasePath);
+
+    expect(() => database.persistRun(database.startRun(options), crawl(source, job), 2)).not.toThrow();
+    database.close();
+  });
+
+  it("migrates retired nontechnical category labels before the next crawl", () => {
+    const setupResult = setup();
+    const { options, source } = setupResult;
+    let { database } = setupResult;
+    const job = makeInternship({ id: "retired-nontechnical-labels", jobId: "REQ-RETIRED-NONTECHNICAL" });
+    database.persistRun(database.startRun(options), crawl(source, job), 2);
+    database.close();
+
+    const raw = new DatabaseSync(options.settings.databasePath);
+    const row = raw.prepare("SELECT payload_json FROM internships WHERE id = @id").get({ id: job.id }) as { payload_json: string };
+    const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
+    payload.categories = ["swe", "finance", "hr", "hardware", "other-role"];
+    raw.prepare("UPDATE internships SET payload_json = @payload WHERE id = @id").run({ id: job.id, payload: JSON.stringify(payload) });
+    raw.close();
+
+    database = new InternshipDatabase(options.settings.databasePath);
+    const migrated = new DatabaseSync(options.settings.databasePath);
+    const migratedRow = migrated.prepare("SELECT payload_json FROM internships WHERE id = @id").get({ id: job.id }) as { payload_json: string };
+    migrated.close();
+    expect((JSON.parse(migratedRow.payload_json) as { categories: string[] }).categories).toEqual([
+      "swe",
+      "other-internship",
+      "other-internship",
+      "other-internship",
+      "other-internship",
+    ]);
+
+    expect(() => database.persistRun(database.startRun(options), crawl(source, job), 2)).not.toThrow();
+    database.close();
+  });
 });

@@ -1,10 +1,10 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
 
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
-import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, filterListingRoles, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
+import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, fetchRolesPage, filterListingRoles, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, isTransientDashboardReadError, isUndoShortcut, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
 
 function role(listingId: string) {
   return { listingType: "internship", listingId, id: listingId };
@@ -181,9 +181,9 @@ describe("fast dashboard client state helpers", () => {
     expect(readFileSync(new URL("../public/app.js", import.meta.url), "utf8")).not.toContain("companyInitials");
   });
 
-  it("defaults the initial role tab to Canada", () => {
+  it("defaults to Canada and falls back to Summer when Canada is empty", () => {
     expect(INITIAL_ROLE_TAB).toBe("canada");
-    expect(FALLBACK_ROLE_TAB).toBe("canada");
+    expect(FALLBACK_ROLE_TAB).toBe("summer");
     const markup = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     expect(markup).toContain('class="role-tab active" id="canada-tab"');
     expect(markup).toContain('class="role-tab" id="summer-tab"');
@@ -194,6 +194,8 @@ describe("fast dashboard client state helpers", () => {
     expect(shouldFallbackToCanada({ pagination: { total: 1 }, items: [] })).toBe(false);
     expect(shouldFallbackToCanada({ items: [] })).toBe(true);
     expect(shouldFallbackToCanada({ pagination: { total: 0 }, items: [{ id: "summer-1" }] })).toBe(true);
+    expect(buildRolesQuery().get("tab")).toBe("canada");
+    expect(roleFiltersKey()).toContain("canada|");
   });
 
   it("shows the Canadian location when a mixed posting is viewed in Canada", () => {
@@ -407,6 +409,43 @@ describe("fast dashboard client state helpers", () => {
     expect(isRoleFeedView("roles")).toBe(true);
     expect(isRoleFeedView("dashboard")).toBe(true);
     expect(isRoleFeedView("applications")).toBe(false);
+  });
+
+  it("classifies the database snapshot race as a recoverable role-read error", () => {
+    expect(isTransientDashboardReadError(new Error("Dashboard data changed while reading a snapshot"))).toBe(true);
+    expect(isTransientDashboardReadError({ message: "Request failed (503)" })).toBe(false);
+    expect(isTransientDashboardReadError(new Error("Network connection lost"))).toBe(false);
+  });
+
+  it("retries a role page after the server reports a snapshot race", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: "Dashboard data changed while reading a snapshot" }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [], pagination: { total: 0 } }),
+      });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const payload = await fetchRolesPage({ tab: "summer", status: "open", sort: "posted" }, 0, 8);
+      expect(payload.items).toEqual([]);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("recognizes Ctrl+Z and Meta+Z without treating redo or text editing as listing undo", () => {
+    expect(isUndoShortcut({ key: "z", ctrlKey: true })).toBe(true);
+    expect(isUndoShortcut({ key: "Z", metaKey: true })).toBe(true);
+    expect(isUndoShortcut({ key: "z", ctrlKey: true, shiftKey: true })).toBe(false);
+    expect(isUndoShortcut({ key: "z", ctrlKey: true, altKey: true })).toBe(false);
+    expect(isUndoShortcut({ key: "z", ctrlKey: true, isComposing: true })).toBe(false);
+    expect(isUndoShortcut({ key: "z" })).toBe(false);
   });
 
   it("keeps the featured role at the head of the visible queue", () => {

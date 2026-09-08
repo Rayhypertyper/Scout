@@ -1,0 +1,2945 @@
+{
+  "schemaVersion": 1,
+  "benchmark": "dashboard-delivery-direct-after",
+  "capturedAt": "2026-09-01T22:16:41.274Z",
+  "node": "v24.18.0",
+  "sourceRoot": "/Users/rayxu/Documents/Internshipmatic",
+  "publicRoot": "/Users/rayxu/Documents/Internshipmatic/public",
+  "fixture": {
+    "jsonBodyBytes": 17701
+  },
+  "static": [
+    {
+      "path": "/",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"dc787b34cc8a8cd6fafed79e14bf4319265f9d376cd68a606f1b6892c8cd042f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "44545"
+        },
+        "wireBytes": 44545,
+        "decodedBytes": 44545,
+        "elapsedMs": 5.728334426879883
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"dc787b34cc8a8cd6fafed79e14bf4319265f9d376cd68a606f1b6892c8cd042f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "8496"
+        },
+        "wireBytes": 8496,
+        "decodedBytes": 44545,
+        "elapsedMs": 2.106207847595215
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"dc787b34cc8a8cd6fafed79e14bf4319265f9d376cd68a606f1b6892c8cd042f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "8496"
+        },
+        "wireBytes": 8496,
+        "decodedBytes": 44545,
+        "elapsedMs": 1.1455841064453125
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"dc787b34cc8a8cd6fafed79e14bf4319265f9d376cd68a606f1b6892c8cd042f\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 1.2049589157104492
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"dc787b34cc8a8cd6fafed79e14bf4319265f9d376cd68a606f1b6892c8cd042f\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 1.014124870300293
+      }
+    },
+    {
+      "path": "/jobs/",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"cb8d624a6e7652f2ba0c399cd7867922df8b0d4f1e7d3d33e5ffa30897f64f47\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "66569"
+        },
+        "wireBytes": 66569,
+        "decodedBytes": 66569,
+        "elapsedMs": 3.1775407791137695
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"cb8d624a6e7652f2ba0c399cd7867922df8b0d4f1e7d3d33e5ffa30897f64f47\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "11006"
+        },
+        "wireBytes": 11006,
+        "decodedBytes": 66569,
+        "elapsedMs": 3.0160417556762695
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"cb8d624a6e7652f2ba0c399cd7867922df8b0d4f1e7d3d33e5ffa30897f64f47\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "11006"
+        },
+        "wireBytes": 11006,
+        "decodedBytes": 66569,
+        "elapsedMs": 1.275583267211914
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"cb8d624a6e7652f2ba0c399cd7867922df8b0d4f1e7d3d33e5ffa30897f64f47\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 1.164708137512207
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-store",
+          "ETag": "W/\"cb8d624a6e7652f2ba0c399cd7867922df8b0d4f1e7d3d33e5ffa30897f64f47\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 1.496790885925293
+      }
+    },
+    {
+      "path": "/styles.css",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4071fedca1b81674d9080edf2c24223987da8743e90405b4197f378d6f5803f2\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "53329"
+        },
+        "wireBytes": 53329,
+        "decodedBytes": 53329,
+        "elapsedMs": 0.3057088851928711
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4071fedca1b81674d9080edf2c24223987da8743e90405b4197f378d6f5803f2\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "9276"
+        },
+        "wireBytes": 9276,
+        "decodedBytes": 53329,
+        "elapsedMs": 0.8173751831054688
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4071fedca1b81674d9080edf2c24223987da8743e90405b4197f378d6f5803f2\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "9276"
+        },
+        "wireBytes": 9276,
+        "decodedBytes": 53329,
+        "elapsedMs": 0.3429584503173828
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4071fedca1b81674d9080edf2c24223987da8743e90405b4197f378d6f5803f2\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.2948751449584961
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4071fedca1b81674d9080edf2c24223987da8743e90405b4197f378d6f5803f2\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.2533750534057617
+      }
+    },
+    {
+      "path": "/redesign.css",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"966e8985f99958521c9884f973e839009597511b6c9c5e25a3414c0a6e37e893\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "95617"
+        },
+        "wireBytes": 95617,
+        "decodedBytes": 95617,
+        "elapsedMs": 0.1667499542236328
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"966e8985f99958521c9884f973e839009597511b6c9c5e25a3414c0a6e37e893\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "15443"
+        },
+        "wireBytes": 15443,
+        "decodedBytes": 95617,
+        "elapsedMs": 0.9349994659423828
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"966e8985f99958521c9884f973e839009597511b6c9c5e25a3414c0a6e37e893\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "15443"
+        },
+        "wireBytes": 15443,
+        "decodedBytes": 95617,
+        "elapsedMs": 0.19629192352294922
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"966e8985f99958521c9884f973e839009597511b6c9c5e25a3414c0a6e37e893\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.21729183197021484
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"966e8985f99958521c9884f973e839009597511b6c9c5e25a3414c0a6e37e893\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.1730823516845703
+      }
+    },
+    {
+      "path": "/catalog-freshness.css",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8d2c85d9df1b43b212aaf47c12f5ea0eb0024cb910565d584de12c4145405847\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "1752"
+        },
+        "wireBytes": 1752,
+        "decodedBytes": 1752,
+        "elapsedMs": 0.13300037384033203
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8d2c85d9df1b43b212aaf47c12f5ea0eb0024cb910565d584de12c4145405847\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "543"
+        },
+        "wireBytes": 543,
+        "decodedBytes": 1752,
+        "elapsedMs": 0.19700050354003906
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8d2c85d9df1b43b212aaf47c12f5ea0eb0024cb910565d584de12c4145405847\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "543"
+        },
+        "wireBytes": 543,
+        "decodedBytes": 1752,
+        "elapsedMs": 0.12412548065185547
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8d2c85d9df1b43b212aaf47c12f5ea0eb0024cb910565d584de12c4145405847\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09187507629394531
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8d2c85d9df1b43b212aaf47c12f5ea0eb0024cb910565d584de12c4145405847\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09525012969970703
+      }
+    },
+    {
+      "path": "/conversion.css",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4f092abdd9b6cdcafe2ce339456cde7779a2792ac114f4cc424417fc07b6175e\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "9115"
+        },
+        "wireBytes": 9115,
+        "decodedBytes": 9115,
+        "elapsedMs": 0.09941673278808594
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4f092abdd9b6cdcafe2ce339456cde7779a2792ac114f4cc424417fc07b6175e\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "1739"
+        },
+        "wireBytes": 1739,
+        "decodedBytes": 9115,
+        "elapsedMs": 0.19933414459228516
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4f092abdd9b6cdcafe2ce339456cde7779a2792ac114f4cc424417fc07b6175e\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "1739"
+        },
+        "wireBytes": 1739,
+        "decodedBytes": 9115,
+        "elapsedMs": 0.10237503051757812
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4f092abdd9b6cdcafe2ce339456cde7779a2792ac114f4cc424417fc07b6175e\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.0943746566772461
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"4f092abdd9b6cdcafe2ce339456cde7779a2792ac114f4cc424417fc07b6175e\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.0883331298828125
+      }
+    },
+    {
+      "path": "/themed-select.css",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"40144a719de4f22fb879b85a32780abc236150349832fbc92901ff42bb40092e\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "6813"
+        },
+        "wireBytes": 6813,
+        "decodedBytes": 6813,
+        "elapsedMs": 0.10237503051757812
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"40144a719de4f22fb879b85a32780abc236150349832fbc92901ff42bb40092e\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "1523"
+        },
+        "wireBytes": 1523,
+        "decodedBytes": 6813,
+        "elapsedMs": 0.20349979400634766
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"40144a719de4f22fb879b85a32780abc236150349832fbc92901ff42bb40092e\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "1523"
+        },
+        "wireBytes": 1523,
+        "decodedBytes": 6813,
+        "elapsedMs": 0.10366630554199219
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"40144a719de4f22fb879b85a32780abc236150349832fbc92901ff42bb40092e\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09479045867919922
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"40144a719de4f22fb879b85a32780abc236150349832fbc92901ff42bb40092e\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.0952920913696289
+      }
+    },
+    {
+      "path": "/themed-select.js",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"830e6da2698f409a08f861693e659e23f282ad27fef13817998f45d3457ddfbf\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "13958"
+        },
+        "wireBytes": 13958,
+        "decodedBytes": 13958,
+        "elapsedMs": 0.11083316802978516
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"830e6da2698f409a08f861693e659e23f282ad27fef13817998f45d3457ddfbf\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "3122"
+        },
+        "wireBytes": 3122,
+        "decodedBytes": 13958,
+        "elapsedMs": 0.2859172821044922
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"830e6da2698f409a08f861693e659e23f282ad27fef13817998f45d3457ddfbf\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "3122"
+        },
+        "wireBytes": 3122,
+        "decodedBytes": 13958,
+        "elapsedMs": 0.11483287811279297
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"830e6da2698f409a08f861693e659e23f282ad27fef13817998f45d3457ddfbf\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.08087539672851562
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"830e6da2698f409a08f861693e659e23f282ad27fef13817998f45d3457ddfbf\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.07562541961669922
+      }
+    },
+    {
+      "path": "/app.js",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"6ee14b6933c0f93f4fe250b4735c4fd4343b2ff287cc085bfd409ab1b9fd2d5f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "299671"
+        },
+        "wireBytes": 299671,
+        "decodedBytes": 299671,
+        "elapsedMs": 0.46633434295654297
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"6ee14b6933c0f93f4fe250b4735c4fd4343b2ff287cc085bfd409ab1b9fd2d5f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "66200"
+        },
+        "wireBytes": 66200,
+        "decodedBytes": 299671,
+        "elapsedMs": 3.364084243774414
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"6ee14b6933c0f93f4fe250b4735c4fd4343b2ff287cc085bfd409ab1b9fd2d5f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "66200"
+        },
+        "wireBytes": 66200,
+        "decodedBytes": 299671,
+        "elapsedMs": 0.5878744125366211
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"6ee14b6933c0f93f4fe250b4735c4fd4343b2ff287cc085bfd409ab1b9fd2d5f\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.5526247024536133
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"6ee14b6933c0f93f4fe250b4735c4fd4343b2ff287cc085bfd409ab1b9fd2d5f\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.33687496185302734
+      }
+    },
+    {
+      "path": "/vendor/gsap.min.js",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"96c01b81f44a3290e2b4532f55e2c9534b2adc43273a19f3756b2cb41f0fd0b6\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "72435"
+        },
+        "wireBytes": 72435,
+        "decodedBytes": 72435,
+        "elapsedMs": 0.13495826721191406
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"96c01b81f44a3290e2b4532f55e2c9534b2adc43273a19f3756b2cb41f0fd0b6\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "27622"
+        },
+        "wireBytes": 27622,
+        "decodedBytes": 72435,
+        "elapsedMs": 1.1237096786499023
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"96c01b81f44a3290e2b4532f55e2c9534b2adc43273a19f3756b2cb41f0fd0b6\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "27622"
+        },
+        "wireBytes": 27622,
+        "decodedBytes": 72435,
+        "elapsedMs": 0.14499950408935547
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"96c01b81f44a3290e2b4532f55e2c9534b2adc43273a19f3756b2cb41f0fd0b6\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.10758304595947266
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"96c01b81f44a3290e2b4532f55e2c9534b2adc43273a19f3756b2cb41f0fd0b6\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.10791683197021484
+      }
+    },
+    {
+      "path": "/vendor/ScrollTrigger.min.js",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"308219390e5e3b84cda0c481e70caa9820883ae10bda44e6e9a149a81aac4b3f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "44157"
+        },
+        "wireBytes": 44157,
+        "decodedBytes": 44157,
+        "elapsedMs": 0.12441730499267578
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"308219390e5e3b84cda0c481e70caa9820883ae10bda44e6e9a149a81aac4b3f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "17379"
+        },
+        "wireBytes": 17379,
+        "decodedBytes": 44157,
+        "elapsedMs": 0.6957912445068359
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"308219390e5e3b84cda0c481e70caa9820883ae10bda44e6e9a149a81aac4b3f\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "17379"
+        },
+        "wireBytes": 17379,
+        "decodedBytes": 44157,
+        "elapsedMs": 0.1078329086303711
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"308219390e5e3b84cda0c481e70caa9820883ae10bda44e6e9a149a81aac4b3f\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.10962486267089844
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"308219390e5e3b84cda0c481e70caa9820883ae10bda44e6e9a149a81aac4b3f\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.0965414047241211
+      }
+    },
+    {
+      "path": "/landing.css",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb2054dc042624ad2bf1eb7fff1f935f12027058e8f672dbd824f132a255e0a7\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "72886"
+        },
+        "wireBytes": 72886,
+        "decodedBytes": 72886,
+        "elapsedMs": 0.2846250534057617
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb2054dc042624ad2bf1eb7fff1f935f12027058e8f672dbd824f132a255e0a7\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "11989"
+        },
+        "wireBytes": 11989,
+        "decodedBytes": 72886,
+        "elapsedMs": 0.8454160690307617
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb2054dc042624ad2bf1eb7fff1f935f12027058e8f672dbd824f132a255e0a7\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "11989"
+        },
+        "wireBytes": 11989,
+        "decodedBytes": 72886,
+        "elapsedMs": 0.2869586944580078
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb2054dc042624ad2bf1eb7fff1f935f12027058e8f672dbd824f132a255e0a7\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.2516670227050781
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/css; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb2054dc042624ad2bf1eb7fff1f935f12027058e8f672dbd824f132a255e0a7\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.28874969482421875
+      }
+    },
+    {
+      "path": "/landing.js",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d7491f80617730118c54c55532f6df6d44cfdeacf6138c16d0d006c36fded582\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "25254"
+        },
+        "wireBytes": 25254,
+        "decodedBytes": 25254,
+        "elapsedMs": 0.2889995574951172
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d7491f80617730118c54c55532f6df6d44cfdeacf6138c16d0d006c36fded582\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "5507"
+        },
+        "wireBytes": 5507,
+        "decodedBytes": 25254,
+        "elapsedMs": 0.5478754043579102
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d7491f80617730118c54c55532f6df6d44cfdeacf6138c16d0d006c36fded582\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "5507"
+        },
+        "wireBytes": 5507,
+        "decodedBytes": 25254,
+        "elapsedMs": 0.2755413055419922
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d7491f80617730118c54c55532f6df6d44cfdeacf6138c16d0d006c36fded582\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.3156251907348633
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d7491f80617730118c54c55532f6df6d44cfdeacf6138c16d0d006c36fded582\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.2876253128051758
+      }
+    },
+    {
+      "path": "/landing-motion.js",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb15c97fd4c513ebc50524ab79e60491e2706f03bab396d882c328c07d142509\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "2360"
+        },
+        "wireBytes": 2360,
+        "decodedBytes": 2360,
+        "elapsedMs": 0.18420791625976562
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb15c97fd4c513ebc50524ab79e60491e2706f03bab396d882c328c07d142509\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "834"
+        },
+        "wireBytes": 834,
+        "decodedBytes": 2360,
+        "elapsedMs": 0.2501659393310547
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb15c97fd4c513ebc50524ab79e60491e2706f03bab396d882c328c07d142509\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "834"
+        },
+        "wireBytes": 834,
+        "decodedBytes": 2360,
+        "elapsedMs": 0.22954082489013672
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb15c97fd4c513ebc50524ab79e60491e2706f03bab396d882c328c07d142509\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.19854164123535156
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"fb15c97fd4c513ebc50524ab79e60491e2706f03bab396d882c328c07d142509\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.15958213806152344
+      }
+    },
+    {
+      "path": "/conversion.js",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"e6c1c942dea11f0f253dd2bc80c79388450b70003c98854a68abcfdde4190258\"",
+          "Vary": "Accept-Encoding",
+          "Content-Length": "10800"
+        },
+        "wireBytes": 10800,
+        "decodedBytes": 10800,
+        "elapsedMs": 0.08595848083496094
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"e6c1c942dea11f0f253dd2bc80c79388450b70003c98854a68abcfdde4190258\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "2838"
+        },
+        "wireBytes": 2838,
+        "decodedBytes": 10800,
+        "elapsedMs": 0.21545791625976562
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"e6c1c942dea11f0f253dd2bc80c79388450b70003c98854a68abcfdde4190258\"",
+          "Vary": "Accept-Encoding",
+          "Content-Encoding": "br",
+          "Content-Length": "2838"
+        },
+        "wireBytes": 2838,
+        "decodedBytes": 10800,
+        "elapsedMs": 0.09808349609375
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"e6c1c942dea11f0f253dd2bc80c79388450b70003c98854a68abcfdde4190258\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.08766555786132812
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "text/javascript; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"e6c1c942dea11f0f253dd2bc80c79388450b70003c98854a68abcfdde4190258\"",
+          "Vary": "Accept-Encoding"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09449958801269531
+      }
+    },
+    {
+      "path": "/fonts/geist/Geist-Regular.woff2",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d8bce822db092746889bcf3f57350b41f53708b025458fe7af30729ec4ce0df2\"",
+          "Content-Length": "45244"
+        },
+        "wireBytes": 45244,
+        "decodedBytes": 45244,
+        "elapsedMs": 0.08820724487304688
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d8bce822db092746889bcf3f57350b41f53708b025458fe7af30729ec4ce0df2\"",
+          "Content-Length": "45244"
+        },
+        "wireBytes": 45244,
+        "decodedBytes": 45244,
+        "elapsedMs": 0.08095741271972656
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d8bce822db092746889bcf3f57350b41f53708b025458fe7af30729ec4ce0df2\"",
+          "Content-Length": "45244"
+        },
+        "wireBytes": 45244,
+        "decodedBytes": 45244,
+        "elapsedMs": 0.09799957275390625
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d8bce822db092746889bcf3f57350b41f53708b025458fe7af30729ec4ce0df2\"",
+          "Content-Length": "45244"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.10387420654296875
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"d8bce822db092746889bcf3f57350b41f53708b025458fe7af30729ec4ce0df2\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.07404136657714844
+      }
+    },
+    {
+      "path": "/fonts/geist/Geist-Medium.woff2",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b0a0867cda44efef4529a4b13ce37fd9fd6e1597708615287542a51bc7452ab4\"",
+          "Content-Length": "46372"
+        },
+        "wireBytes": 46372,
+        "decodedBytes": 46372,
+        "elapsedMs": 0.0805826187133789
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b0a0867cda44efef4529a4b13ce37fd9fd6e1597708615287542a51bc7452ab4\"",
+          "Content-Length": "46372"
+        },
+        "wireBytes": 46372,
+        "decodedBytes": 46372,
+        "elapsedMs": 0.08237457275390625
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b0a0867cda44efef4529a4b13ce37fd9fd6e1597708615287542a51bc7452ab4\"",
+          "Content-Length": "46372"
+        },
+        "wireBytes": 46372,
+        "decodedBytes": 46372,
+        "elapsedMs": 0.08441734313964844
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b0a0867cda44efef4529a4b13ce37fd9fd6e1597708615287542a51bc7452ab4\"",
+          "Content-Length": "46372"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09233379364013672
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b0a0867cda44efef4529a4b13ce37fd9fd6e1597708615287542a51bc7452ab4\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.08854103088378906
+      }
+    },
+    {
+      "path": "/fonts/geist/Geist-SemiBold.woff2",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b1e6a1dd2122485d0a1f3a8d30a45443aa9453224f83018bec35f8266bc77915\"",
+          "Content-Length": "46596"
+        },
+        "wireBytes": 46596,
+        "decodedBytes": 46596,
+        "elapsedMs": 0.09820842742919922
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b1e6a1dd2122485d0a1f3a8d30a45443aa9453224f83018bec35f8266bc77915\"",
+          "Content-Length": "46596"
+        },
+        "wireBytes": 46596,
+        "decodedBytes": 46596,
+        "elapsedMs": 0.08404159545898438
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b1e6a1dd2122485d0a1f3a8d30a45443aa9453224f83018bec35f8266bc77915\"",
+          "Content-Length": "46596"
+        },
+        "wireBytes": 46596,
+        "decodedBytes": 46596,
+        "elapsedMs": 0.086334228515625
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b1e6a1dd2122485d0a1f3a8d30a45443aa9453224f83018bec35f8266bc77915\"",
+          "Content-Length": "46596"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.084625244140625
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b1e6a1dd2122485d0a1f3a8d30a45443aa9453224f83018bec35f8266bc77915\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.10774993896484375
+      }
+    },
+    {
+      "path": "/fonts/geist/Geist-Bold.woff2",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"04f948593dca628e846e6b41b3ef66bc39ad59fee3571c589a3cd4e267122be2\"",
+          "Content-Length": "46496"
+        },
+        "wireBytes": 46496,
+        "decodedBytes": 46496,
+        "elapsedMs": 0.09566688537597656
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"04f948593dca628e846e6b41b3ef66bc39ad59fee3571c589a3cd4e267122be2\"",
+          "Content-Length": "46496"
+        },
+        "wireBytes": 46496,
+        "decodedBytes": 46496,
+        "elapsedMs": 0.09270763397216797
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"04f948593dca628e846e6b41b3ef66bc39ad59fee3571c589a3cd4e267122be2\"",
+          "Content-Length": "46496"
+        },
+        "wireBytes": 46496,
+        "decodedBytes": 46496,
+        "elapsedMs": 0.08845901489257812
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"04f948593dca628e846e6b41b3ef66bc39ad59fee3571c589a3cd4e267122be2\"",
+          "Content-Length": "46496"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.0906667709350586
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"04f948593dca628e846e6b41b3ef66bc39ad59fee3571c589a3cd4e267122be2\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.11054134368896484
+      }
+    },
+    {
+      "path": "/fonts/geist/GeistMono-Medium.woff2",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"85b99e603f84a47dc8118b5af058ad8f387d7c507a00faeef1b5b60eb371e844\"",
+          "Content-Length": "51500"
+        },
+        "wireBytes": 51500,
+        "decodedBytes": 51500,
+        "elapsedMs": 0.11520957946777344
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"85b99e603f84a47dc8118b5af058ad8f387d7c507a00faeef1b5b60eb371e844\"",
+          "Content-Length": "51500"
+        },
+        "wireBytes": 51500,
+        "decodedBytes": 51500,
+        "elapsedMs": 0.09695911407470703
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"85b99e603f84a47dc8118b5af058ad8f387d7c507a00faeef1b5b60eb371e844\"",
+          "Content-Length": "51500"
+        },
+        "wireBytes": 51500,
+        "decodedBytes": 51500,
+        "elapsedMs": 0.07820892333984375
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"85b99e603f84a47dc8118b5af058ad8f387d7c507a00faeef1b5b60eb371e844\"",
+          "Content-Length": "51500"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.08841705322265625
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"85b99e603f84a47dc8118b5af058ad8f387d7c507a00faeef1b5b60eb371e844\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09758281707763672
+      }
+    },
+    {
+      "path": "/fonts/geist/GeistMono-SemiBold.woff2",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8416445afd947018ffeb31844da808bd7f4356f5dc7d73a084659c32eae26548\"",
+          "Content-Length": "51604"
+        },
+        "wireBytes": 51604,
+        "decodedBytes": 51604,
+        "elapsedMs": 0.07466697692871094
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8416445afd947018ffeb31844da808bd7f4356f5dc7d73a084659c32eae26548\"",
+          "Content-Length": "51604"
+        },
+        "wireBytes": 51604,
+        "decodedBytes": 51604,
+        "elapsedMs": 0.0779571533203125
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8416445afd947018ffeb31844da808bd7f4356f5dc7d73a084659c32eae26548\"",
+          "Content-Length": "51604"
+        },
+        "wireBytes": 51604,
+        "decodedBytes": 51604,
+        "elapsedMs": 0.08845901489257812
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8416445afd947018ffeb31844da808bd7f4356f5dc7d73a084659c32eae26548\"",
+          "Content-Length": "51604"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09124946594238281
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"8416445afd947018ffeb31844da808bd7f4356f5dc7d73a084659c32eae26548\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.0929574966430664
+      }
+    },
+    {
+      "path": "/fonts/outfit/Outfit-latin.woff2",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12\"",
+          "Content-Length": "32228"
+        },
+        "wireBytes": 32228,
+        "decodedBytes": 32228,
+        "elapsedMs": 0.08874988555908203
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12\"",
+          "Content-Length": "32228"
+        },
+        "wireBytes": 32228,
+        "decodedBytes": 32228,
+        "elapsedMs": 0.09841728210449219
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12\"",
+          "Content-Length": "32228"
+        },
+        "wireBytes": 32228,
+        "decodedBytes": 32228,
+        "elapsedMs": 0.091583251953125
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12\"",
+          "Content-Length": "32228"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.07620811462402344
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"92684e4acde79ef07758cd09380b7e01e9824d8b061eddeda046f78c166d7b12\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.10199928283691406
+      }
+    },
+    {
+      "path": "/fonts/outfit/Outfit-latin-ext.woff2",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"9e38b3f1575daba3435ef09d33a202585ed5bd204bd0a8c744955c750c2b9091\"",
+          "Content-Length": "14760"
+        },
+        "wireBytes": 14760,
+        "decodedBytes": 14760,
+        "elapsedMs": 0.11870956420898438
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"9e38b3f1575daba3435ef09d33a202585ed5bd204bd0a8c744955c750c2b9091\"",
+          "Content-Length": "14760"
+        },
+        "wireBytes": 14760,
+        "decodedBytes": 14760,
+        "elapsedMs": 0.09720802307128906
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"9e38b3f1575daba3435ef09d33a202585ed5bd204bd0a8c744955c750c2b9091\"",
+          "Content-Length": "14760"
+        },
+        "wireBytes": 14760,
+        "decodedBytes": 14760,
+        "elapsedMs": 0.07970809936523438
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"9e38b3f1575daba3435ef09d33a202585ed5bd204bd0a8c744955c750c2b9091\"",
+          "Content-Length": "14760"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.07808399200439453
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "font/woff2",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"9e38b3f1575daba3435ef09d33a202585ed5bd204bd0a8c744955c750c2b9091\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09237480163574219
+      }
+    },
+    {
+      "path": "/assets/brand/scout-logo-2x.png",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b5c5f561329346ba0d825d1860d39a81012ea20c524b81bb699c5f04dbacbc0d\"",
+          "Content-Length": "17104"
+        },
+        "wireBytes": 17104,
+        "decodedBytes": 17104,
+        "elapsedMs": 0.09187507629394531
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b5c5f561329346ba0d825d1860d39a81012ea20c524b81bb699c5f04dbacbc0d\"",
+          "Content-Length": "17104"
+        },
+        "wireBytes": 17104,
+        "decodedBytes": 17104,
+        "elapsedMs": 0.09275054931640625
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b5c5f561329346ba0d825d1860d39a81012ea20c524b81bb699c5f04dbacbc0d\"",
+          "Content-Length": "17104"
+        },
+        "wireBytes": 17104,
+        "decodedBytes": 17104,
+        "elapsedMs": 0.07783317565917969
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b5c5f561329346ba0d825d1860d39a81012ea20c524b81bb699c5f04dbacbc0d\"",
+          "Content-Length": "17104"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.09520816802978516
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"b5c5f561329346ba0d825d1860d39a81012ea20c524b81bb699c5f04dbacbc0d\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.08279228210449219
+      }
+    },
+    {
+      "path": "/assets/brand/scout-favicon-2x.png",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"633b4ba2ca745e8576a709a71a2c16c77516ba3eabd66deaa64a7486450e5349\"",
+          "Content-Length": "10888"
+        },
+        "wireBytes": 10888,
+        "decodedBytes": 10888,
+        "elapsedMs": 0.09645938873291016
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"633b4ba2ca745e8576a709a71a2c16c77516ba3eabd66deaa64a7486450e5349\"",
+          "Content-Length": "10888"
+        },
+        "wireBytes": 10888,
+        "decodedBytes": 10888,
+        "elapsedMs": 0.09720897674560547
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"633b4ba2ca745e8576a709a71a2c16c77516ba3eabd66deaa64a7486450e5349\"",
+          "Content-Length": "10888"
+        },
+        "wireBytes": 10888,
+        "decodedBytes": 10888,
+        "elapsedMs": 0.10120868682861328
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"633b4ba2ca745e8576a709a71a2c16c77516ba3eabd66deaa64a7486450e5349\"",
+          "Content-Length": "10888"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.10454082489013672
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"633b4ba2ca745e8576a709a71a2c16c77516ba3eabd66deaa64a7486450e5349\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.08991622924804688
+      }
+    },
+    {
+      "path": "/assets/brand/scout-icon-2x.png",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"20984b1bcd5b867be335b5f0a19f6518d1b9aabbad41549a03c5c70fe454e913\"",
+          "Content-Length": "106759"
+        },
+        "wireBytes": 106759,
+        "decodedBytes": 106759,
+        "elapsedMs": 0.1126251220703125
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"20984b1bcd5b867be335b5f0a19f6518d1b9aabbad41549a03c5c70fe454e913\"",
+          "Content-Length": "106759"
+        },
+        "wireBytes": 106759,
+        "decodedBytes": 106759,
+        "elapsedMs": 0.09491729736328125
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"20984b1bcd5b867be335b5f0a19f6518d1b9aabbad41549a03c5c70fe454e913\"",
+          "Content-Length": "106759"
+        },
+        "wireBytes": 106759,
+        "decodedBytes": 106759,
+        "elapsedMs": 0.07895946502685547
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"20984b1bcd5b867be335b5f0a19f6518d1b9aabbad41549a03c5c70fe454e913\"",
+          "Content-Length": "106759"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.0748748779296875
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "image/png",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"20984b1bcd5b867be335b5f0a19f6518d1b9aabbad41549a03c5c70fe454e913\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.08187484741210938
+      }
+    },
+    {
+      "path": "/site.webmanifest",
+      "identity": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/manifest+json; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"93dcaadbaa3a96e1f4c103b3cc8ea87436de5ea90989d681327aae5706a7507e\"",
+          "Content-Length": "447"
+        },
+        "wireBytes": 447,
+        "decodedBytes": 447,
+        "elapsedMs": 0.08829116821289062
+      },
+      "br": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/manifest+json; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"93dcaadbaa3a96e1f4c103b3cc8ea87436de5ea90989d681327aae5706a7507e\"",
+          "Content-Length": "447"
+        },
+        "wireBytes": 447,
+        "decodedBytes": 447,
+        "elapsedMs": 0.08762550354003906
+      },
+      "warm": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/manifest+json; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"93dcaadbaa3a96e1f4c103b3cc8ea87436de5ea90989d681327aae5706a7507e\"",
+          "Content-Length": "447"
+        },
+        "wireBytes": 447,
+        "decodedBytes": 447,
+        "elapsedMs": 0.08483314514160156
+      },
+      "head": {
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/manifest+json; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"93dcaadbaa3a96e1f4c103b3cc8ea87436de5ea90989d681327aae5706a7507e\"",
+          "Content-Length": "447"
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.06875038146972656
+      },
+      "etag304": {
+        "status": 304,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/manifest+json; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "ETag": "W/\"93dcaadbaa3a96e1f4c103b3cc8ea87436de5ea90989d681327aae5706a7507e\""
+        },
+        "wireBytes": 0,
+        "decodedBytes": 0,
+        "elapsedMs": 0.08187484741210938
+      }
+    }
+  ],
+  "staticCache": {
+    "files": 30,
+    "templates": 15,
+    "bytes": 2121769,
+    "maxFiles": 128,
+    "maxBytes": 12582912
+  },
+  "json": {
+    "bodyBytes": 17701,
+    "variants": [
+      {
+        "label": "identity",
+        "headers": {
+          "accept-encoding": "identity"
+        },
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Vary": "Accept-Encoding, Cookie",
+          "Content-Length": "17701"
+        },
+        "wireBytes": 17701,
+        "decodedBytes": 17701,
+        "elapsedMs": 0.05525016784667969
+      },
+      {
+        "label": "br",
+        "headers": {
+          "accept-encoding": "br, gzip"
+        },
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Vary": "Accept-Encoding, Cookie",
+          "Content-Encoding": "br",
+          "Content-Length": "662"
+        },
+        "wireBytes": 662,
+        "decodedBytes": 17701,
+        "elapsedMs": 0.0946664810180664
+      },
+      {
+        "label": "gzip",
+        "headers": {
+          "accept-encoding": "gzip, br;q=0.2"
+        },
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Vary": "Accept-Encoding, Cookie",
+          "Content-Encoding": "gzip",
+          "Content-Length": "915"
+        },
+        "wireBytes": 915,
+        "decodedBytes": 17701,
+        "elapsedMs": 0.17979145050048828
+      },
+      {
+        "label": "br-explicit",
+        "headers": {
+          "accept-encoding": "gzip;q=0.5, br;q=1"
+        },
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Vary": "Accept-Encoding, Cookie",
+          "Content-Encoding": "br",
+          "Content-Length": "662"
+        },
+        "wireBytes": 662,
+        "decodedBytes": 17701,
+        "elapsedMs": 0.023041725158691406
+      },
+      {
+        "label": "br-disabled",
+        "headers": {
+          "accept-encoding": "br;q=0, gzip;q=0"
+        },
+        "status": 200,
+        "responseHeaders": {
+          "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+          "Cross-Origin-Opener-Policy": "same-origin",
+          "Cross-Origin-Resource-Policy": "same-origin",
+          "Referrer-Policy": "strict-origin-when-cross-origin",
+          "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+          "X-Content-Type-Options": "nosniff",
+          "X-Frame-Options": "DENY",
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Vary": "Accept-Encoding, Cookie",
+          "Content-Length": "17701"
+        },
+        "wireBytes": 17701,
+        "decodedBytes": 17701,
+        "elapsedMs": 0.008957862854003906
+      }
+    ],
+    "etag": {
+      "status": 200,
+      "responseHeaders": {
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "ETag": "W/\"delivery-after\"",
+        "Vary": "Accept-Encoding, Cookie",
+        "Content-Encoding": "br",
+        "Content-Length": "662"
+      },
+      "wireBytes": 662,
+      "decodedBytes": 17701,
+      "elapsedMs": 0.024749755859375
+    },
+    "etag304": {
+      "status": 304,
+      "responseHeaders": {
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "ETag": "W/\"delivery-after\"",
+        "Vary": "Accept-Encoding, Cookie"
+      },
+      "wireBytes": 0,
+      "decodedBytes": 0,
+      "elapsedMs": 0.0072498321533203125
+    },
+    "head": {
+      "status": 200,
+      "responseHeaders": {
+        "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://picsum.photos https://logos.hunter.io https://www.google.com; font-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Resource-Policy": "same-origin",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Content-Type": "application/json; charset=utf-8",
+        "Cache-Control": "no-store",
+        "ETag": "W/\"delivery-head\"",
+        "Vary": "Accept-Encoding, Cookie"
+      },
+      "wireBytes": 0,
+      "decodedBytes": 0,
+      "elapsedMs": 0.006083488464355469
+    },
+    "headCacheUnchanged": true,
+    "representationCache": {
+      "entries": 2,
+      "bytes": 1577,
+      "hits": 2,
+      "misses": 2,
+      "maxEntries": 128,
+      "maxBytes": 4194304
+    }
+  },
+  "repeatedCompression": {
+    "br": {
+      "repeats": 100,
+      "medianMs": 0.048000335693359375,
+      "p95Ms": 0.053208351135253906,
+      "minMs": 0.04633331298828125,
+      "maxMs": 0.06816673278808594,
+      "encodedBytes": 662,
+      "algorithm": "brotli-quality-5"
+    },
+    "gzip": {
+      "repeats": 100,
+      "medianMs": 0.041375160217285156,
+      "p95Ms": 0.05541706085205078,
+      "minMs": 0.039916038513183594,
+      "maxMs": 0.19112491607666016,
+      "encodedBytes": 915,
+      "algorithm": "gzip-default"
+    }
+  },
+  "notes": [
+    "Local in-process probe; no browser, external network, database, or production writes.",
+    "HEAD skips synchronous compression; coded GETs omit HEAD Content-Length while identity GETs retain the raw length.",
+    "Static cache uses stat fingerprint invalidation and bounded body/template entries."
+  ]
+}

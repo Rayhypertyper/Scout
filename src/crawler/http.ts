@@ -324,12 +324,16 @@ export class HttpClient {
 
       const circuit = this.circuits.get(domain);
       if (circuit && circuit.openUntil > Date.now()) {
-        throw new HttpRequestError(
+        const circuitError = new HttpRequestError(
           `Circuit open for ${domain} until ${new Date(circuit.openUntil).toISOString()} (${circuit.reason})`,
           null,
           0,
           "circuit_open",
         );
+        if (cacheEntry && this.shouldServeStaleCache(circuitError, options, cacheEntry, 0, 0)) {
+          return this.staleCacheSnapshot(requestedUrl, cacheEntry, 0, domain);
+        }
+        throw circuitError;
       }
 
       const headers = callerHeaders;
@@ -594,7 +598,9 @@ export class HttpClient {
     attempt: number,
     retryCount: number,
   ): boolean {
-    if (!options.staleIfError || !cacheEntry || !isTransientHttpRequestError(error)) return false;
+    const staleEligible = isTransientHttpRequestError(error) || error.errorType === "circuit_open";
+    if (!options.staleIfError || !cacheEntry || !staleEligible) return false;
+    if (error.errorType === "circuit_open") return true;
     // Give a cached source one refresh attempt, then fail over quickly instead
     // of waiting through a long retry storm while the rest of the crawl runs.
     return attempt >= Math.min(1, retryCount);

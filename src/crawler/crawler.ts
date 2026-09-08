@@ -263,6 +263,10 @@ export function isRetryableFailure(failure: Pick<FetchFailure, "errorType" | "st
   ].includes(errorType);
 }
 
+function isClosedDetailFailure(failure: FetchFailure): boolean {
+  return failure.statusCode === 404 || failure.errorType.toLocaleLowerCase() === "not_found";
+}
+
 /** Run every source to settlement so one rejection cannot abort sibling work. */
 export async function settleSourceTasks<T>(
   tasks: Array<() => Promise<T>>,
@@ -2328,7 +2332,17 @@ export class InternshipCrawler {
           failures.push({ sourceUrl, url: snapshot.url, errorType: "parse_error", message: error instanceof Error ? error.message : String(error), statusCode: snapshot.status, retryCount: 0, occurredAt: new Date().toISOString() });
         }
       }
-      failures.push(...details.failures);
+      // A detail URL returning 404 is an explicit posting-closure signal, not
+      // a source failure. Treating every stale listing link as a failed page
+      // makes a healthy listing page look broken and floods the dashboard with
+      // one permanent error per stale detail URL.
+      const closedDetailFailures = details.failures.filter(isClosedDetailFailure);
+      failures.push(...details.failures.filter((failure) => !isClosedDetailFailure(failure)));
+      const closedPages: ClosedPage[] = closedDetailFailures.map((failure) => ({
+        url: failure.url,
+        reason: failure.statusCode === 404 ? "HTTP 404" : failure.message,
+        statusCode: failure.statusCode,
+      }));
       for (const failure of details.failures) {
         const candidate = selected.find(({ url }) => url === failure.url);
         if (candidate && isRetryableFailure(failure)) {
@@ -2389,7 +2403,7 @@ export class InternshipCrawler {
         potentialPostingsInspected,
         jobs: deduplicatedJobs,
         failures,
-        closedPages: [],
+        closedPages,
         completed: listing.listingSnapshots.length > 0,
         coverageComplete: status === "success",
         status,
@@ -2399,7 +2413,17 @@ export class InternshipCrawler {
         directApplicationLinks: deduplicatedJobs.filter(({ internship }) => hasDirectApplicationUrl(sourceUrl, internship.applicationUrl)).length,
         retrievalMode: "configured_url",
         retrievalUrls: uniqueUrls([...listing.retrievalUrls, ...details.retrievalUrls]),
-        ...(listing.notes.length > 0 || authenticationRequired ? { coverageNotes: [...listing.notes, ...(authenticationRequired ? ["Listings were retrieved, but the public application controls lead to InternInsider's /apply flow and require an account/session for direct submission."] : [])] } : {}),
+        ...(listing.notes.length > 0 || closedPages.length > 0 || authenticationRequired
+          ? {
+            coverageNotes: [
+              ...listing.notes,
+              ...(closedPages.length > 0
+                ? [`${closedPages.length} detail listing URL(s) returned HTTP 404 and were treated as closed postings.`]
+                : []),
+              ...(authenticationRequired ? ["Listings were retrieved, but the public application controls lead to InternInsider's /apply flow and require an account/session for direct submission."] : []),
+            ],
+          }
+          : {}),
         metrics,
       };
     } catch (error) {

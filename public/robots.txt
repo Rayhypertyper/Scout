@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /auth/
+Disallow: /owner/
+Disallow: /owner-analytics.html
+Disallow: /admin/
+Sitemap: __SITEMAP_URL__

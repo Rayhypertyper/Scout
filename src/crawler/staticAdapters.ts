@@ -312,7 +312,9 @@ function failureRetryCount(error: unknown): number {
 }
 
 function resilientBoardRequestOptions(profile: AdapterProfile): { staleIfError?: boolean } {
-  return profile.name === "CSJobs" || profile.name === "HiringCafe" ? { staleIfError: true } : {};
+  return profile.name === "CSJobs" || profile.name === "HiringCafe" || profile.name === "InternInsider"
+    ? { staleIfError: true }
+    : {};
 }
 
 export class StaticHttpAdapter {

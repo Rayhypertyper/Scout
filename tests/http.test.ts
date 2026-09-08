@@ -92,6 +92,28 @@ describe("shared HTTP retry and circuit policy", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("serves stale cache while the domain circuit is open", async () => {
+    const url = "https://interninsider.me/internships/new";
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("cached page", { status: 200 }))
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }));
+    const http = client({
+      cacheTtlMs: 0,
+      retryCount: 0,
+      circuitBreakerFailureThreshold: 1,
+    });
+
+    await http.get(url);
+    await expect(http.get(url, { cache: false })).rejects.toMatchObject({ errorType: "rate_limited" });
+
+    await expect(http.get(url, { staleIfError: true })).resolves.toMatchObject({
+      body: "cached page",
+      fromCache: true,
+      stale: true,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("gives HiringCafe a 30s request budget instead of the 10s connect+read default", async () => {
     const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => (

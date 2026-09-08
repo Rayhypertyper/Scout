@@ -1,0 +1,450 @@
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/geist/Geist-Regular.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/geist/Geist-SemiBold.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 600;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("/fonts/geist/GeistMono-SemiBold.woff2") format("woff2");
+  font-display: swap;
+  font-weight: 600;
+}
+
+:root {
+  color-scheme: light;
+  --field-canvas: #f2f0e9;
+  --paper: #fbfaf6;
+  --forest: #15201a;
+  --forest-ink: #17201b;
+  --signal-lime: #d9ef70;
+  --signal-ink: #18200f;
+  --ink: #17201b;
+  --ink-2: #3d4741;
+  --muted: #59645d;
+  --line: #d8dbd3;
+  --line-2: #e8e9e3;
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", "SFMono-Regular", Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  overflow-x: clip;
+  background: var(--field-canvas);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.7;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--signal-lime);
+  color: var(--signal-ink);
+}
+
+a {
+  color: inherit;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--forest-ink);
+}
+
+:where(a, button):focus-visible {
+  outline: 2px solid var(--forest-ink);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px var(--signal-lime);
+}
+
+.skip-link {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  left: max(16px, env(safe-area-inset-left));
+  z-index: 20;
+  padding: 9px 13px;
+  background: var(--signal-lime);
+  color: var(--signal-ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-180%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+.privacy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  gap: 24px;
+  padding: max(12px, env(safe-area-inset-top)) max(32px, env(safe-area-inset-right)) 12px max(32px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+
+.privacy-brand {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: 10px;
+  color: var(--forest-ink);
+  text-decoration: none;
+}
+
+.privacy-brand-mark {
+  display: inline-grid;
+  width: 144px;
+  height: 48px;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.privacy-brand-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.privacy-brand-name {
+  display: none;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.privacy-header-nav,
+.privacy-footer nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 22px;
+}
+
+.privacy-header-nav a,
+.privacy-footer a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.privacy-header-nav a:first-child {
+  color: var(--forest-ink);
+}
+
+.privacy-header-nav a:last-child {
+  color: var(--muted);
+}
+
+.privacy-main {
+  padding: clamp(52px, 8vw, 112px) max(24px, env(safe-area-inset-right)) clamp(80px, 12vw, 152px) max(24px, env(safe-area-inset-left));
+}
+
+.privacy-layout {
+  display: grid;
+  grid-template-columns: minmax(170px, 0.25fr) minmax(0, 1fr);
+  align-items: start;
+  gap: clamp(48px, 8vw, 128px);
+  width: min(100%, 1180px);
+  margin: 0 auto;
+}
+
+.privacy-index {
+  position: sticky;
+  top: 28px;
+  min-width: 0;
+}
+
+.privacy-index-title {
+  margin: 0 0 10px;
+  color: var(--muted);
+  font: 600 10px/1.3 var(--font-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.privacy-index ol {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: privacy-sections;
+}
+
+.privacy-index li {
+  min-width: 0;
+  counter-increment: privacy-sections;
+}
+
+.privacy-index a {
+  display: flex;
+  align-items: flex-start;
+  min-height: 40px;
+  gap: 8px;
+  padding: 7px 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-decoration: none;
+}
+
+.privacy-index a::before {
+  flex: 0 0 20px;
+  color: var(--ink-2);
+  content: counter(privacy-sections, decimal-leading-zero);
+  font: 600 9px/1.55 var(--font-mono);
+}
+
+.privacy-index a:hover,
+.privacy-index a:focus-visible {
+  color: var(--forest-ink);
+  text-decoration: underline;
+}
+
+.privacy-document {
+  min-width: 0;
+  max-width: 780px;
+}
+
+.privacy-heading {
+  padding-bottom: 30px;
+  border-bottom: 1px solid var(--line);
+}
+
+.privacy-heading h1 {
+  max-width: 10ch;
+  margin: 0;
+  color: var(--forest-ink);
+  font-size: clamp(2.9rem, 7vw, 5.25rem);
+  font-weight: 600;
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.privacy-effective {
+  margin: 26px 0 0;
+  color: var(--muted);
+  font: 600 11px/1.45 var(--font-mono);
+  letter-spacing: 0.015em;
+}
+
+.privacy-copy {
+  max-width: 72ch;
+  padding-top: 32px;
+  color: var(--ink-2);
+}
+
+.privacy-copy p {
+  margin: 0 0 17px;
+  text-wrap: pretty;
+}
+
+.privacy-copy ul {
+  margin: 10px 0 21px;
+  padding-left: 1.4em;
+}
+
+.privacy-copy li {
+  padding-left: 0.22em;
+  margin: 3px 0;
+}
+
+.privacy-copy section {
+  scroll-margin-top: 28px;
+  padding-top: 54px;
+}
+
+.privacy-copy section + section {
+  border-top: 1px solid var(--line);
+}
+
+.privacy-copy h2,
+.privacy-copy h3 {
+  color: var(--forest-ink);
+  text-wrap: balance;
+}
+
+.privacy-copy h2 {
+  margin: 0 0 20px;
+  font-size: clamp(1.35rem, 2.4vw, 1.7rem);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.025em;
+}
+
+.privacy-copy h3 {
+  margin: 32px 0 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.privacy-copy h2 + p,
+.privacy-copy h3 + p {
+  margin-top: 0;
+}
+
+.privacy-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 76px;
+  gap: 24px;
+  padding: 12px max(32px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(32px, env(safe-area-inset-left));
+  background: var(--forest);
+  color: #c2ccc3;
+  font-size: 10px;
+}
+
+.privacy-footer a {
+  color: var(--signal-lime);
+}
+
+.privacy-footer a:hover {
+  color: #efffb4;
+  text-decoration: underline;
+}
+
+@media (max-width: 840px) {
+  .privacy-header {
+    padding-right: max(22px, env(safe-area-inset-right));
+    padding-left: max(22px, env(safe-area-inset-left));
+  }
+
+  .privacy-main {
+    padding-top: 48px;
+  }
+
+  .privacy-layout {
+    grid-template-columns: 1fr;
+    gap: 44px;
+  }
+
+  .privacy-index {
+    position: static;
+    padding-bottom: 28px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .privacy-index ol {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+
+  .privacy-document {
+    max-width: 72ch;
+  }
+}
+
+@media (max-width: 520px) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .privacy-header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding-top: max(8px, env(safe-area-inset-top));
+  }
+
+  .privacy-brand-mark {
+    width: 120px;
+    height: 40px;
+  }
+
+  .privacy-header-nav {
+    gap: 12px;
+  }
+
+  .privacy-header-nav a {
+    min-height: 40px;
+  }
+
+  .privacy-main {
+    padding-top: 40px;
+    padding-right: max(18px, env(safe-area-inset-right));
+    padding-left: max(18px, env(safe-area-inset-left));
+  }
+
+  .privacy-index a {
+    min-height: 42px;
+  }
+
+  .privacy-heading {
+    padding-bottom: 24px;
+  }
+
+  .privacy-heading h1 {
+    font-size: clamp(2.8rem, 14vw, 4rem);
+  }
+
+  .privacy-copy {
+    padding-top: 27px;
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  .privacy-copy section {
+    padding-top: 42px;
+  }
+
+  .privacy-copy h2 {
+    font-size: 1.35rem;
+  }
+
+  .privacy-footer {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: max(18px, env(safe-area-inset-right));
+    padding-left: max(18px, env(safe-area-inset-left));
+  }
+
+  .privacy-footer nav {
+    gap: 4px 16px;
+  }
+}
+
+@media (max-width: 380px) {
+  .privacy-index ol {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}

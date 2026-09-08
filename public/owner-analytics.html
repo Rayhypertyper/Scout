@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Private Scout owner analytics." />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="theme-color" content="#15201a" />
+    <title>Owner Analytics — Scout</title>
+    <link rel="icon" href="/assets/brand/scout-favicon.png" type="image/png" />
+    <link rel="preload" href="/fonts/geist/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/geist/Geist-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/geist/GeistMono-SemiBold.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/owner-analytics.css?v=__OWNER_ANALYTICS_CSS_VERSION__" />
+    <script type="module" src="/owner-analytics.js?v=__OWNER_ANALYTICS_SCRIPT_VERSION__"></script>
+  </head>
+  <body>
+    <!--
+      THESIS: A private operating read for the person responsible for Scout, with the signal separated from the implementation details.
+      OWN-WORLD: Warm paper, dark forest rail, compact Geist typography, hairlines, and lime only for live state or decisive action.
+      FIRST VIEWPORT: The owner sees the product signal first, then account growth, billing readiness, and the most recent accounts.
+      DATA BOUNDARY: Supabase Auth supplies account facts; paid status comes only from the server-owned scout_subscriptions projection.
+    -->
+    <a class="skip-link" href="#main-content">Skip to analytics</a>
+
+    <div class="owner-shell">
+      <aside class="owner-rail" aria-label="Owner console navigation">
+        <div class="owner-rail-top">
+          <a class="owner-brand" href="/jobs" aria-label="Return to Scout listings" translate="no">
+            <span class="owner-brand-mark" aria-hidden="true">
+              <img src="/assets/brand/scout-logo.png" alt="" width="30" height="30" />
+            </span>
+            <span class="owner-brand-copy">
+              <strong>Scout</strong>
+              <span>Opportunity intelligence</span>
+            </span>
+          </a>
+          <span class="owner-console-label">Private console</span>
+        </div>
+
+        <nav class="owner-nav" aria-label="Owner console">
+          <a class="owner-nav-item is-active" href="/owner/analytics" aria-current="page">
+            <span class="owner-nav-mark" aria-hidden="true"></span>
+            <span>Analytics</span>
+          </a>
+          <a class="owner-nav-item" href="/jobs">
+            <span class="owner-nav-mark" aria-hidden="true"></span>
+            <span>Open Scout</span>
+          </a>
+          <a class="owner-nav-item" href="/pro">
+            <span class="owner-nav-mark" aria-hidden="true"></span>
+            <span>Pricing surface</span>
+          </a>
+        </nav>
+
+        <div class="owner-rail-bottom">
+          <div class="owner-viewer">
+            <span class="owner-viewer-label">Signed in as</span>
+            <strong>__OWNER_EMAIL__</strong>
+          </div>
+          <button id="owner-logout" class="owner-logout" type="button">
+            <span class="button-label">Log out</span>
+          </button>
+        </div>
+      </aside>
+
+      <main id="main-content" class="owner-main" aria-labelledby="analytics-title">
+        <header class="owner-header">
+          <div class="owner-heading">
+            <h1 id="analytics-title">Product signal.</h1>
+            <p>See who is finding Scout, who is returning, and whether paid demand is becoming real.</p>
+          </div>
+          <div class="owner-header-meta">
+            <span class="live-mark" aria-hidden="true"></span>
+            <span>Owner view</span>
+            <span class="meta-divider" aria-hidden="true"></span>
+            <time id="analytics-last-refresh" datetime="">Waiting for first read</time>
+          </div>
+        </header>
+
+        <div class="owner-toolbar">
+          <div class="range-control" role="group" aria-label="Signup reporting range">
+            <span class="toolbar-label">Range</span>
+            <button class="range-button" type="button" data-range="7" aria-pressed="false">7 days</button>
+            <button class="range-button is-active" type="button" data-range="30" aria-pressed="true">30 days</button>
+            <button class="range-button" type="button" data-range="90" aria-pressed="false">90 days</button>
+          </div>
+          <button id="analytics-refresh" class="refresh-button" type="button">
+            <span class="refresh-icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none"><path d="M16.4 7.2A6.5 6.5 0 1 0 17 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M13.7 3.9h3.1V7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="button-label">Refresh data</span>
+          </button>
+        </div>
+
+        <section id="analytics-state-panel" class="analytics-state-panel" data-analytics-state="error" hidden aria-live="polite">
+          <div class="state-rule" aria-hidden="true"></div>
+          <div>
+            <h2 data-state-title>Analytics are waiting.</h2>
+            <p data-state-copy>Try reading the data again.</p>
+          </div>
+          <button class="state-action" type="button" data-state-action>Retry</button>
+        </section>
+
+        <div data-analytics-content hidden>
+          <section class="metric-strip" aria-label="Account metrics">
+            <article class="metric-item">
+              <span class="metric-label">Total users</span>
+              <strong class="metric-value" data-metric="totalUsers">—</strong>
+              <span class="metric-note">All Auth accounts</span>
+            </article>
+            <article class="metric-item">
+              <span class="metric-label">Verified</span>
+              <strong class="metric-value" data-metric="verifiedUsers">—</strong>
+              <span class="metric-note" data-metric-note="verifiedUsers">Email-confirmed accounts</span>
+            </article>
+            <article class="metric-item metric-item-signal">
+              <span class="metric-label">Paid users</span>
+              <strong class="metric-value" data-metric="paidUsers">—</strong>
+              <span class="metric-note" data-metric-note="paidUsers">Billing source not connected</span>
+            </article>
+            <article class="metric-item">
+              <span class="metric-label">Paid conversion</span>
+              <strong class="metric-value" data-metric="conversionRate">—</strong>
+              <span class="metric-note" data-metric-note="conversionRate">Paid users / total users</span>
+            </article>
+          </section>
+
+          <div class="analytics-grid">
+            <section class="analytics-panel growth-panel" aria-labelledby="growth-title">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="growth-title">Account growth</h2>
+                  <p data-growth-summary>Signups across the selected range.</p>
+                </div>
+                <span class="panel-source">Supabase Auth</span>
+              </div>
+              <div class="signup-chart" role="img" aria-label="Signups across the selected range">
+                <div class="chart-bars" data-chart-bars></div>
+                <div class="chart-axis" data-chart-axis aria-hidden="true"></div>
+              </div>
+              <p class="chart-empty" data-chart-empty hidden>No signups recorded in this range.</p>
+            </section>
+
+            <section class="analytics-panel billing-panel" aria-labelledby="billing-title">
+              <div class="panel-heading">
+                <div>
+                  <h2 id="billing-title">Billing signal</h2>
+                  <p data-billing-summary>Paid status comes from a server-owned record.</p>
+                </div>
+                <span class="panel-source" data-billing-state>Checking</span>
+              </div>
+              <div class="billing-readout">
+                <strong data-billing-paid>—</strong>
+                <span>paid accounts</span>
+              </div>
+              <div class="billing-secondary">
+                <div><span>Trialing</span><strong data-billing-trial>—</strong></div>
+                <div><span>Plans</span><strong data-billing-plan-count>—</strong></div>
+              </div>
+              <div class="plan-list" data-plan-list></div>
+            </section>
+          </div>
+
+          <section class="analytics-panel recent-panel" aria-labelledby="recent-title">
+            <div class="panel-heading recent-heading">
+              <div>
+                <h2 id="recent-title">Recent accounts</h2>
+                <p>Newest Auth accounts, with billing status when the source is connected.</p>
+              </div>
+              <span class="panel-source">Latest 10</span>
+            </div>
+            <div class="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Account</th>
+                    <th scope="col">Created</th>
+                    <th scope="col">Last seen</th>
+                    <th scope="col">State</th>
+                  </tr>
+                </thead>
+                <tbody data-recent-users>
+                  <tr><td colspan="4" class="table-empty">No accounts to show.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <footer class="owner-footnote">
+            <span>Account facts are read from Supabase Auth.</span>
+            <span>Paid status is counted only from <code>scout_subscriptions</code>.</span>
+          </footer>
+        </div>
+      </main>
+    </div>
+  </body>
+</html>

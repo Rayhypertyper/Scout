@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Scout — Internship discovery",
+  "short_name": "Scout",
+  "description": "A current shortlist for software and tech internship discovery.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f2f0e9",
+  "theme_color": "#f2f0e9",
+  "icons": [
+    {
+      "src": "/assets/brand/scout-icon-2x.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

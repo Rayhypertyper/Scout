@@ -47,8 +47,9 @@ describe("public source fallbacks", () => {
     expect(SOURCES).toContain("https://www.useno.app/internship-masterlist");
   });
 
-  it("schedules the canonical Early Career Radar superset only once", () => {
-    expect(SOURCES).toContain("https://earlycareerradar.com/summer-internships?locations=country%3ACanada%7Cus&years=1st+year%2C2nd+year%2C3rd+year%2C4th+year%2CAny+undergraduate+year%2CUndergraduate+%E2%80%94+year+not+stated%2CNot+stated");
+  it("schedules only the bare Early Career Radar listing route", () => {
+    expect(SOURCES).toContain("https://earlycareerradar.com/summer-internships");
+    expect(SOURCES).not.toContain("https://earlycareerradar.com/summer-internships?locations=country%3ACanada%7Cus&years=1st+year%2C2nd+year%2C3rd+year%2C4th+year%2CAny+undergraduate+year%2CUndergraduate+%E2%80%94+year+not+stated%2CNot+stated");
     expect(SOURCES).not.toContain("https://earlycareerradar.com/summer-internships?locations=all");
     expect(SOURCES).not.toContain("https://internship-radar-2027.yuxhuang.com/?locations=country%3ACanada%7Cus");
     expect(SOURCES).not.toContain("https://internship-radar-2027.yuxhuang.com/?locations=country%3ACanada%7Cus&years=1st+year%2C2nd+year%2CAny+undergraduate+year%2CUndergraduate+%E2%80%94+year+not+stated%2CNot+stated");

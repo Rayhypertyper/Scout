@@ -6,7 +6,7 @@
 export const SOURCES: string[] = [
   "https://csjobs.ca/internships/toronto",
   "https://didtheboysgrindleetcodetoday.com/jobs",
-  "https://earlycareerradar.com/summer-internships?locations=country%3ACanada%7Cus&years=1st+year%2C2nd+year%2C3rd+year%2C4th+year%2CAny+undergraduate+year%2CUndergraduate+%E2%80%94+year+not+stated%2CNot+stated",
+  "https://earlycareerradar.com/summer-internships",
   "https://github.com/DereC4/internships-and-newgrad",
   "https://github.com/SimplifyJobs/Summer2027-Internships",
   "https://github.com/SuryaHarikrishnan/2027-internship-tracker/blob/master/listings/data-science-ai-machine-learning.md",

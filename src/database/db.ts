@@ -1466,6 +1466,18 @@ export class InternshipDatabase {
       WHERE payload_json LIKE '%"other"%'
          OR payload_json LIKE '%"other_code"%'
          OR payload_json LIKE '%"other code"%'
+         OR payload_json LIKE '%"finance"%'
+         OR payload_json LIKE '%"hr"%'
+         OR payload_json LIKE '%"hardware"%'
+         OR payload_json LIKE '%"design"%'
+         OR payload_json LIKE '%"operations"%'
+         OR payload_json LIKE '%"legal"%'
+         OR payload_json LIKE '%"marketing"%'
+         OR payload_json LIKE '%"sales"%'
+         OR payload_json LIKE '%"accounting"%'
+         OR payload_json LIKE '%"product"%'
+         OR payload_json LIKE '%"customer-support"%'
+         OR payload_json LIKE '%"other-role"%'
     `).iterate() as Iterable<{ id: string; payload_json: string }>;
     const update = this.database.prepare(`
       UPDATE internships

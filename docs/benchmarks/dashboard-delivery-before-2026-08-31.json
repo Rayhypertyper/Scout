@@ -1,0 +1,371 @@
+{
+  "schemaVersion": 1,
+  "benchmark": "dashboard-delivery-direct-before",
+  "capturedAt": "2026-08-31T19:00:52.469Z",
+  "node": "v24.18.0",
+  "sourceSnapshot": "/private/tmp/scout-delivery-before-IVoYeO",
+  "fixture": {
+    "jsonBodyBytes": 17701
+  },
+  "static": [
+    {
+      "path": "/jobs/",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "content-length": "63590"
+      },
+      "bodyBytes": 63590,
+      "elapsedMs": 2.1898330000000072
+    },
+    {
+      "path": "/jobs/",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "content-length": "63590"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 1.0389579999999938
+    },
+    {
+      "path": "/index.html",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "content-length": "63590"
+      },
+      "bodyBytes": 63590,
+      "elapsedMs": 0.7864580000000103
+    },
+    {
+      "path": "/index.html",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        "content-length": "63590"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 0.913375000000002
+    },
+    {
+      "path": "/styles.css",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "text/css; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "52216"
+      },
+      "bodyBytes": 52216,
+      "elapsedMs": 0.06616699999999298
+    },
+    {
+      "path": "/styles.css",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "text/css; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "52216"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 0.0672919999999948
+    },
+    {
+      "path": "/redesign.css",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "text/css; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "86513"
+      },
+      "bodyBytes": 86513,
+      "elapsedMs": 0.07562500000000227
+    },
+    {
+      "path": "/redesign.css",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "text/css; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "86513"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 0.06529100000000199
+    },
+    {
+      "path": "/conversion.css",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "text/css; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "9115"
+      },
+      "bodyBytes": 9115,
+      "elapsedMs": 0.0659169999999989
+    },
+    {
+      "path": "/conversion.css",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "text/css; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "9115"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 0.058875000000000455
+    },
+    {
+      "path": "/themed-select.js",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "text/javascript; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "13858"
+      },
+      "bodyBytes": 13858,
+      "elapsedMs": 0.1612920000000031
+    },
+    {
+      "path": "/themed-select.js",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "text/javascript; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "13858"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 0.050749999999993634
+    },
+    {
+      "path": "/app.js",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "text/javascript; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "258981"
+      },
+      "bodyBytes": 258981,
+      "elapsedMs": 0.08050000000000068
+    },
+    {
+      "path": "/app.js",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "text/javascript; charset=utf-8",
+        "cache-control": "no-cache",
+        "content-length": "258981"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 0.061499999999995225
+    },
+    {
+      "path": "/fonts/geist/Geist-Regular.woff2",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "application/octet-stream",
+        "cache-control": "no-cache",
+        "content-length": "45244"
+      },
+      "bodyBytes": 45244,
+      "elapsedMs": 0.5515829999999937
+    },
+    {
+      "path": "/fonts/geist/Geist-Regular.woff2",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "application/octet-stream",
+        "cache-control": "no-cache",
+        "content-length": "45244"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 0.06479199999999707
+    },
+    {
+      "path": "/assets/brand/roleradar-mark.svg",
+      "method": "GET",
+      "status": 200,
+      "headers": {
+        "content-type": "image/svg+xml",
+        "cache-control": "no-cache",
+        "content-length": "418"
+      },
+      "bodyBytes": 418,
+      "elapsedMs": 0.19308300000000145
+    },
+    {
+      "path": "/assets/brand/roleradar-mark.svg",
+      "method": "HEAD",
+      "status": 200,
+      "headers": {
+        "content-type": "image/svg+xml",
+        "cache-control": "no-cache",
+        "content-length": "418"
+      },
+      "bodyBytes": 0,
+      "elapsedMs": 0.04845799999999656
+    }
+  ],
+  "json": [
+    {
+      "label": "identity",
+      "headers": {
+        "accept-encoding": "identity"
+      },
+      "status": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "vary": "Accept-Encoding",
+        "content-length": "17701"
+      },
+      "wireBytes": 17701,
+      "decodedBytes": 17701,
+      "elapsedMs": 0.11275000000000546
+    },
+    {
+      "label": "br",
+      "headers": {
+        "accept-encoding": "br, gzip"
+      },
+      "status": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "vary": "Accept-Encoding",
+        "content-encoding": "br",
+        "content-length": "582"
+      },
+      "wireBytes": 582,
+      "decodedBytes": 17701,
+      "elapsedMs": 22.879999999999995
+    },
+    {
+      "label": "gzip",
+      "headers": {
+        "accept-encoding": "gzip, br;q=0.2"
+      },
+      "status": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "vary": "Accept-Encoding",
+        "content-encoding": "gzip",
+        "content-length": "915"
+      },
+      "wireBytes": 915,
+      "decodedBytes": 17701,
+      "elapsedMs": 0.6324589999999972
+    },
+    {
+      "label": "br-explicit",
+      "headers": {
+        "accept-encoding": "gzip;q=0.5, br;q=1"
+      },
+      "status": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "vary": "Accept-Encoding",
+        "content-encoding": "br",
+        "content-length": "582"
+      },
+      "wireBytes": 582,
+      "decodedBytes": 17701,
+      "elapsedMs": 22.553334000000007
+    },
+    {
+      "label": "br-disabled",
+      "headers": {
+        "accept-encoding": "br;q=0, gzip;q=0"
+      },
+      "status": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "vary": "Accept-Encoding",
+        "content-length": "17701"
+      },
+      "wireBytes": 17701,
+      "decodedBytes": 17701,
+      "elapsedMs": 0.02866599999998698
+    },
+    {
+      "label": "etag-304",
+      "headers": {
+        "accept-encoding": "br",
+        "if-none-match": "\"baseline\""
+      },
+      "status": 304,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "etag": "W/\"baseline\"",
+        "vary": "Accept-Encoding"
+      },
+      "wireBytes": 0,
+      "decodedBytes": 0,
+      "elapsedMs": 0.09991599999997902
+    },
+    {
+      "label": "head-br",
+      "headers": {
+        "accept-encoding": "br"
+      },
+      "status": 200,
+      "responseHeaders": {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "etag": "W/\"different\"",
+        "vary": "Accept-Encoding",
+        "content-encoding": "br",
+        "content-length": "582"
+      },
+      "wireBytes": 0,
+      "decodedBytes": null,
+      "elapsedMs": 23.368749999999977
+    }
+  ],
+  "repeatedCompression": {
+    "br": {
+      "repeats": 100,
+      "medianMs": 22.38474999999994,
+      "p95Ms": 24.519499999999994,
+      "minMs": 21.298292000000174,
+      "maxMs": 25.439333000000033
+    },
+    "gzip": {
+      "repeats": 100,
+      "medianMs": 0.04866700000002311,
+      "p95Ms": 0.07233300000007148,
+      "minMs": 0.04183299999976953,
+      "maxMs": 1.0234999999997854
+    },
+    "identity": {
+      "repeats": 100,
+      "medianMs": 0.005125000000134605,
+      "p95Ms": 0.009250000000065484,
+      "minMs": 0.004417000000103144,
+      "maxMs": 0.011500000000069122
+    }
+  }
+}

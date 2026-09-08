@@ -2917,7 +2917,7 @@ function parseFastQuery(requestUrl: URL): FastRolesQuery {
   const read = (name: string, fallback: string): string => requestUrl.searchParams.get(name)?.trim() || fallback;
   const view = read("view", "all") as FastExperienceView;
   if (view !== "all" && view !== "matches") throw new DashboardValidationError("view must be all or matches");
-  const tabValue = read("tab", "summer");
+  const tabValue = read("tab", "canada");
   if (!ROLE_TABS.includes(tabValue as RoleTab)) throw new DashboardValidationError(`tab must be one of ${ROLE_TABS.join(", ")}`);
   const status = read("status", "open") as FastStatusFilter;
   if (!["open", "closed", "new", "updated", "all"].includes(status)) {

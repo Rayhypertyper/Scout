@@ -72,6 +72,36 @@ describe("HTTP-first source adapters", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps InternInsider available from its cached listing after a 429 circuit opens", async () => {
+    const source = "https://interninsider.me/internships/new";
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(
+        "<main><a href='/internships/acme/software-engineering-intern'>Software Engineering Intern</a></main>",
+        { status: 200, headers: { "content-type": "text/html" } },
+      ))
+      .mockResolvedValueOnce(new Response("rate limited", { status: 429 }));
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-interninsider-"));
+    temporaryDirectories.push(directory);
+    const settings = resolveSettings({
+      outputDirectory: directory,
+      databasePath: join(directory, "test.db"),
+      cacheTtlMs: 0,
+      circuitBreakerFailureThreshold: 1,
+      retryCount: 0,
+      perHostDelayMs: 0,
+    });
+    const adapter = new StaticHttpAdapter(settings, new Logger("error"), new HttpClient(settings, new Logger("error")));
+
+    await adapter.collectListing(source);
+    const recovered = await adapter.collectListing(source);
+    const circuitRecovered = await adapter.collectListing(source);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(recovered.listingSnapshots[0]).toMatchObject({ fromCache: true, stale: true });
+    expect(circuitRecovered.listingSnapshots[0]).toMatchObject({ fromCache: true, stale: true });
+    expect(circuitRecovered.detailCandidates[0]?.url).toBe("https://interninsider.me/internships/acme/software-engineering-intern");
+  });
+
   it("collects relevant CSJobs city discovery grids", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(`
       <main>

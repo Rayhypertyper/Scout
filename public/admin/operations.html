@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Private Scout operations and source health diagnostics." />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="theme-color" content="#f2f0e9" />
+    <title>Scout operations</title>
+    <link rel="icon" href="/assets/brand/scout-favicon.png" type="image/png" />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/redesign.css" />
+    <link rel="stylesheet" href="/admin/operations.css?v=operations-v1" />
+  </head>
+  <body class="operations-page">
+    <a class="skip-link" href="#operations-main">Skip to operations content</a>
+    <!--
+      THESIS: Help an owner decide what needs attention before opening a log.
+      OWN WORLD: Scout’s paper, forest, lime, and hairline signal system.
+      STORY: Read freshness and active progress, then triage anomalies, sources, and bounded run history.
+      FIRST VIEWPORT: The first screen answers whether the database is usable and what changed.
+      FORM: Sparse header, compact metric rail, anomaly list, then dense tables.
+      FINISH: Every state names its evidence, time, and next action without pretending missing data is healthy.
+    -->
+    <header class="operations-topbar">
+      <a class="operations-brand" href="/" aria-label="Scout home" translate="no">
+        <span class="operations-brand-mark" aria-hidden="true"><img src="/assets/brand/scout-logo.png" alt="" width="28" height="28" /></span>
+        <span><strong>Scout</strong><span>Opportunity intelligence</span></span>
+      </a>
+      <div class="operations-topbar-actions">
+        <span class="operations-private-label">Private owner operations</span>
+        <a class="operations-back-link" href="/jobs">Back to roles</a>
+      </div>
+    </header>
+
+    <main id="operations-main" class="operations-main" aria-labelledby="operations-title">
+      <noscript>
+        <div class="operations-state operations-state-error" role="alert">
+          <strong>JavaScript is required for operations data.</strong>
+          <span>Enable JavaScript, then reload this page.</span>
+        </div>
+      </noscript>
+      <header class="operations-heading">
+        <div>
+          <h1 id="operations-title">Source operations</h1>
+          <p>Diagnose freshness, coverage, failures, and crawl movement from one bounded read-only view.</p>
+        </div>
+        <div class="operations-heading-actions">
+          <button id="operations-time-mode" class="operations-control operations-control-subtle" type="button" aria-pressed="false">Use exact times</button>
+          <button id="operations-refresh" class="operations-control" type="button" aria-controls="operations-content">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M19 8.5A7.5 7.5 0 1 0 19.2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 4.8v4.7h-4.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Refresh
+          </button>
+        </div>
+      </header>
+
+      <div id="operations-status" class="operations-state operations-state-loading" role="status" aria-live="polite" aria-atomic="true">
+        <span class="operations-state-mark" aria-hidden="true"></span>
+        <span>Loading operations data…</span>
+      </div>
+      <p id="operations-live-region" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
+
+      <section id="operations-content" class="operations-content" hidden aria-live="polite"></section>
+    </main>
+    <script type="module" src="/admin/operations.js?v=operations-v1"></script>
+  </body>
+</html>

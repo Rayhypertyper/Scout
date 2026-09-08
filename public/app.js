@@ -20,7 +20,7 @@ export const ROLE_WORK_MODES = ["all", "onsite", "hybrid", "remote"];
 export const ROLE_SEASONS = ["all", ...ROLE_SEASON_FILTERS];
 export const DEFAULT_ROLE_SEASONS = Object.freeze(["summer", "unknown"]);
 export const INITIAL_ROLE_TAB = "canada";
-export const FALLBACK_ROLE_TAB = "canada";
+export const FALLBACK_ROLE_TAB = "summer";
 
 export function normalizeSeasonFilters(value) {
   const values = Array.isArray(value) ? value : value == null ? [] : [value];
@@ -95,6 +95,7 @@ const DETAIL_CACHE_MAX = 100;
 const SEARCH_DEBOUNCE_MS = 220;
 const POLL_INTERVAL_MS = 5_000;
 const SCAN_POLL_INTERVAL_MS = 1_500;
+const ROLE_SNAPSHOT_RETRY_DELAYS_MS = [60, 180];
 const SAVED_VIEWS_KEY = "roleradar.savedViews";
 const WATCHLIST_KEY = "roleradar.watchlist";
 const NOTIFICATION_HISTORY_KEY = "roleradar.notifications";
@@ -444,7 +445,7 @@ export function filterWatchlistRoles(entries, {
 
 export function buildRolesQuery({
   view,
-  tab = "summer",
+  tab = INITIAL_ROLE_TAB,
   status = "open",
   search = "",
   category = "all",
@@ -558,7 +559,7 @@ export function remainingRolePageSize(pagination, offset, requestedLimit) {
 
 export function roleFiltersKey({
   view,
-  tab = "summer",
+  tab = INITIAL_ROLE_TAB,
   status = "open",
   search = "",
   category = "all",
@@ -691,6 +692,14 @@ export function isDetailResponseCurrent(capturedIntent, currentIntent, capturedL
 
 export function hasVersionChanged(previousVersion, nextVersion) {
   return Boolean(previousVersion && nextVersion && previousVersion !== nextVersion);
+}
+
+// A role read can briefly lose the race with the action/crawler writer. The
+// server exposes this exact message for that recoverable boundary, so callers
+// can retry it without hiding genuine API failures behind a generic retry.
+export function isTransientDashboardReadError(error) {
+  const message = typeof error?.message === "string" ? error.message : String(error ?? "");
+  return message.includes("Dashboard data changed while reading a snapshot");
 }
 
 export function applyListingActionCounts(data, payload) {
@@ -922,6 +931,12 @@ function isWatchlisted(role) {
 
 export function isRoleFeedView(activeView) {
   return activeView === "roles" || activeView === "dashboard";
+}
+
+export function isUndoShortcut(event) {
+  if (!event || event.defaultPrevented || event.altKey || event.shiftKey || event.isComposing) return false;
+  if (!event.ctrlKey && !event.metaKey) return false;
+  return String(event.key || "").toLowerCase() === "z";
 }
 
 function isSavedRoleView() {
@@ -2671,6 +2686,8 @@ function renderSettings({ animate = false } = {}) {
   if (status) status.textContent = "Saved on this device";
   const shortcut = $("#settings-search-shortcut");
   if (shortcut) shortcut.textContent = /mac/i.test(navigator.platform || navigator.userAgent || "") ? "⌘ K" : "Ctrl K";
+  const undoShortcut = $("#settings-undo-shortcut");
+  if (undoShortcut) undoShortcut.textContent = /mac/i.test(navigator.platform || navigator.userAgent || "") ? "⌘ Z" : "Ctrl Z";
   if (animate) animateSettingsView();
 }
 
@@ -3982,9 +3999,17 @@ function applyRolesPayload(payload, pageItems, append, expectedIntent, expectedR
   return true;
 }
 
-async function fetchRolesPage(filters, offset, limit, signal) {
-  const response = await fetch(rolesPath(filters, offset, limit), { cache: "no-store", signal });
-  return readJsonResponse(response);
+export async function fetchRolesPage(filters, offset, limit, signal) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await fetch(rolesPath(filters, offset, limit), { cache: "no-store", signal });
+      return await readJsonResponse(response);
+    } catch (error) {
+      const delay = ROLE_SNAPSHOT_RETRY_DELAYS_MS[attempt];
+      if (!isTransientDashboardReadError(error) || delay === undefined || signal?.aborted) throw error;
+      await wait(delay);
+    }
+  }
 }
 
 async function loadRoles({ append = false, expectedIntent = state.intentRevision, silent = false, limit, background = false, skipMotion = false } = {}) {
@@ -4034,6 +4059,10 @@ async function loadRoles({ append = false, expectedIntent = state.intentRevision
     return applied ? payload : null;
   } catch (error) {
     if (error?.name === "AbortError" || requestRevision !== state.requestRevision || !isCurrentIntent(expectedIntent, state.intentRevision)) return null;
+    // Action reconciliation is deliberately quiet. A one-time snapshot race
+    // must not replace a usable feed with the raw 503 after the action itself
+    // has already succeeded; the next poll or a later retry will reconcile it.
+    if (silent && state.data && isTransientDashboardReadError(error)) return null;
     requestFailed = true;
     state.listError = error?.message || "Could not load roles";
     if ($("#connection-label")) $("#connection-label").textContent = "Unavailable";
@@ -4451,6 +4480,14 @@ function removeListingNotifications(key) {
   renderNotifications();
 }
 
+function showListingActionToast(action, message) {
+  if (!action || state.undoStack.at(-1) !== action) return;
+  showToast(message, {
+    label: "Undo",
+    onClick: () => { void undoListingAction(action.listingKey); },
+  });
+}
+
 function toggleWatchlist(button) {
   const listingType = button.dataset.listingType || "internship";
   const listingId = button.dataset.listingId;
@@ -4507,10 +4544,7 @@ async function saveListingAction(button) {
   removeLocalRole(key);
   // The role is already gone from the feed optimistically; make both the
   // success state and its undo affordance available before the API responds.
-  showToast(successMessage, {
-    label: "Undo",
-    onClick: () => { undoLastListingAction(); },
-  });
+  showListingActionToast(actionRecord, successMessage);
   let requestPromise = null;
   try {
     requestPromise = fetch("/api/actions", {
@@ -4529,10 +4563,7 @@ async function saveListingAction(button) {
     invalidateRoleListingState();
     removeListingNotifications(key);
     applyListingActionPayload(payload);
-    showToast(successMessage, {
-      label: "Undo",
-      onClick: () => { void undoLastListingAction(); },
-    });
+    showListingActionToast(actionRecord, successMessage);
     // Reconcile in the background; it should not delay the action feedback.
     void ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
   } catch (error) {
@@ -4562,8 +4593,10 @@ async function saveListingAction(button) {
   }
 }
 
-function undoLastListingAction() {
-  const action = state.undoStack.at(-1);
+function undoListingAction(listingKeyToUndo = null) {
+  const action = listingKeyToUndo
+    ? state.undoStack.find((candidate) => candidate.listingKey === listingKeyToUndo)
+    : state.undoStack.at(-1);
   if (!action) return;
   forgetListingAction(action.listingKey);
   action.undoRequested = true;
@@ -4578,6 +4611,10 @@ function undoLastListingAction() {
   }
   showToast(`Restored · ${action.title}`);
   void reconcileUndoneListingAction(action, saveRequest, restoredLocally);
+}
+
+function undoLastListingAction() {
+  return undoListingAction();
 }
 
 async function reconcileUndoneListingAction(action, saveRequest, restoredLocally) {
@@ -5120,7 +5157,7 @@ function bindEvents() {
       $("#global-search")?.focus();
       return;
     }
-    if (event.defaultPrevented || event.key.toLowerCase() !== "z" || event.altKey || event.shiftKey || (!event.ctrlKey && !event.metaKey)) return;
+    if (!isUndoShortcut(event)) return;
     const target = event.target;
     if (target instanceof Element && target.closest("input, textarea, select, [contenteditable='true']")) return;
     if (state.undoStack.length === 0) return;

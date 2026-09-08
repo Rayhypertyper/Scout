@@ -19,19 +19,40 @@ export const CATEGORIES = [
   "quant",
   "research",
   "other-code",
+  // Retained for payloads written by the earlier broad internship classifier.
+  // Removing a persisted category makes the next crawl fail while merging an
+  // otherwise valid historical listing.
+  "other-internship",
 ] as const;
 
+const LEGACY_CATEGORY_ALIASES: Readonly<Record<string, "other-code" | "other-internship">> = {
+  // Older crawls used the raw nontechnical function as a category. Keep those
+  // payloads readable and converge them on the current canonical vocabulary.
+  other: "other-code",
+  other_code: "other-code",
+  "other code": "other-code",
+  finance: "other-internship",
+  hr: "other-internship",
+  hardware: "other-internship",
+  design: "other-internship",
+  operations: "other-internship",
+  legal: "other-internship",
+  marketing: "other-internship",
+  sales: "other-internship",
+  accounting: "other-internship",
+  product: "other-internship",
+  "customer-support": "other-internship",
+  "other-role": "other-internship",
+};
+
 /**
- * `other` was emitted by an older classifier before the canonical category
- * name was settled on `other-code`. Keep the persisted vocabulary stable and
- * normalize that legacy value at every schema boundary instead of letting one
+ * Normalize categories at every schema boundary instead of letting one
  * historical row abort an entire crawl transaction.
  */
 export function normalizeCategory(value: unknown): unknown {
   if (typeof value !== "string") return value;
   const normalized = value.trim().toLocaleLowerCase();
-  if (normalized === "other" || normalized === "other_code" || normalized === "other code") return "other-code";
-  return value;
+  return LEGACY_CATEGORY_ALIASES[normalized] ?? value;
 }
 
 export const CategorySchema = z.preprocess(normalizeCategory, z.enum(CATEGORIES));
