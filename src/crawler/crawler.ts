@@ -1,5 +1,6 @@
 import { performance } from "node:perf_hooks";
 import { join } from "node:path";
+import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 
 import { analyzeRawJob, internshipContentHash, type AnalyzeResult } from "../classification/analyzeJob.js";
 import { isExcludedJobTitle } from "../classification/titlePolicy.js";
@@ -42,7 +43,7 @@ import { SourceAdapterRouter } from "./adapters/router.js";
 import type { SourceAdapterResult } from "./adapters/types.js";
 import { INTERN_LIST_API_URL, internListFeeds } from "./adapters/internList.js";
 import { scoreListingRelevance } from "../classification/listingRelevance.js";
-import { deduplicateListings, listingIdentityMatches, type ListingIdentityInput } from "../deduplication/deduplicate.js";
+import { deduplicateListings, ListingIdentityIndex, type ListingIdentityInput } from "../deduplication/deduplicate.js";
 import { BoundedAsyncQueue } from "../utils/async.js";
 import { Profiler } from "../observability/profiler.js";
 import { isUsenoInternshipMasterlistUrl, isUsenoSummer2027Url, type UsenoMasterlistListing } from "../extractors/useno.js";
@@ -1707,10 +1708,17 @@ export class InternshipCrawler {
           provider: new URL(candidate.link.url).hostname,
         }));
         const uniqueCandidates = deduplicateListings(candidateRecords);
+        const candidatesByUrl = new Map<string, (typeof candidates)[number]>();
+        for (const candidate of candidates) {
+          if (!candidatesByUrl.has(candidate.link.url)) candidatesByUrl.set(candidate.link.url, candidate);
+        }
         duplicateListingsSkipped += Math.max(0, candidates.length - uniqueCandidates.length);
-        for (const lightweight of uniqueCandidates) {
+        for (const [candidateIndex, lightweight] of uniqueCandidates.entries()) {
+          // Cached candidates otherwise form a long synchronous/microtask batch.
+          // Let heartbeat, deadline, and source watchdog timers run between chunks.
+          if (candidateIndex % 32 === 0) await yieldToEventLoop();
           this.throwIfCancelled(persistence);
-          const candidate = candidates.find(({ link }) => link.url === lightweight.url);
+          const candidate = candidatesByUrl.get(lightweight.url);
           if (!candidate) continue;
           if (candidate.score <= -1000 || visited.has(candidate.link.url) || enqueued.has(candidate.link.url)) continue;
           if (jobrightCacheOnly
@@ -1796,12 +1804,16 @@ export class InternshipCrawler {
     const workerCount = Math.max(1, this.settings.httpConcurrency);
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
     const deduplicatedJobs = this.deduplicateJobsWithProfile(jobs, sourceUrl);
+    const cachedIdentityIndex = new ListingIdentityIndex<AnalyzedJob>();
+    for (const job of cachedUnchangedJobs) cachedIdentityIndex.add(job, job.internship);
+    const acceptedIdentityIndex = new ListingIdentityIndex<(typeof acceptedDetailStates)[number]>();
+    for (const state of acceptedDetailStates) acceptedIdentityIndex.add(state, state.job.internship);
     const countedFinalJobs = new Set<AnalyzedJob>();
     newListings = 0;
     changedListings = 0;
     for (const finalJob of deduplicatedJobs) {
-      if (finalJob.internship.lifecycleStatus === "UNCHANGED" || cachedUnchangedJobs.some(({ internship }) => listingIdentityMatches(internship, finalJob.internship))) continue;
-      const accepted = acceptedDetailStates.find(({ job }) => listingIdentityMatches(job.internship, finalJob.internship) && !countedFinalJobs.has(job));
+      if (finalJob.internship.lifecycleStatus === "UNCHANGED" || cachedIdentityIndex.find(finalJob.internship) !== undefined) continue;
+      const accepted = acceptedIdentityIndex.find(finalJob.internship, ({ job }) => !countedFinalJobs.has(job));
       if (!accepted) continue;
       countedFinalJobs.add(accepted.job);
       if (accepted.disposition === "new") newListings += 1;
@@ -2358,14 +2370,18 @@ export class InternshipCrawler {
       const deduplicatedJobs = this.deduplicateJobsWithProfile(jobs, sourceUrl);
       let successfulNewListings = 0;
       let successfulChangedListings = 0;
+      const cachedIdentityIndex = new ListingIdentityIndex<AnalyzedJob>();
+      for (const job of cachedUnchangedJobs) cachedIdentityIndex.add(job, job.internship);
+      const acceptedIdentityIndex = new ListingIdentityIndex<(typeof acceptedDetailStates)[number]>();
+      for (const state of acceptedDetailStates) acceptedIdentityIndex.add(state, state.job.internship);
       const countedFinalJobs = new Set<AnalyzedJob>();
       for (const finalJob of deduplicatedJobs) {
         // Cached/unchanged payloads are already accounted for by the
         // lightweight sighting path. A duplicate detail candidate may merge
         // into that payload, but must not turn the final lifecycle back into
         // a new/changed metric.
-        if (finalJob.internship.lifecycleStatus === "UNCHANGED" || cachedUnchangedJobs.some(({ internship }) => listingIdentityMatches(internship, finalJob.internship))) continue;
-        const accepted = acceptedDetailStates.find(({ job }) => listingIdentityMatches(job.internship, finalJob.internship) && !countedFinalJobs.has(job));
+        if (finalJob.internship.lifecycleStatus === "UNCHANGED" || cachedIdentityIndex.find(finalJob.internship) !== undefined) continue;
+        const accepted = acceptedIdentityIndex.find(finalJob.internship, ({ job }) => !countedFinalJobs.has(job));
         if (!accepted) continue;
         countedFinalJobs.add(accepted.job);
         if (accepted.disposition === "new") successfulNewListings += 1;

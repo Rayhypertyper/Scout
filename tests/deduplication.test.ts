@@ -5,10 +5,46 @@ import {
   internshipListingActionIdentities,
   listingActionIdentityMatches,
 } from "../src/database/actions.js";
-import { deduplicateJobs, deduplicateListings, listingIdentityKey, listingIdentityMatches } from "../src/deduplication/deduplicate.js";
+import { deduplicateJobs, deduplicateListings, ListingIdentityIndex, listingIdentityKey, listingIdentityMatches } from "../src/deduplication/deduplicate.js";
 import { analyzed, makeInternship } from "./helpers.js";
 
 describe("deduplication", () => {
+  it("indexes final-state matches while preserving first eligible record order", () => {
+    const index = new ListingIdentityIndex<number>();
+    const identity = { company: "Acme", title: "Software Intern", locations: ["Toronto, ON"] };
+    index.add(1, identity);
+    index.add(2, identity);
+    expect(index.find(identity)).toBe(1);
+    expect(index.find(identity, (value) => value !== 1)).toBe(2);
+    expect(index.find({ ...identity, company: "Other" })).toBeUndefined();
+  });
+
+  it("deduplicates a broad Radar-sized feed without an all-pairs identity scan", () => {
+    let reads = 0;
+    const listings = Array.from({ length: 5_000 }, (_, id) => ({
+      get postingUrl() { reads += 1; return `https://earlycareerradar.com/jobs/job_${id}`; },
+      title: `Company ${id} — Software Intern`,
+    }));
+    expect(deduplicateListings(listings)).toHaveLength(5_000);
+    expect(reads).toBeLessThan(50_000);
+  });
+
+  it("preserves pairwise matching semantics across aliases and overlapping locations", () => {
+    const listings = [
+      { company: "Acme", title: "Software Intern", locations: ["Toronto, ON", "Vancouver, BC"] },
+      { company: "Acme", title: "Software Intern", locations: ["Vancouver, BC"] },
+      { company: "Acme", title: "Software Intern", locations: ["Montreal, QC"] },
+      { company: "Acme", title: "Software Intern", postingUrl: "https://boards.greenhouse.io/acme/jobs/12345" },
+      { company: "Acme", title: "Other title", postingUrl: "https://boards.greenhouse.io/acme/jobs/12345?utm_source=feed" },
+      { company: "Acme", title: "Software Intern", postingUrl: "https://boards.greenhouse.io/acme/jobs/12346" },
+    ];
+    const expected: typeof listings = [];
+    for (const listing of listings) {
+      if (!expected.some((existing) => listingIdentityMatches(existing, listing))) expected.push(listing);
+    }
+    expect(deduplicateListings(listings)).toEqual(expected);
+  });
+
   it("exposes cheap pre-detail identities and preserves distinct requisitions", () => {
     const first = {
       title: "Software Engineering Intern",

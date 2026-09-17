@@ -20,7 +20,8 @@ export const ROLE_WORK_MODES = ["all", "onsite", "hybrid", "remote"];
 export const ROLE_SEASONS = ["all", ...ROLE_SEASON_FILTERS];
 export const DEFAULT_ROLE_SEASONS = Object.freeze(["summer", "unknown"]);
 export const INITIAL_ROLE_TAB = "canada";
-export const FALLBACK_ROLE_TAB = "summer";
+export const FALLBACK_ROLE_TAB = "internship";
+export const DEFAULT_ROLE_SORT = "posted";
 
 export function normalizeSeasonFilters(value) {
   const values = Array.isArray(value) ? value : value == null ? [] : [value];
@@ -109,7 +110,7 @@ const DEFAULT_DASHBOARD_SETTINGS = Object.freeze({
   theme: "light",
   motion: "full",
   defaultTab: INITIAL_ROLE_TAB,
-  defaultSort: "posted",
+  defaultSort: DEFAULT_ROLE_SORT,
   defaultStatus: "open",
   notifyCompleted: true,
   notifyFailed: true,
@@ -407,7 +408,7 @@ export function filterWatchlistRoles(entries, {
   status = "open",
   search = "",
   category = "all",
-  sort = "posted",
+  sort = DEFAULT_ROLE_SORT,
   workMode = "all",
   season = "all",
   seasons,
@@ -453,7 +454,7 @@ export function buildRolesQuery({
   season = "all",
   seasons,
   location = "all",
-  sort = "relevance",
+  sort = DEFAULT_ROLE_SORT,
   limit = INITIAL_PAGE_SIZE,
   offset = 0,
 } = {}) {
@@ -567,7 +568,7 @@ export function roleFiltersKey({
   season = "all",
   seasons,
   location = "all",
-  sort = "relevance",
+  sort = DEFAULT_ROLE_SORT,
 } = {}) {
   const keyParts = [
     tab,
@@ -3858,7 +3859,7 @@ function readFilters() {
     workMode: $("#work-mode-filter")?.value || "all",
     seasons: selectedSeasonFilters(),
     location: $("#location-filter")?.value || "all",
-    sort: $("#sort-filter")?.value || "posted",
+    sort: $("#sort-filter")?.value || DEFAULT_ROLE_SORT,
   };
 }
 
@@ -3871,7 +3872,7 @@ function syncUiStateToUrl({ push = false, hash } = {}) {
     view: state.roleView,
     tab: state.activeTab,
     status: $("#status-filter")?.value || "open",
-    sort: $("#sort-filter")?.value || "posted",
+    sort: $("#sort-filter")?.value || DEFAULT_ROLE_SORT,
     category: $("#category-filter")?.value || "all",
     workMode: $("#work-mode-filter")?.value || "all",
     location: $("#location-filter")?.value || "all",
@@ -4788,7 +4789,7 @@ function applySavedView(view) {
   state.activeTab = ROLE_TABS.includes(view.tab) ? view.tab : "main";
   if ($("#status-filter")) $("#status-filter").value = view.status || "open";
   if ($("#category-filter")) $("#category-filter").value = view.category || "all";
-  if ($("#sort-filter")) $("#sort-filter").value = view.sort || "posted";
+  if ($("#sort-filter")) $("#sort-filter").value = view.sort || DEFAULT_ROLE_SORT;
   if ($("#work-mode-filter")) $("#work-mode-filter").value = view.workMode || "all";
   setSelectedSeasonFilters(view.seasons === undefined ? view.season : view.seasons);
   if ($("#location-filter") && view.location) {
@@ -5202,12 +5203,13 @@ function restoreTheme() {
 async function initialLoad() {
   restoreTheme();
   restoreUiStateFromUrl();
-  try {
-    await authClient.bootstrap();
-  } catch {
-    // Listings remain usable when the auth provider is unavailable; the
-    // account controls already render the unavailable state from the client.
-  }
+  // Authentication is an account-control concern. Do not hold the public
+  // listings behind a provider round trip: a slow or unavailable auth
+  // provider must not leave the role feed on its loading spinner forever.
+  // Mutations still await the same shared bootstrap promise when they need a
+  // CSRF token, and the subscription below updates the account controls when
+  // the session check eventually settles.
+  void authClient.bootstrap().catch(() => undefined);
   try {
     state.watchlistRoles = readWatchlistRoles();
     renderWatchlistCount();

@@ -1011,17 +1011,15 @@ export class InternshipDatabase {
       LEFT JOIN internship_sources all_link ON all_link.internship_id = i.id
       LEFT JOIN sources provenance ON provenance.id = all_link.source_id
       WHERE s.url = @sourceUrl
-        AND (
-          (@canonicalUrl IS NOT NULL AND (i.canonical_url = @canonicalUrl OR i.canonical_application_url = @canonicalUrl OR i.canonical_posting_url = @canonicalUrl OR i.application_url = @canonicalUrl OR i.posting_url = @canonicalUrl))
-          -- A provider/ATS label is not a posting identity: every listing
-          -- from a source can legitimately share it.  Matching on that label
-          -- alone can therefore return an unrelated posting (and the caller
-          -- may emit its cached detail payload).  A provider can only
-          -- participate in the lookup through a specific external requisition
-          -- identity.  External IDs are scoped to the configured source here,
-          -- so a provider label is deliberately optional for legacy rows and
-          -- adapters whose persisted provider key has a different format.
-          OR (@externalJobId IS NOT NULL AND i.external_job_id = @externalJobId)
+        AND i.id IN (
+          -- Start with indexed identity probes, rather than scanning every
+          -- posting belonging to this source for each incoming candidate.
+          SELECT id FROM internships WHERE canonical_url = @canonicalUrl
+          UNION SELECT id FROM internships WHERE canonical_application_url = @canonicalUrl
+          UNION SELECT id FROM internships WHERE canonical_posting_url = @canonicalUrl
+          UNION SELECT id FROM internships WHERE application_url = @canonicalUrl
+          UNION SELECT id FROM internships WHERE posting_url = @canonicalUrl
+          UNION SELECT id FROM internships WHERE external_job_id = @externalJobId
         )
       GROUP BY s.id, i.id
       ORDER BY CASE

@@ -1,4 +1,4 @@
-/* global CustomEvent, HTMLButtonElement, fetch, window */
+/* global AbortController, CustomEvent, HTMLButtonElement, clearTimeout, fetch, setTimeout, window */
 
 export class AuthClientError extends Error {
   constructor(message, options = {}) {
@@ -9,6 +9,8 @@ export class AuthClientError extends Error {
     this.retryAfter = options.retryAfter ?? null;
   }
 }
+
+const AUTH_SESSION_TIMEOUT_MS = 5_000;
 
 class RoleRadarAuthClient {
   #state = {
@@ -44,12 +46,15 @@ class RoleRadarAuthClient {
   }
 
   async #loadSession() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AUTH_SESSION_TIMEOUT_MS);
     try {
       const response = await fetch("/api/auth/session", {
         method: "GET",
         headers: { Accept: "application/json" },
         credentials: "same-origin",
         cache: "no-store",
+        signal: controller.signal,
       });
       const payload = await response.json();
       this.#csrfToken = typeof payload.csrfToken === "string" ? payload.csrfToken : null;
@@ -74,6 +79,8 @@ class RoleRadarAuthClient {
         error: authError,
       });
       throw authError;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 

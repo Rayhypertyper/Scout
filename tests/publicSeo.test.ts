@@ -81,6 +81,14 @@ describe("public Scout SEO delivery", () => {
     expect(body).not.toContain("fonts.gstatic.com");
   });
 
+  it("hands every landing-page browse action to the Canada tab", async () => {
+    const body = bodyOf(await render("/"));
+    const canadaHandoffs = body.match(/href="\/jobs\?view=all&amp;tab=canada&amp;sort=posted"/g) ?? [];
+
+    expect(canadaHandoffs).toHaveLength(4);
+    expect(body).not.toMatch(/href="\/jobs"/);
+  });
+
   it("does not trust an arbitrary Host header when AUTH_SITE_URL is absent", async () => {
     vi.stubEnv("AUTH_SITE_URL", "");
     const captured = await render("/", "attacker.example");

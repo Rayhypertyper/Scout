@@ -1231,6 +1231,94 @@ describe("dashboard fast API", () => {
     }
   });
 
+  it("serves the last coherent list when a busy crawl wins every read retry", async () => {
+    clearFastDashboardCacheForTests();
+    const originalDatabase = new DatabaseSync(databasePath);
+    const original = originalDatabase.prepare(`
+      SELECT payload_json, company, normalized_company, content_hash
+      FROM internships WHERE id = 'summer-1'
+    `).get() as {
+      payload_json: string;
+      company: string;
+      normalized_company: string;
+      content_hash: string;
+    };
+    originalDatabase.close();
+
+    const warm = response();
+    await requestHandler(request("GET", "/api/roles?tab=summer&status=open&limit=8") as never, warm as never, databasePath);
+    expect(warm.statusCode).toBe(200);
+
+    // Move the database to a new content key so the warm index cannot satisfy
+    // the request without rebuilding it. Then mutate again during every
+    // build, forcing all three post-build revision checks to lose the race.
+    const primeMutation = new DatabaseSync(databasePath);
+    try {
+      const payload = JSON.parse(original.payload_json) as Record<string, unknown>;
+      payload.company = "SNAPSHOT PRIME";
+      primeMutation.prepare(`
+        UPDATE internships
+        SET company = 'SNAPSHOT PRIME', normalized_company = 'snapshot prime',
+            payload_json = @payload, content_hash = 'snapshot-prime'
+        WHERE id = 'summer-1'
+      `).run({ payload: JSON.stringify(payload) });
+    } finally {
+      primeMutation.close();
+    }
+
+    let hookCalls = 0;
+    setFastDashboardIndexBuildHookForTests(() => {
+      hookCalls += 1;
+      const mutation = new DatabaseSync(databasePath);
+      try {
+        const row = mutation.prepare("SELECT payload_json FROM internships WHERE id = 'summer-1'").get() as { payload_json: string };
+        const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
+        const company = `SNAPSHOT BUSY ${hookCalls}`;
+        payload.company = company;
+        mutation.prepare(`
+          UPDATE internships
+          SET company = @company, normalized_company = @normalizedCompany,
+              payload_json = @payload, content_hash = @contentHash
+          WHERE id = 'summer-1'
+        `).run({
+          company,
+          normalizedCompany: company.toLowerCase(),
+          payload: JSON.stringify(payload),
+          contentHash: `snapshot-busy-${hookCalls}`,
+        });
+      } finally {
+        mutation.close();
+      }
+    });
+    try {
+      const captured = response();
+      await requestHandler(request("GET", "/api/roles?tab=summer&status=open&limit=8") as never, captured as never, databasePath);
+      const payload = JSON.parse(captured.body.toString("utf8")) as { items: Array<{ company: string }> };
+      expect(captured.statusCode).toBe(200);
+      expect(hookCalls).toBe(3);
+      expect(payload.items.map((item) => item.company)).toContain(original.company);
+    } finally {
+      setFastDashboardIndexBuildHookForTests(null);
+      const restore = new DatabaseSync(databasePath);
+      try {
+        restore.prepare(`
+          UPDATE internships
+          SET company = @company, normalized_company = @normalizedCompany,
+              payload_json = @payload, content_hash = @contentHash
+          WHERE id = 'summer-1'
+        `).run({
+          company: original.company,
+          normalizedCompany: original.normalized_company,
+          payload: original.payload_json,
+          contentHash: original.content_hash,
+        });
+      } finally {
+        restore.close();
+      }
+      clearFastDashboardCacheForTests();
+    }
+  });
+
   it("keeps list, detail, and changes validators coherent across run-progress commits", async () => {
     const database = new DatabaseSync(databasePath);
     const run = database.prepare(`
@@ -1395,6 +1483,81 @@ describe("dashboard fast API", () => {
     expect(payload.items).toHaveLength(0);
     expect(payload.pagination.hasMore).toBe(false);
     expect(payload.pagination.nextOffset).toBeNull();
+  });
+
+  it("defaults every role tab to newest-first effective dates, including undated new listings", async () => {
+    clearFastDashboardCacheForTests();
+    const database = new DatabaseSync(databasePath);
+    const originals = database.prepare(`
+      SELECT id, payload_json, content_hash, first_seen_at
+      FROM internships
+      WHERE id IN ('summer-1', 'summer-2')
+    `).all() as Array<{
+      id: string;
+      payload_json: string;
+      content_hash: string;
+      first_seen_at: string;
+    }>;
+    try {
+      const firstSeenById = new Map([
+        ["summer-1", "2026-08-10T12:00:00.000Z"],
+        ["summer-2", "2026-08-14T12:00:00.000Z"],
+      ]);
+      for (const original of originals) {
+        const firstSeenAt = firstSeenById.get(original.id);
+        if (!firstSeenAt) continue;
+        const payload = JSON.parse(original.payload_json) as Record<string, unknown>;
+        payload.postingDate = null;
+        database.prepare(`
+          UPDATE internships
+          SET payload_json = @payload, content_hash = @contentHash, first_seen_at = @firstSeenAt
+          WHERE id = @id
+        `).run({
+          id: original.id,
+          payload: JSON.stringify(payload),
+          contentHash: `effective-date-${original.id}`,
+          firstSeenAt,
+        });
+      }
+    } finally {
+      database.close();
+    }
+
+    try {
+      const captured = response();
+      await requestHandler(
+        request("GET", "/api/roles?tab=main&status=open&limit=100") as never,
+        captured as never,
+        databasePath,
+      );
+      const payload = JSON.parse(captured.body.toString("utf8")) as {
+        filters: { sort: string };
+        items: Array<{ id: string; postingDate: string | null }>;
+      };
+      expect(captured.statusCode).toBe(200);
+      expect(payload.filters.sort).toBe("posted");
+      expect(payload.items.slice(0, 2).map((item) => item.id)).toEqual(["summer-2", "summer-1"]);
+      expect(payload.items.slice(0, 2).every((item) => item.postingDate === null)).toBe(true);
+    } finally {
+      const restore = new DatabaseSync(databasePath);
+      try {
+        for (const original of originals) {
+          restore.prepare(`
+            UPDATE internships
+            SET payload_json = @payload, content_hash = @contentHash, first_seen_at = @firstSeenAt
+            WHERE id = @id
+          `).run({
+            id: original.id,
+            payload: original.payload_json,
+            contentHash: original.content_hash,
+            firstSeenAt: original.first_seen_at,
+          });
+        }
+      } finally {
+        restore.close();
+        clearFastDashboardCacheForTests();
+      }
+    }
   });
 
   it("keeps canonical relative, prefixed, and date-only posting sort semantics", async () => {

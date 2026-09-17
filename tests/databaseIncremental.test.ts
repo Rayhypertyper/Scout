@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSettings } from "../src/config/settings.js";
 import { InternshipDatabase } from "../src/database/db.js";
@@ -44,6 +44,24 @@ function crawl(source: string, job: ReturnType<typeof makeInternship>): CrawlRes
 }
 
 describe("incremental crawl state", () => {
+  it("probes indexed identities before joining source history", () => {
+    const { database, options, source } = setup();
+    const prepare = vi.spyOn(DatabaseSync.prototype, "prepare");
+    try {
+      database.classifyListing(source, { canonicalUrl: "https://example.com/jobs/missing" });
+      const sql = prepare.mock.calls.map(([query]) => query).find((query) => query.includes("AS source_provenance"))!;
+      const raw = new DatabaseSync(options.settings.databasePath);
+      try {
+        const plan = raw.prepare(`EXPLAIN QUERY PLAN ${sql}`).all({
+          sourceUrl: source, canonicalUrl: "https://example.com/jobs/missing", externalJobId: null,
+        }) as Array<{ detail: string }>;
+        expect(plan.some(({ detail }) => detail.includes("internships_canonical_url_idx"))).toBe(true);
+        expect(plan.some(({ detail }) => detail.includes("internships_external_job_id_idx"))).toBe(true);
+        expect(plan.some(({ detail }) => /SCAN (?:i|internships)\b/.test(detail))).toBe(false);
+      } finally { raw.close(); }
+    } finally { prepare.mockRestore(); database.close(); }
+  });
+
   it("returns indexed state and classifies validator matches as unchanged", () => {
     const { database, options, source } = setup();
     const job = makeInternship({ jobId: "REQ-100" });

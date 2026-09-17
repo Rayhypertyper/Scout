@@ -166,20 +166,58 @@ export function compareBySeason(left, right) {
     || String(left?.title || "").localeCompare(String(right?.title || ""));
 }
 
-function postingDayForSort(role) {
-  const postedAt = parseSortDate(role.postingDate);
+function firstParseableSortValue(values, relativeBase) {
+  for (const value of values) {
+    if (parseSortDate(value, relativeBase) !== null) return value;
+  }
+  return null;
+}
+
+function postingSortValue(role, relativeBase = Date.now()) {
+  // The card displays the first available date. Keep the comparator aligned
+  // with that display so live-board roles (which often have no explicit
+  // posting date) still appear in discovery order when they arrive.
+  return firstParseableSortValue([role.postingDate, role.firstSeenAt, role.discoveredAt], relativeBase);
+}
+
+function postingTimestampForSort(role, relativeBase = Date.now()) {
+  const value = postingSortValue(role, relativeBase);
+  return value === null ? null : parseSortDate(value, relativeBase);
+}
+
+function postingDayForSort(role, relativeBase = Date.now()) {
+  const postedAt = postingTimestampForSort(role, relativeBase);
   if (postedAt === null) return null;
   const date = new Date(postedAt);
   return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+function seenTimestampForSort(role, relativeBase) {
+  const value = firstParseableSortValue([role.firstSeenAt, role.discoveredAt], relativeBase);
+  return value === null ? null : parseSortDate(value, relativeBase);
+}
+
 export function compareByPostedDate(left, right) {
-  const leftPostingDay = postingDayForSort(left);
-  const rightPostingDay = postingDayForSort(right);
+  const relativeBase = Date.now();
+  const leftPostingDay = postingDayForSort(left, relativeBase);
+  const rightPostingDay = postingDayForSort(right, relativeBase);
   if (leftPostingDay === null && rightPostingDay !== null) return 1;
   if (leftPostingDay !== null && rightPostingDay === null) return -1;
   if (leftPostingDay !== null && rightPostingDay !== null && rightPostingDay !== leftPostingDay) {
     return rightPostingDay - leftPostingDay;
   }
+  const leftTimestamp = postingTimestampForSort(left, relativeBase);
+  const rightTimestamp = postingTimestampForSort(right, relativeBase);
+  if (leftTimestamp !== null && rightTimestamp !== null && rightTimestamp !== leftTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+  // Date-only postings share midnight. Use discovery time as a stable
+  // recency tie-break so a newly found role reaches the head of that day's
+  // queue immediately.
+  const leftSeen = seenTimestampForSort(left, relativeBase);
+  const rightSeen = seenTimestampForSort(right, relativeBase);
+  if (leftSeen === null && rightSeen !== null) return 1;
+  if (leftSeen !== null && rightSeen === null) return -1;
+  if (leftSeen !== null && rightSeen !== null && rightSeen !== leftSeen) return rightSeen - leftSeen;
   return compareByRelevance(left, right);
 }

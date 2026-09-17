@@ -241,12 +241,52 @@ export function listingIdentityMatches(left: ListingIdentityInput, right: Listin
   return sameLocation(a.locations, b.locations);
 }
 
+/** Superset of the aliases that can satisfy listingIdentityMatches. */
+function listingMatchBuckets(candidate: ListingIdentityInput): string[] {
+  const urls = listingUrls(candidate).filter((url) => !isCompanyLandingUrl(url));
+  const descriptor = listingDescriptor(candidate);
+  return [
+    ...urls.map((url) => `url:${url}`),
+    ...(descriptor.company ? descriptor.externalJobIds.map((id) =>
+      JSON.stringify(["id", descriptor.company, id])) : []),
+    ...(descriptor.company && descriptor.title ? descriptor.locations.map((location) =>
+      JSON.stringify(["role", descriptor.company, descriptor.title, location])) : []),
+  ];
+}
+
+/** Narrow pair-safe matching to relevant aliases, preserving insertion order. */
+export class ListingIdentityIndex<T> {
+  private readonly buckets = new Map<string, number[]>();
+  private readonly records: Array<{ value: T; identity: ListingIdentityInput }> = [];
+
+  public add(value: T, identity: ListingIdentityInput): void {
+    const index = this.records.length;
+    this.records.push({ value, identity });
+    for (const key of listingMatchBuckets(identity)) {
+      const bucket = this.buckets.get(key);
+      if (bucket) bucket.push(index);
+      else this.buckets.set(key, [index]);
+    }
+  }
+
+  public find(identity: ListingIdentityInput, eligible: (value: T) => boolean = () => true): T | undefined {
+    const possible = new Set(listingMatchBuckets(identity).flatMap((key) => this.buckets.get(key) ?? []));
+    for (const index of [...possible].sort((a, b) => a - b)) {
+      const record = this.records[index]!;
+      if (eligible(record.value) && listingIdentityMatches(record.identity, identity)) return record.value;
+    }
+    return undefined;
+  }
+}
+
 /** Deduplicate lightweight candidates before detail retrieval. */
 export function deduplicateListings<T extends ListingIdentityInput>(listings: T[]): T[] {
   const records: T[] = [];
+  const index = new ListingIdentityIndex<T>();
   for (const candidate of listings) {
-    if (records.some((existing) => listingIdentityMatches(existing, candidate))) continue;
+    if (index.find(candidate) !== undefined) continue;
     records.push(candidate);
+    index.add(candidate, candidate);
   }
   return records;
 }

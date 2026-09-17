@@ -8,12 +8,12 @@ should use these routes.
 
 Query parameters:
 
-- `tab`: `main`, `canada`, or `summer` (default `summer`, matching the initial dashboard view).
+- `tab`: `main`, `canada`, `summer`, `internship`, `quant`, or `non-intern` (default `canada`, matching the initial dashboard view).
 - `status`: `open`, `new`, `updated`, `all`, or `closed` (default `open`).
 - `q` (or `search`): server-side case-insensitive search over the same card/search fields as the current dashboard.
 - `category`: a category value, or `all` (default `all`).
 - `season`: `winter`, `spring`, `summer`, `fall`, `unknown`, or `all` (default `all`). The `unknown` value selects roles without a detected internship season.
-- `sort`: `relevance`, `posted`, `season`, `recent`, `last-seen`, or `company` (default `relevance`). Season sorting groups roles in Winter → Spring → Summer → Fall order, then leaves unknown seasons last.
+- `sort`: `relevance`, `posted`, `season`, `recent`, `last-seen`, or `company` (default `posted`). Posted sorting orders the displayed date newest first, using `postingDate`, then `firstSeenAt`, then `discoveredAt`; unknown dates remain last. Season sorting groups roles in Winter → Spring → Summer → Fall order, then leaves unknown seasons last.
 - `limit`: page size, default 8 and bounded to `1..100` (zero, negative, and
   non-integer values are rejected with `400`).
 - `offset`: stable offset into the sorted result, default 0.
@@ -24,7 +24,7 @@ The response is `dashboard.roles.v1`:
 {
   "contract": "dashboard.roles.v1",
   "version": "...",
-  "filters": { "tab": "summer", "status": "open", "category": null, "season": null, "search": "", "sort": "relevance" },
+  "filters": { "tab": "canada", "status": "open", "category": null, "season": null, "search": "", "sort": "posted" },
   "filterMeta": { "tabs": [], "tabCounts": {}, "categories": [], "seasons": [], "statuses": [], "sorts": [] },
   "stats": {},
   "counts": {},
@@ -158,10 +158,12 @@ unless a fresh durable run already owns the database. Startup scan scheduling
 is deliberately independent of index prewarm: success, timeout, a missing
 verification artifact, and other prewarm failures all continue to the same
 run-control path. `DASHBOARD_SKIP_STARTUP_SCAN=1` is an explicit local/test
-switch; the checked-in dashboard and scout launch agents do not set it. The
-recurring 90-minute schedule belongs to the scout launch agent, while the
-dashboard owns only its one startup check and explicit `/api/refresh` or
-`/api/scan` requests. Both paths use the same heartbeat lease and refuse a
+switch; the dashboard launch agent sets it because the separately supervised
+scout scheduler owns automatic catch-up. The scheduler checks freshness every
+minute, around the clock, and starts a full crawl when the last successful
+full crawl started at least 90 minutes ago. It retries failures after five
+minutes and catches up after login or wake. The dashboard owns explicit
+`/api/refresh` or `/api/scan` requests. Both paths use the same heartbeat lease and refuse a
 second fresh run; expired RUNNING rows are recoverable.
 
 The in-process index cache separates role-card content revisions from dynamic

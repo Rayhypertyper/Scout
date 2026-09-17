@@ -181,9 +181,9 @@ describe("fast dashboard client state helpers", () => {
     expect(readFileSync(new URL("../public/app.js", import.meta.url), "utf8")).not.toContain("companyInitials");
   });
 
-  it("defaults to Canada and falls back to Summer when Canada is empty", () => {
+  it("defaults to Canada and falls back to Internship when Canada is empty", () => {
     expect(INITIAL_ROLE_TAB).toBe("canada");
-    expect(FALLBACK_ROLE_TAB).toBe("summer");
+    expect(FALLBACK_ROLE_TAB).toBe("internship");
     const markup = readFileSync(new URL("../public/index.html", import.meta.url), "utf8");
     expect(markup).toContain('class="role-tab active" id="canada-tab"');
     expect(markup).toContain('class="role-tab" id="summer-tab"');
@@ -195,6 +195,7 @@ describe("fast dashboard client state helpers", () => {
     expect(shouldFallbackToCanada({ items: [] })).toBe(true);
     expect(shouldFallbackToCanada({ pagination: { total: 0 }, items: [{ id: "summer-1" }] })).toBe(true);
     expect(buildRolesQuery().get("tab")).toBe("canada");
+    expect(buildRolesQuery().get("sort")).toBe("posted");
     expect(roleFiltersKey()).toContain("canada|");
   });
 

@@ -5,6 +5,8 @@ import { compareByPostedDate, compareBySeason, isDashboardPostingTooOld, parseSo
 type SortableRole = {
   company: string;
   postingDate: string | null;
+  firstSeenAt?: string | null;
+  discoveredAt?: string | null;
   relevanceScore: number;
   title: string;
   internshipTerm?: string | null;
@@ -17,8 +19,19 @@ function role(
   relevanceScore = 50,
   internshipTerm: string | null = null,
   internshipYear: string | null = null,
+  firstSeenAt: string | null = null,
+  discoveredAt: string | null = null,
 ): SortableRole {
-  return { company: id, postingDate, relevanceScore, title: id, internshipTerm, internshipYear };
+  return {
+    company: id,
+    postingDate,
+    firstSeenAt,
+    discoveredAt,
+    relevanceScore,
+    title: id,
+    internshipTerm,
+    internshipYear,
+  };
 }
 
 describe("dashboard posted-date sorting", () => {
@@ -41,6 +54,38 @@ describe("dashboard posted-date sorting", () => {
       "newest",
       "older",
       "undated",
+    ]);
+  });
+
+  it("uses first-seen or discovery dates when an explicit posting date is missing", () => {
+    const roles = [
+      role("discovered-latest", null, 20, null, null, "2026-08-14T12:00:00.000Z"),
+      role("posted-middle", "2026-08-12", 100),
+      role("first-seen-oldest", null, 100, null, null, "2026-08-10T12:00:00.000Z"),
+    ];
+
+    expect(roles.toSorted(compareByPostedDate).map(({ company }) => company)).toEqual([
+      "discovered-latest",
+      "posted-middle",
+      "first-seen-oldest",
+    ]);
+
+    const sameDay = [
+      role("high-score-old-arrival", "2026-08-14", 100, null, null, "2026-08-14T08:00:00.000Z"),
+      role("low-score-new-arrival", "2026-08-14", 20, null, null, "2026-08-14T12:00:00.000Z"),
+    ];
+    expect(sameDay.toSorted(compareByPostedDate).map(({ company }) => company)).toEqual([
+      "low-score-new-arrival",
+      "high-score-old-arrival",
+    ]);
+
+    const missingFallback = [
+      role("no-effective-date", null, 100),
+      role("known-fallback-date", null, 20, null, null, null, "2026-08-11T12:00:00.000Z"),
+    ];
+    expect(missingFallback.toSorted(compareByPostedDate).map(({ company }) => company)).toEqual([
+      "known-fallback-date",
+      "no-effective-date",
     ]);
   });
 

@@ -74,7 +74,6 @@ import {
   compareByDashboardSeason,
   dashboardLocalDayKey,
   dashboardPostingAgeKey,
-  dashboardPostingDay,
   dashboardRoleHasSeason,
   dashboardRoleSeasons,
   isDashboardPostingTooOld,
@@ -2365,7 +2364,7 @@ async function readDashboardData(databasePath: string, forceGrindRefresh = false
 
     return {
       generatedAt,
-      scheduler: { enabled: true, intervalMinutes: 90, activeWindow: "07:00–00:00 local", service: "macOS launchd" },
+      scheduler: { enabled: true, intervalMinutes: 90, activeWindow: "24 hours (while host is awake)", service: "supervised scout scheduler" },
       stats: {
         total: internships.length,
         open: count(({ availability_status }) => availability_status === "open"),
@@ -2853,8 +2852,35 @@ function compactRole(
   };
 }
 
+function firstParseableFastSortValue(values: Array<string | null | undefined>, relativeBase: number): string | null {
+  for (const value of values) {
+    if (value && parseDashboardSortDate(value, relativeBase) !== null) return value;
+  }
+  return null;
+}
+
+function postingSortValueForFastSort(role: DashboardInternship, relativeBase: number): string | null {
+  // Match the card's visible date. Live-board entries generally have no
+  // explicit posting date, so their first-seen/discovery timestamp keeps a
+  // newly found listing in the correct newest-first position.
+  return firstParseableFastSortValue([role.postingDate, role.firstSeenAt, role.discoveredAt], relativeBase);
+}
+
+function postingTimestampForFastSort(role: DashboardInternship, relativeBase: number): number | null {
+  const value = postingSortValueForFastSort(role, relativeBase);
+  return value === null ? null : parseDashboardSortDate(value, relativeBase);
+}
+
 function postingDayForFastSort(role: DashboardInternship, relativeBase: number): number | null {
-  return dashboardPostingDay(role.postingDate, relativeBase);
+  const timestamp = postingTimestampForFastSort(role, relativeBase);
+  if (timestamp === null) return null;
+  const date = new Date(timestamp);
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function seenTimestampForFastSort(role: DashboardInternship, relativeBase: number): number | null {
+  const value = firstParseableFastSortValue([role.firstSeenAt, role.discoveredAt], relativeBase);
+  return value === null ? null : parseDashboardSortDate(value, relativeBase);
 }
 
 function compareFastRelevance(left: FastRoleEntry, right: FastRoleEntry): number {
@@ -2871,6 +2897,19 @@ function compareFastPosted(left: FastRoleEntry, right: FastRoleEntry, relativeBa
   if (leftPostingDay !== null && rightPostingDay !== null && rightPostingDay !== leftPostingDay) {
     return rightPostingDay - leftPostingDay;
   }
+  const leftTimestamp = postingTimestampForFastSort(left.role, relativeBase);
+  const rightTimestamp = postingTimestampForFastSort(right.role, relativeBase);
+  if (leftTimestamp !== null && rightTimestamp !== null && rightTimestamp !== leftTimestamp) {
+    return rightTimestamp - leftTimestamp;
+  }
+  // Date-only postings share midnight. Use discovery time as a stable
+  // recency tie-break so a newly found role reaches the head of that day's
+  // queue immediately.
+  const leftSeen = seenTimestampForFastSort(left.role, relativeBase);
+  const rightSeen = seenTimestampForFastSort(right.role, relativeBase);
+  if (leftSeen === null && rightSeen !== null) return 1;
+  if (leftSeen !== null && rightSeen === null) return -1;
+  if (leftSeen !== null && rightSeen !== null && rightSeen !== leftSeen) return rightSeen - leftSeen;
   return compareFastRelevance(left, right);
 }
 
@@ -2923,7 +2962,7 @@ function parseFastQuery(requestUrl: URL): FastRolesQuery {
   if (!["open", "closed", "new", "updated", "all"].includes(status)) {
     throw new DashboardValidationError("status must be open, closed, new, updated, or all");
   }
-  const sort = read("sort", "relevance") as FastSort;
+  const sort = read("sort", "posted") as FastSort;
   if (!["relevance", "posted", "season", "recent", "last-seen", "company"].includes(sort)) {
     throw new DashboardValidationError("sort must be relevance, posted, season, recent, last-seen, or company");
   }
@@ -3031,8 +3070,18 @@ function fastFilterAndPage(
         return { entry, match };
       })
       .filter(({ match }) => match.eligibility.status !== "not_eligible")
-      .toSorted((left, right) => right.match.score - left.match.score
-        || compareFastEntries(left.entry, right.entry, query));
+      .toSorted((left, right) => {
+        // The posted-date choice is a real ordering mode for every tab,
+        // including Matches. Keep match score as the deterministic tie-break
+        // so the default newest-first feed does not silently remain ranked by
+        // preferences.
+        if (query.sort === "posted") {
+          return compareFastEntries(left.entry, right.entry, query)
+            || right.match.score - left.match.score;
+        }
+        return right.match.score - left.match.score
+          || compareFastEntries(left.entry, right.entry, query);
+      });
     const page = matching.slice(query.offset, query.offset + query.limit);
     const nextOffset = query.offset + page.length < matching.length ? query.offset + page.length : null;
     return {
@@ -3084,7 +3133,7 @@ function prewarmFastTabPages(index: FastDashboardIndex, relativeBase = Date.now(
       seasons: [],
       location: null,
       search: "",
-      sort: "relevance",
+      sort: "posted",
       limit: 1,
       offset: 0,
       relativeBase,
@@ -3286,6 +3335,12 @@ async function readFastDashboardIndexAttempt(
 
 const FAST_SNAPSHOT_MAX_RETRIES = 3;
 
+function cachedFastDashboardIndexForDatabase(databasePath: string): FastDashboardIndex | null {
+  const cached = fastDashboardIndexCache;
+  if (!cached || !cached.key.startsWith(`${databasePath}:`)) return null;
+  return cached.index;
+}
+
 async function readFastDashboardIndex(
   databasePath: string,
   retryCount = 0,
@@ -3296,6 +3351,14 @@ async function readFastDashboardIndex(
   } catch (error) {
     if (error instanceof FastSnapshotChangedError && retryCount < FAST_SNAPSHOT_MAX_RETRIES - 1) {
       return readFastDashboardIndex(databasePath, retryCount + 1, options);
+    }
+    if (error instanceof FastSnapshotChangedError) {
+      // A crawl can commit often enough that three coherent read attempts all
+      // lose the revision race. Keep the dashboard usable with the last
+      // coherent index; the next request will retry against the new revision.
+      // Never borrow an index belonging to another database path.
+      const cached = cachedFastDashboardIndexForDatabase(databasePath);
+      if (cached) return cached;
     }
     throw error;
   }

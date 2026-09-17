@@ -48,11 +48,15 @@ export function compareBySeason(left: {
 export function compareByPostedDate(left: {
   company: string;
   postingDate: string | null;
+  firstSeenAt?: string | null;
+  discoveredAt?: string | null;
   relevanceScore: number;
   title: string;
 }, right: {
   company: string;
   postingDate: string | null;
+  firstSeenAt?: string | null;
+  discoveredAt?: string | null;
   relevanceScore: number;
   title: string;
 }): number;
