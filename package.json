@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "report:final": "node dist/src/finalReport.js",
     "reprocess:stored": "node dist/src/reprocessStoredInternships.js",
+    "backfill:sponsorship": "node --import tsx src/backfillSponsorship.ts",
     "crawl:csjobs:toronto": "tsx scripts/crawl-csjobs-toronto.ts",
     "crawl:intern-list": "tsx scripts/crawl-intern-list.ts",
     "sample": "tsx scripts/sample-run.ts",

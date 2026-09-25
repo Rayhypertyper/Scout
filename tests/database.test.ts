@@ -7,10 +7,18 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveSettings } from "../src/config/settings.js";
-import { listingActionIdentityMatches, readListingActionIdentities } from "../src/database/actions.js";
+import {
+  compileListingActionMatcher,
+  internshipListingActionIdentities,
+  listingActionIdentityMatches,
+  readListingActionIdentities,
+  readListingActionMatcherCooperatively,
+} from "../src/database/actions.js";
 import { InternshipDatabase } from "../src/database/db.js";
+import { internshipQuality } from "../src/deduplication/deduplicate.js";
 import type { Internship } from "../src/domain/schemas.js";
 import type { CrawlResult, ScoutRunOptions } from "../src/domain/types.js";
+import { extractQualificationDetails } from "../src/parsing/qualifications.js";
 import { analyzed, makeInternship } from "./helpers.js";
 
 const temporaryDirectories: string[] = [];
@@ -148,6 +156,121 @@ describe("SQLite lifecycle", () => {
       }]);
     } finally {
       check.close();
+    }
+  });
+
+  it("cooperatively matches every action row when legacy user keys repeat", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-db-cooperative-actions-"));
+    temporaryDirectories.push(directory);
+    const databasePath = join(directory, "cooperative-actions.db");
+    const firstRole = makeInternship({
+      id: "legacy-first-role",
+      company: "First Legacy Labs",
+      applicationUrl: "https://boards.greenhouse.io/firstlegacy/jobs/100/apply",
+      postingUrl: "https://boards.greenhouse.io/firstlegacy/jobs/100",
+      jobId: "REQ-100",
+    });
+    const secondRole = makeInternship({
+      id: "legacy-second-role",
+      company: "Second Legacy Labs",
+      applicationUrl: "https://boards.greenhouse.io/secondlegacy/jobs/200/apply",
+      postingUrl: "https://boards.greenhouse.io/secondlegacy/jobs/200",
+      jobId: "REQ-200",
+    });
+    const bootstrap = new InternshipDatabase(databasePath);
+    const options: ScoutRunOptions = {
+      sources: ["https://example.com/careers"],
+      settings: resolveSettings({ databasePath, outputDirectory: join(directory, "output") }),
+      filters: { categories: [], newOnly: false, minScore: 60 },
+    };
+    bootstrap.persistRun(bootstrap.startRun(options), crawlJobs([firstRole, secondRole]), 1);
+    bootstrap.close();
+
+    const database = new DatabaseSync(databasePath);
+    try {
+      database.exec(`
+        DROP TABLE listing_action_identities;
+        DROP TABLE listing_actions;
+        CREATE TABLE listing_actions (
+          user_id TEXT NOT NULL DEFAULT '__legacy__',
+          listing_key TEXT NOT NULL,
+          listing_type TEXT NOT NULL,
+          listing_id TEXT NOT NULL,
+          action TEXT NOT NULL,
+          application_status TEXT NOT NULL DEFAULT 'pending',
+          application_stage TEXT NOT NULL DEFAULT 'applied',
+          company TEXT NOT NULL,
+          normalized_company TEXT NOT NULL,
+          title TEXT NOT NULL,
+          application_url TEXT,
+          posting_url TEXT,
+          job_id TEXT,
+          location TEXT,
+          created_at TEXT NOT NULL,
+          PRIMARY KEY (user_id, listing_key)
+        );
+        CREATE TABLE listing_action_identities (
+          user_id TEXT NOT NULL DEFAULT '__legacy__',
+          listing_key TEXT NOT NULL,
+          identity_key TEXT NOT NULL,
+          direct_job_ids_json TEXT NOT NULL DEFAULT '[]',
+          PRIMARY KEY (user_id, listing_key, identity_key)
+        );
+      `);
+      const insertAction = database.prepare(`
+        INSERT INTO listing_actions (
+          user_id, listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at
+        ) VALUES (@userId, 'internship:shared-legacy-key', 'internship', @listingId,
+                  'cant_fit', @company, @normalizedCompany, @title, '2026-01-01T00:00:00.000Z')
+      `);
+      for (const [userId, internship] of [["user-a", firstRole], ["user-b", secondRole]] as const) {
+        insertAction.run({
+          userId,
+          listingId: internship.id,
+          company: internship.company,
+          normalizedCompany: internship.company.toLocaleLowerCase(),
+          title: internship.title,
+        });
+      }
+
+      const persistedOnlyRole = makeInternship({
+        id: "persisted-only-role",
+        company: "Persisted Only Labs",
+        jobId: "REQ-300",
+        applicationUrl: "https://boards.greenhouse.io/persistedonly/jobs/300/apply",
+        postingUrl: "https://boards.greenhouse.io/persistedonly/jobs/300",
+      });
+      const persistedRoleIdentity = internshipListingActionIdentities(persistedOnlyRole)
+        .find(({ identityKey }) => identityKey.startsWith("role:"));
+      if (!persistedRoleIdentity) throw new Error("Test role did not produce a role identity");
+      const insertPersistedIdentity = database.prepare(`
+        INSERT INTO listing_action_identities (user_id, listing_key, identity_key, direct_job_ids_json)
+        VALUES (@userId, 'internship:persisted-only', @identityKey, @directJobIds)
+      `);
+      insertPersistedIdentity.run({
+        userId: "user-z",
+        identityKey: persistedRoleIdentity.identityKey,
+        directJobIds: JSON.stringify(["REQ-999"]),
+      });
+      insertPersistedIdentity.run({
+        userId: "user-a",
+        identityKey: persistedRoleIdentity.identityKey,
+        directJobIds: JSON.stringify(["REQ-300"]),
+      });
+
+      const expected = compileListingActionMatcher(readListingActionIdentities(database));
+      const actual = await readListingActionMatcherCooperatively(database, 1);
+      expect(expected.matches(firstRole)).toBe(true);
+      expect(actual.matches(firstRole)).toBe(expected.matches(firstRole));
+      expect(expected.matches(secondRole)).toBe(true);
+      expect(actual.matches(secondRole)).toBe(expected.matches(secondRole));
+      const unrelated = makeInternship({ company: "Unrelated Legacy Labs" });
+      expect(actual.matches(unrelated)).toBe(expected.matches(unrelated));
+      expect(expected.matches(persistedOnlyRole)).toBe(false);
+      expect(actual.matches(persistedOnlyRole)).toBe(expected.matches(persistedOnlyRole));
+      await expect(readListingActionMatcherCooperatively(database, 0)).rejects.toThrow(RangeError);
+    } finally {
+      database.close();
     }
   });
 
@@ -619,6 +742,110 @@ describe("SQLite lifecycle", () => {
     const secondRun = database.startRun(options);
     const result = database.persistRun(secondRun, crawl(corrected), 2);
     expect(result.internships[0]?.requiredQualifications).toEqual(["Experience with Python."]);
+    database.close();
+  });
+
+  it("refreshes sponsorship policy from a newer listing when older duplicate data is merged", () => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-db-sponsorship-refresh-"));
+    temporaryDirectories.push(directory);
+    const settings = resolveSettings({
+      databasePath: join(directory, "test.db"),
+      outputDirectory: join(directory, "output"),
+    });
+    const options: ScoutRunOptions = {
+      sources: ["https://example.com/careers"],
+      settings,
+      filters: { categories: [], newOnly: false, minScore: 60 },
+    };
+    const database = new InternshipDatabase(settings.databasePath);
+    const firstPostingUrl = "https://example.com/jobs/role-original";
+    const priorDetails = makeInternship().qualificationDetails;
+    const prior = makeInternship({
+      jobId: "REQ-100",
+      postingUrl: firstPostingUrl,
+      applicationUrl: firstPostingUrl,
+      description: "Develop production software using Python and TypeScript. The employer states that sponsorship is available to eligible candidates.",
+      sponsorshipInformation: "Employer sponsorship is available.",
+      qualificationDetails: { ...priorDetails, sponsorship: "available" },
+    });
+    const firstRun = database.startRun(options);
+    database.persistRun(firstRun, crawl(prior), 2);
+
+    const updatedDescription = "Develop production software using Python and TypeScript. No visa sponsorship is available for this role. Applicants must be enrolled in a Computer Science degree program.";
+    const refreshedUrl = "https://example.com/jobs/role-refreshed";
+    const refreshed = makeInternship({
+      jobId: "REQ-100",
+      postingUrl: refreshedUrl,
+      applicationUrl: refreshedUrl,
+      description: updatedDescription,
+      sponsorshipInformation: "No visa sponsorship is available for this role.",
+      qualificationDetails: {
+        ...extractQualificationDetails(updatedDescription),
+        applicationUrl: refreshedUrl,
+        sponsorship: "unavailable",
+      },
+      lastVerifiedAt: "2027-01-02T00:00:00.000Z",
+    });
+    const secondRun = database.startRun(options);
+    const result = database.persistRun(secondRun, crawl(refreshed), 2);
+
+    expect(result.internships).toHaveLength(1);
+    expect(result.internships[0]?.qualificationDetails.sponsorship).toBe("unavailable");
+    expect(result.internships[0]?.sponsorshipInformation).toContain("No visa sponsorship is available");
+    expect(result.internships[0]?.lifecycleStatus).toBe("UPDATED");
+    database.close();
+  });
+
+  it("keeps direct sponsorship evidence over a newer sparse aggregator duplicate", () => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-db-sponsorship-aggregator-"));
+    temporaryDirectories.push(directory);
+    const settings = resolveSettings({
+      databasePath: join(directory, "test.db"),
+      outputDirectory: join(directory, "output"),
+    });
+    const options: ScoutRunOptions = {
+      sources: ["https://example.com/careers"],
+      settings,
+      filters: { categories: [], newOnly: false, minScore: 60 },
+    };
+    const database = new InternshipDatabase(settings.databasePath);
+    const directUrl = "https://boards.greenhouse.io/northstar/jobs/100";
+    const direct = makeInternship({
+      jobId: "REQ-100",
+      postingUrl: directUrl,
+      applicationUrl: directUrl,
+      description: "Develop production software using Python and TypeScript. Visa sponsorship is available for this position.",
+      sponsorshipInformation: "Visa sponsorship is available for this position.",
+      qualificationDetails: { ...makeInternship().qualificationDetails, sponsorship: "available" },
+      lastVerifiedAt: "2027-01-01T00:00:00.000Z",
+    });
+    const firstRun = database.startRun(options);
+    database.persistRun(firstRun, crawl(direct), 2);
+
+    const aggregatorUrl = "https://jobright.ai/jobs/info/role-100";
+    const sparseAggregator = makeInternship({
+      id: "aggregator-copy",
+      jobId: "REQ-100",
+      postingUrl: aggregatorUrl,
+      applicationUrl: directUrl,
+      sourceUrl: aggregatorUrl,
+      sources: [aggregatorUrl],
+      description: "Software engineering internship for students.",
+      requiredQualifications: Array.from({ length: 90 }, (_, index) => `Relevant engineering qualification ${index + 1}.`),
+      sponsorshipInformation: null,
+      qualificationDetails: { ...makeInternship().qualificationDetails, sponsorship: "unknown" },
+      lastVerifiedAt: "2027-01-03T00:00:00.000Z",
+    });
+    expect(sparseAggregator.description.length).toBeLessThan(100);
+    expect(internshipQuality(sparseAggregator)).toBeGreaterThan(internshipQuality(direct));
+    const secondRun = database.startRun(options);
+    const result = database.persistRun(secondRun, crawl(sparseAggregator), 2);
+
+    expect(result.internships).toHaveLength(1);
+    expect(result.internships[0]?.postingUrl).toBe(aggregatorUrl);
+    expect(result.internships[0]?.description).toContain("Visa sponsorship is available");
+    expect(result.internships[0]?.qualificationDetails.sponsorship).toBe("available");
+    expect(result.internships[0]?.sponsorshipInformation).toContain("Visa sponsorship is available");
     database.close();
   });
 

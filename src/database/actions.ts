@@ -554,6 +554,137 @@ export function readListingActionIdentities(database: DatabaseSync): StoredListi
   });
 }
 
+/**
+ * Build the same matcher as readListingActionIdentities while yielding between
+ * bounded SQLite pages. Dashboard refreshes can involve thousands of saved
+ * actions; parsing each joined internship payload in one synchronous pass
+ * otherwise blocks unrelated HTTP requests during a catalog rebuild.
+ */
+export async function readListingActionMatcherCooperatively(
+  database: DatabaseSync,
+  batchSize = 40,
+): Promise<ListingActionMatcher> {
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
+    throw new RangeError("batchSize must be a positive safe integer");
+  }
+
+  const storedIdentities: StoredListingActionIdentity[] = [];
+  try {
+    const firstPersistedPage = database.prepare(`
+      SELECT rowid AS row_id, listing_key, identity_key, direct_job_ids_json
+      FROM listing_action_identities
+      ORDER BY rowid
+      LIMIT @limit
+    `);
+    const nextPersistedPage = database.prepare(`
+      SELECT rowid AS row_id, listing_key, identity_key, direct_job_ids_json
+      FROM listing_action_identities
+      WHERE rowid > @after
+      ORDER BY rowid
+      LIMIT @limit
+    `);
+    let afterRowId: number | null = null;
+    while (true) {
+      const rows = (afterRowId === null
+        ? firstPersistedPage.all({ limit: batchSize })
+        : nextPersistedPage.all({ after: afterRowId, limit: batchSize })) as unknown as Array<
+          ListingActionIdentityRow & { row_id: number }
+        >;
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        try {
+          const parsed = JSON.parse(row.direct_job_ids_json) as unknown;
+          const directJobIds = Array.isArray(parsed)
+            ? actionJobIdAliases(parsed.filter((value): value is string => typeof value === "string"))
+            : [];
+          storedIdentities.push({ listingKey: row.listing_key, identityKey: row.identity_key, directJobIds });
+        } catch {
+          // Ignore malformed legacy aliases just like the synchronous reader.
+        }
+      }
+      const last = rows[rows.length - 1];
+      if (!last) break;
+      afterRowId = last.row_id;
+      if (rows.length === batchSize) await new Promise<void>((resolve) => setImmediate(resolve));
+      else break;
+    }
+  } catch {
+    // Keep old databases readable when the identity projection is unavailable.
+  }
+
+  const rebuiltIdentities: StoredListingActionIdentity[] = [];
+  try {
+    const firstActionPage = database.prepare(`
+      SELECT a.rowid AS row_id, a.listing_key, a.listing_type, a.listing_id, a.company, a.title,
+             a.application_url, a.posting_url, a.job_id, a.location, i.payload_json
+      FROM listing_actions a
+      LEFT JOIN internships i ON i.id = a.listing_id
+      ORDER BY a.rowid
+      LIMIT @limit
+    `);
+    const nextActionPage = database.prepare(`
+      SELECT a.rowid AS row_id, a.listing_key, a.listing_type, a.listing_id, a.company, a.title,
+             a.application_url, a.posting_url, a.job_id, a.location, i.payload_json
+      FROM listing_actions a
+      LEFT JOIN internships i ON i.id = a.listing_id
+      WHERE a.rowid > @after
+      ORDER BY a.rowid
+      LIMIT @limit
+    `);
+    let afterRowId: number | null = null;
+    while (true) {
+      const rows = (afterRowId === null
+        ? firstActionPage.all({ limit: batchSize })
+        : nextActionPage.all({ after: afterRowId, limit: batchSize })) as unknown as Array<{
+          row_id: number;
+          listing_key: string;
+          listing_type: ListingType;
+          listing_id: string;
+          company: string;
+          title: string;
+          application_url: string | null;
+          posting_url: string | null;
+          job_id: string | null;
+          location: string | null;
+          payload_json: string | null;
+        }>;
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        let internship: Internship | null = null;
+        try {
+          if (row.payload_json) internship = InternshipSchema.parse(JSON.parse(row.payload_json));
+        } catch {
+          internship = null;
+        }
+        rebuiltIdentities.push(...actionIdentitiesForListing(
+          row.listing_type,
+          row.listing_id,
+          row.company,
+          row.title,
+          internship,
+          contextFromRow(row),
+        ).map((identity) => ({ listingKey: row.listing_key, ...identity })));
+      }
+      const last = rows[rows.length - 1];
+      if (!last) break;
+      afterRowId = last.row_id;
+      if (rows.length === batchSize) await new Promise<void>((resolve) => setImmediate(resolve));
+      else break;
+    }
+  } catch {
+    // As in readDashboardActionMatcher, persisted aliases remain a fallback.
+  }
+
+  const seen = new Set<string>();
+  const identities = [...rebuiltIdentities, ...storedIdentities].filter((identity) => {
+    const key = `${identity.listingKey}\u0000${identity.identityKey}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return compileListingActionMatcher(identities);
+}
+
 export function readListingActionKeys(database: DatabaseSync): Set<string> {
   const rows = database.prepare("SELECT listing_key FROM listing_actions").all() as unknown as Array<{ listing_key: string }>;
   return new Set(rows.map((row) => row.listing_key));

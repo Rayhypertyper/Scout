@@ -141,6 +141,37 @@ describe("dashboard fast API", () => {
     database.close();
   });
 
+  async function readRoleList(url: string, targetDatabasePath = databasePath): Promise<{
+    response: CapturedResponse;
+    payload: { version: string; items: Array<{ id: string; company: string }> };
+  }> {
+    const captured = response();
+    await requestHandler(request("GET", url) as never, captured as never, targetDatabasePath);
+    return {
+      response: captured,
+      payload: JSON.parse(captured.body.toString("utf8")) as {
+        version: string;
+        items: Array<{ id: string; company: string }>;
+      },
+    };
+  }
+
+  async function waitForRoleList(
+    url: string,
+    predicate: (payload: { version: string; items: Array<{ id: string; company: string }> }) => boolean,
+    targetDatabasePath = databasePath,
+  ): Promise<{
+    response: CapturedResponse;
+    payload: { version: string; items: Array<{ id: string; company: string }> };
+  }> {
+    let latest = await readRoleList(url, targetDatabasePath);
+    for (let attempt = 0; attempt < 50 && !predicate(latest.payload); attempt += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      latest = await readRoleList(url, targetDatabasePath);
+    }
+    return latest;
+  }
+
   afterAll(() => {
     setFastSnapshotReadHookForTests(null);
     setFastRunRevisionCaptureHookForTests(null);
@@ -265,6 +296,115 @@ describe("dashboard fast API", () => {
     expect(items[0]).not.toHaveProperty("requiredQualifications");
     expect(items[0]).toHaveProperty("applicationUrl");
     expect(items[0]).toHaveProperty("canadianLocation", "Toronto, ON, Canada");
+  });
+
+  it("includes conservative sponsorship offer status on compact, detail, and live-board roles", async () => {
+    const sponsorshipDatabasePath = join(directory, "sponsorship-dashboard.db");
+    const settings = resolveSettings({ databasePath: sponsorshipDatabasePath, outputDirectory: join(directory, "output") });
+    const options: ScoutRunOptions = {
+      sources: ["https://example.com/sponsorship-careers"],
+      settings,
+      filters: { categories: [], newOnly: false, minScore: 60 },
+    };
+    const baseQualificationDetails = makeInternship().qualificationDetails;
+    const sponsorshipRole = (
+      id: string,
+      sponsorship: Internship["qualificationDetails"]["sponsorship"],
+      conflicts: Internship["qualificationDetails"]["conflicts"] = [],
+    ) => makeInternship({
+      id,
+      company: `${id} Labs`,
+      jobId: id,
+      applicationUrl: `https://jobs.example/${id}/apply`,
+      postingUrl: `https://jobs.example/${id}`,
+      qualificationDetails: { ...baseQualificationDetails, sponsorship, conflicts },
+    });
+    const roles = [
+      sponsorshipRole("sponsorship-offered", "available"),
+      sponsorshipRole("sponsorship-unavailable", "unavailable"),
+      sponsorshipRole("sponsorship-required", "required"),
+      sponsorshipRole("sponsorship-unknown", "unknown"),
+      sponsorshipRole("sponsorship-conflict", "available", [
+        { key: "sponsorship", evidence: ["Visa sponsorship is available.", "Visa sponsorship is not available."] },
+      ]),
+    ];
+    const database = new InternshipDatabase(sponsorshipDatabasePath);
+    const runId = database.startRun(options);
+    database.persistRun(runId, crawl(roles, "https://example.com/sponsorship-careers"), roles.length);
+    database.close();
+
+    const now = new Date().toISOString();
+    const boardRefresh = vi.spyOn(GrindJobBoardClient.prototype, "getCachedSnapshot").mockReturnValue({
+      sourceUrl: "https://board.example/jobs",
+      status: "ready",
+      jobs: [{
+        id: "board-without-description",
+        company: "Board Labs",
+        title: "Software Engineering Intern",
+        location: "Toronto, ON, Canada",
+        link: "https://board.example/jobs/board-without-description",
+        firstSeen: now,
+        jobId: "board-without-description",
+      }],
+      jobCount: 1,
+      freshCount: 1,
+      companyCount: 1,
+      companiesSynced: 1,
+      companiesRefreshed: 1,
+      lastAttemptAt: now,
+      lastSuccessfulSyncAt: now,
+      cacheTtlMinutes: 5,
+      attempts: 1,
+      retrievalUrl: "https://board.example/api/query",
+      failures: [],
+    } as never);
+    clearFastDashboardCacheForTests();
+    try {
+      const listResponse = response();
+      await requestHandler(
+        request("GET", "/api/roles?tab=main&status=open&limit=100") as never,
+        listResponse as never,
+        sponsorshipDatabasePath,
+      );
+      const listPayload = JSON.parse(listResponse.body.toString("utf8")) as {
+        items: Array<{ listingId?: string; id?: string; sponsorshipOfferStatus?: string }>;
+      };
+      const statusById: Record<string, string | undefined> = {};
+      for (const item of listPayload.items) {
+        const id = item.listingId ?? item.id;
+        if (id) statusById[id] = item.sponsorshipOfferStatus;
+      }
+      expect(listResponse.statusCode).toBe(200);
+      expect(statusById).toMatchObject({
+        "sponsorship-offered": "offered",
+        "sponsorship-unavailable": "not_offered",
+        "sponsorship-required": "not_stated",
+        "sponsorship-unknown": "not_stated",
+        "sponsorship-conflict": "not_stated",
+        "board-without-description": "not_stated",
+      });
+
+      for (const [listingId, expectedStatus] of [
+        ["sponsorship-offered", "offered"],
+        ["sponsorship-unavailable", "not_offered"],
+        ["sponsorship-conflict", "not_stated"],
+        ["board-without-description", "not_stated"],
+      ] as const) {
+        const listingType = listingId.startsWith("board-") ? "grind" : "internship";
+        const detailResponse = response();
+        await requestHandler(
+          request("GET", `/api/roles/${listingType}/${listingId}`) as never,
+          detailResponse as never,
+          sponsorshipDatabasePath,
+        );
+        const detailPayload = JSON.parse(detailResponse.body.toString("utf8")) as { role: { sponsorshipOfferStatus?: string } };
+        expect(detailResponse.statusCode).toBe(200);
+        expect(detailPayload.role.sponsorshipOfferStatus).toBe(expectedStatus);
+      }
+    } finally {
+      boardRefresh.mockRestore();
+      clearFastDashboardCacheForTests();
+    }
   });
 
   it("applies the shared hard filters to live-board listings", async () => {
@@ -818,9 +958,18 @@ describe("dashboard fast API", () => {
       const immediateSecondPayload = JSON.parse(immediateSecond.body.toString("utf8")) as { version: string; items: Array<{ company: string }> };
       expect(immediateFirst.statusCode).toBe(200);
       expect(immediateSecond.statusCode).toBe(200);
-      expect(immediateFirstPayload.items[0]?.company).toBe("Startup Gap Listener Labs");
-      expect(immediateSecondPayload.items[0]?.company).toBe("Startup Gap Listener Labs");
+      expect(immediateFirstPayload.items[0]?.company).toBe("Startup Gap Reconciled Labs");
+      expect(immediateSecondPayload.items[0]?.company).toBe("Startup Gap Reconciled Labs");
       expect(immediateFirstPayload.version).toBe(immediateSecondPayload.version);
+      expect(builds).toBe(1);
+
+      const handedOff = await waitForRoleList(
+        "/api/roles?tab=summer&status=open&limit=8",
+        (payload) => payload.items[0]?.company === "Startup Gap Listener Labs",
+        startupPath,
+      );
+      expect(handedOff.response.statusCode).toBe(200);
+      expect(handedOff.payload.items[0]?.company).toBe("Startup Gap Listener Labs");
       expect(builds).toBe(1);
       const afterListenerCommit = response();
       await requestHandler(request("GET", "/api/changes") as never, afterListenerCommit as never, startupPath);
@@ -1142,7 +1291,15 @@ describe("dashboard fast API", () => {
       await requestHandler(request("GET", "/api/roles?tab=summer&status=all&q=legacy%20payload%20change&limit=8") as never, changed as never, databasePath);
       const payload = JSON.parse(changed.body.toString("utf8")) as { items: Array<{ company: string }> };
       expect(changed.statusCode).toBe(200);
-      expect(payload.items.map((item) => item.company)).toEqual(["Legacy Payload Change"]);
+      expect(payload.items).toEqual([]);
+      expect(builds).toBe(1);
+
+      const fresh = await waitForRoleList(
+        "/api/roles?tab=summer&status=all&q=legacy%20payload%20change&limit=8",
+        (result) => result.items.some((item) => item.company === "Legacy Payload Change"),
+      );
+      expect(fresh.response.statusCode).toBe(200);
+      expect(fresh.payload.items.map((item) => item.company)).toEqual(["Legacy Payload Change"]);
       expect(builds).toBe(1);
     } finally {
       setFastDashboardIndexBuildHookForTests(null);
@@ -1220,18 +1377,25 @@ describe("dashboard fast API", () => {
       const payload = JSON.parse(captured.body.toString("utf8")) as { version: string; items: Array<{ company: string }> };
       expect(captured.statusCode).toBe(200);
       expect(hookCalls).toBe(1);
-      expect(payload.items.map((item) => item.company)).toEqual(["AAAA SNAPSHOT RACE"]);
+      expect(payload.items).toEqual([]);
+
+      const fresh = await waitForRoleList(
+        "/api/roles?tab=summer&status=open&q=aaaa%20snapshot%20race&limit=8",
+        (result) => result.items.some((item) => item.company === "AAAA SNAPSHOT RACE"),
+      );
+      expect(fresh.response.statusCode).toBe(200);
+      expect(fresh.payload.items.map((item) => item.company)).toEqual(["AAAA SNAPSHOT RACE"]);
 
       const changes = response();
       await requestHandler(request("GET", "/api/changes") as never, changes as never, databasePath);
       const changesPayload = JSON.parse(changes.body.toString("utf8")) as { version: string };
-      expect(changesPayload.version).toBe(payload.version);
+      expect(changesPayload.version).toBe(fresh.payload.version);
     } finally {
       setFastSnapshotReadHookForTests(null);
     }
   });
 
-  it("serves the last coherent list when a busy crawl wins every read retry", async () => {
+  it("serves the last coherent list during a racing crawl build, then hands off the fresh list", async () => {
     clearFastDashboardCacheForTests();
     const originalDatabase = new DatabaseSync(databasePath);
     const original = originalDatabase.prepare(`
@@ -1249,9 +1413,9 @@ describe("dashboard fast API", () => {
     await requestHandler(request("GET", "/api/roles?tab=summer&status=open&limit=8") as never, warm as never, databasePath);
     expect(warm.statusCode).toBe(200);
 
-    // Move the database to a new content key so the warm index cannot satisfy
-    // the request without rebuilding it. Then mutate again during every
-    // build, forcing all three post-build revision checks to lose the race.
+    // Move the database to a new content key. The first candidate build then
+    // loses a deliberate commit race, while the response can use the previous
+    // coherent list until a clean follow-up build completes.
     const primeMutation = new DatabaseSync(databasePath);
     try {
       const payload = JSON.parse(original.payload_json) as Record<string, unknown>;
@@ -1295,8 +1459,16 @@ describe("dashboard fast API", () => {
       await requestHandler(request("GET", "/api/roles?tab=summer&status=open&limit=8") as never, captured as never, databasePath);
       const payload = JSON.parse(captured.body.toString("utf8")) as { items: Array<{ company: string }> };
       expect(captured.statusCode).toBe(200);
-      expect(hookCalls).toBe(3);
+      expect(hookCalls).toBe(1);
       expect(payload.items.map((item) => item.company)).toContain(original.company);
+
+      setFastDashboardIndexBuildHookForTests(null);
+      const fresh = await waitForRoleList(
+        "/api/roles?tab=summer&status=open&limit=8",
+        (result) => result.items.some((item) => item.company === "SNAPSHOT BUSY 1"),
+      );
+      expect(fresh.response.statusCode).toBe(200);
+      expect(fresh.payload.items.map((item) => item.company)).toContain("SNAPSHOT BUSY 1");
     } finally {
       setFastDashboardIndexBuildHookForTests(null);
       const restore = new DatabaseSync(databasePath);
@@ -1612,9 +1784,13 @@ describe("dashboard fast API", () => {
         listResponse as never,
         databasePath,
       );
-      const listPayload = JSON.parse(listResponse.body.toString("utf8")) as { items: Array<{ id: string }> };
       expect(listResponse.statusCode).toBe(200);
-      const oldCard = listPayload.items.find((item) => item.id === "summer-2");
+      const fresh = await waitForRoleList(
+        "/api/roles?tab=main&status=open&sort=posted&limit=100",
+        (result) => !result.items.some((item) => item.id === "summer-2"),
+      );
+      expect(fresh.response.statusCode).toBe(200);
+      const oldCard = fresh.payload.items.find((item) => item.id === "summer-2");
       expect(oldCard).toBeUndefined();
 
       const detailResponse = response();
@@ -1632,6 +1808,7 @@ describe("dashboard fast API", () => {
         hash: row.content_hash,
       });
       restore.close();
+      clearFastDashboardCacheForTests();
     }
   });
 
@@ -2114,7 +2291,7 @@ describe("dashboard fast API", () => {
     const beforeMidnight = new Date(2026, 7, 17, 23, 59, 59, 0);
     const afterMidnight = new Date(2026, 7, 18, 0, 0, 1, 0);
     expect(dashboardLocalDayKey(beforeMidnight.valueOf())).not.toBe(dashboardLocalDayKey(afterMidnight.valueOf()));
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ["Date"] });
     try {
       vi.setSystemTime(beforeMidnight);
       const before = response();

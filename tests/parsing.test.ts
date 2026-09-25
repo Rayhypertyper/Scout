@@ -223,6 +223,69 @@ Benefits
     expect(details.workAuthorization).toBe("unknown");
   });
 
+  it("reports sponsorship availability only when the employer clearly offers a visa path", () => {
+    expect(extractQualificationDetails("Employer sponsorship is available for eligible candidates.").sponsorship).toBe("available");
+    expect(extractQualificationDetails("Sponsorship: Yes").sponsorship).toBe("available");
+    expect(extractQualificationDetails("Visa sponsorship is available for this position.").sponsorship).toBe("available");
+    expect(extractQualificationDetails("The employer offers H-1B sponsorship for this role.").sponsorship).toBe("available");
+    expect(extractQualificationDetails("Security clearance sponsorship is available for successful candidates.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Sponsorship is available.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Visa sponsorship may be available.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("We provide sponsorship for community arts events and campus hackathons.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("The company offers sponsorship of STEM education programs.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("We offer sponsorship of STEM education programs for our intern program.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("We offer sponsorship of STEM education programs; this internship role is based in Toronto.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Visa sponsorship is available for select roles.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Our company offers visa sponsorship to candidates in some positions.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Our track record includes offering visa sponsorship. This history does not guarantee sponsorship for this specific role.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("At its sole discretion, Nationwide determines whether to offer sponsorship for qualifying positions based on business need and budget. However, it is not usually available for entry level roles.").sponsorship).toBe("unknown");
+  });
+
+  it("treats candidate needs and application questions as unknown offer status", () => {
+    expect(extractQualificationDetails("I will require employer sponsorship to work in the United States.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("The position does not require sponsorship.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Will you now or in the future require company sponsorship?").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Will you now or in the future require sponsorship for employment visa status?").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Will you now or in the future require company sponsorship? * Select yes or no.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("Role can be filled by a candidate requiring sponsorship: Yes.").sponsorship).toBe("unknown");
+  });
+
+  it("recognizes explicit denials and keeps conflicting employer evidence unknown", () => {
+    for (const statement of [
+      "The company will not pursue visa sponsorship for this position.",
+      "The employer does not currently provide employment sponsorship.",
+      "We will not be providing visa sponsorship.",
+      "Applicants are not eligible for employment-based visa/immigration sponsorship.",
+      "We are unable to consider candidates who require sponsorship.",
+      "Candidates must be authorized to work without the need for employer sponsorship.",
+      "No visa sponsorship is available.",
+      "This is not a position for which sponsorship will be provided.",
+      "Temporary visa holders who need sponsorship are not eligible for hire.",
+      "RSM does not intend to hire candidates who require sponsorship.",
+      "Candidates must not require sponsorship now or in the future.",
+      "All applicants must be currently authorized to work in the United States on a full-time basis and must not require U.S. Venture's sponsorship to continue to work legally in the United States.",
+    ]) {
+      expect(extractQualificationDetails(statement).sponsorship, statement).toBe("unavailable");
+    }
+
+    const conflict = extractQualificationDetails("Visa sponsorship is available for eligible interns. We cannot provide visa sponsorship for this role.");
+    expect(conflict.sponsorship).toBe("unknown");
+    const sponsorshipConflict = conflict.conflicts.find(({ key }) => key === "sponsorship");
+    expect(sponsorshipConflict?.evidence).toEqual([
+      "Visa sponsorship is available for eligible interns.",
+      "We cannot provide visa sponsorship for this role.",
+    ]);
+
+    expect(extractQualificationDetails("Visa sponsorship is available, but this employer will not provide it for this role.").sponsorship).toBe("unknown");
+    expect(extractQualificationDetails("No visa sponsorship is available, but the employer offers employment sponsorship.").sponsorship).toBe("unknown");
+    const roleConflict = extractQualificationDetails("Visa sponsorship is available for this position. Visa sponsorship for work authorization is not available for this position now or in the future.");
+    expect(roleConflict.sponsorship).toBe("unknown");
+    expect(roleConflict.conflicts.find(({ key }) => key === "sponsorship")?.evidence).toEqual([
+      "Visa sponsorship is available for this position.",
+      "Visa sponsorship for work authorization is not available for this position now or in the future.",
+    ]);
+  });
+
   it("keeps sparse graduation years discrete while honoring explicit ranges", () => {
     const sparse = extractQualificationDetails("Class of 2027 or class of 2029.");
     const range = extractQualificationDetails("Candidates graduating between 2027 and 2029 are eligible.");

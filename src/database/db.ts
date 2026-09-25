@@ -40,6 +40,7 @@ import { InternshipSchema, normalizeCategory, type Internship, type LifecycleSta
 import { normalizeCompanyIdentity, normalizeIdentity, normalizeRoleIdentity, uniqueStrings } from "../utils/text.js";
 import { canonicalizeUrl, isAggregatorUrl, isCompanyLandingUrl, isJobrightUrl, normalizedJobUrl } from "../utils/url.js";
 import { DATABASE_SCHEMA } from "./schema.js";
+import { ensureDashboardRevisionSchema } from "./dashboardRevisions.js";
 import { CrawlCancelledError } from "../domain/cancellation.js";
 
 interface InternshipRow {
@@ -173,6 +174,7 @@ export class InternshipDatabase {
       ensureListingActionSchema(this.database);
       this.purgeBelowMinimumScore();
       backfillListingActionIdentities(this.database);
+      ensureDashboardRevisionSchema(this.database);
       this.database.exec("COMMIT");
     } catch (error) {
       try {
@@ -1844,11 +1846,35 @@ export class InternshipDatabase {
         )
         || (existingHasCompanyLandingUrl && candidateHasRowSpecificUrl)
       );
-    const mergedCandidate = [authoritativeRefresh ? null : existingPayload, ...duplicatePayloads]
+    const mergedCandidateBase = [authoritativeRefresh ? null : existingPayload, ...duplicatePayloads]
       .filter((payload): payload is Internship => payload !== null)
       .reduce((merged, payload) => internshipQuality(payload) > internshipQuality(merged)
         ? mergeInternships(payload, merged)
         : mergeInternships(merged, payload), candidate);
+    const retainedDirectSponsorshipSource = [existingPayload, ...duplicatePayloads]
+      .filter((payload): payload is Internship => payload !== null && !isAggregatorUrl(payload.postingUrl))
+      .toSorted((left, right) => Date.parse(right.lastVerifiedAt) - Date.parse(left.lastVerifiedAt)
+        || internshipQuality(right) - internshipQuality(left))[0];
+    // A direct posting is the authority for its own sponsorship policy. When
+    // an aggregator duplicate arrives, read the fact from that stored direct
+    // payload instead of the quality-merged payload: mergeInternships may
+    // retain a newer sparse field set's unknown status even as its description
+    // comes from an older direct listing.
+    const sponsorshipSource = isAggregatorUrl(candidate.postingUrl)
+      ? retainedDirectSponsorshipSource ?? candidate
+      : candidate;
+    const mergedCandidate = {
+      ...mergedCandidateBase,
+      sponsorshipInformation: sponsorshipSource.sponsorshipInformation,
+      qualificationDetails: {
+        ...mergedCandidateBase.qualificationDetails,
+        sponsorship: sponsorshipSource.qualificationDetails.sponsorship,
+        conflicts: [
+          ...mergedCandidateBase.qualificationDetails.conflicts.filter((conflict) => conflict.key !== "sponsorship"),
+          ...sponsorshipSource.qualificationDetails.conflicts.filter((conflict) => conflict.key === "sponsorship"),
+        ],
+      },
+    };
     const sources = uniqueStrings([
       ...(existingPayload?.sources ?? []),
       ...duplicatePayloads.flatMap((payload) => payload.sources),

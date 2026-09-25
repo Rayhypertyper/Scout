@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 // @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
-import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, fetchRolesPage, filterListingRoles, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, isTransientDashboardReadError, isUndoShortcut, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
+import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, fetchRolesPage, filterListingRoles, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, isTransientDashboardReadError, isUndoShortcut, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, sponsorshipOfferHtml, sponsorshipOfferPresentation, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
 
 function role(listingId: string) {
   return { listingType: "internship", listingId, id: listingId };
@@ -80,6 +80,25 @@ describe("fast dashboard client state helpers", () => {
     expect(legacyOnly.status).toBe("unclear");
     expect(legacyOnly.unknownSources).toEqual([]);
     expect(legacyOnly.explicit).toBe(false);
+  });
+
+  it("maps sponsorship evidence conservatively and emits a visible text label", () => {
+    expect(sponsorshipOfferPresentation({ qualificationDetails: { sponsorship: "available" } })).toEqual({
+      status: "offered",
+      label: "Visa sponsorship offered",
+    });
+    expect(sponsorshipOfferPresentation({ qualificationDetails: { sponsorship: "unavailable" } }).label).toBe("No visa sponsorship");
+    expect(sponsorshipOfferPresentation({ qualificationDetails: { sponsorship: "required" } }).label).toBe("Visa sponsorship not stated");
+    expect(sponsorshipOfferPresentation({ qualificationDetails: { sponsorship: "unknown" } }).status).toBe("not_stated");
+    expect(sponsorshipOfferPresentation({}).status).toBe("not_stated");
+    expect(sponsorshipOfferPresentation({ qualificationDetails: {
+      sponsorship: "available",
+      conflicts: [{ key: "sponsorship", evidence: ["Conflicting posting evidence"] }],
+    } }).status).toBe("not_stated");
+    expect(sponsorshipOfferPresentation({ sponsorshipOfferStatus: "offered" }).status).toBe("offered");
+    expect(sponsorshipOfferHtml({ qualificationDetails: { sponsorship: "unknown" } })).toMatch(/<span[^>]*>Visa sponsorship not stated<\/span>/);
+    const clientSource = readFileSync(new URL("../public/app.js", import.meta.url), "utf8");
+    expect(clientSource.match(/\$\{sponsorshipOfferHtml\(role\)\}/g) || []).toHaveLength(3);
   });
 
   it("builds run notifications from completed and failed crawl states", () => {
@@ -232,6 +251,7 @@ describe("fast dashboard client state helpers", () => {
       categories: ["swe"], technologies: ["TypeScript"], location: ["Toronto, Canada"],
       remoteStatus: "hybrid", postingDate: "2026-08-20", availabilityStatus: "open",
       internshipTerm: "Summer", internshipYear: "2027",
+      sponsorshipOfferStatus: "offered", qualificationDetails: { sponsorship: "available" },
     }, "2026-08-21T12:00:00.000Z");
     const beta = createWatchlistEntry({
       listingType: "internship", listingId: "beta-1", company: "Beta", title: "Data Intern",
@@ -245,6 +265,7 @@ describe("fast dashboard client state helpers", () => {
       remoteStatus: "remote", postingDate: "2026-01-01", availabilityStatus: "open",
     }, "2026-08-22T12:00:00.000Z");
     expect(acme).not.toBeNull();
+    expect(acme.sponsorshipOfferStatus).toBe("offered");
     expect(beta).not.toBeNull();
     expect(old).not.toBeNull();
     const entries = upsertWatchlistRole(upsertWatchlistRole(upsertWatchlistRole([], acme), beta), old);

@@ -1631,6 +1631,24 @@ select {
   margin-top: 6px;
 }
 
+.sponsorship-offer {
+  color: var(--ink-2);
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.job-card-body > .sponsorship-offer {
+  margin-top: 6px;
+}
+
+.featured-copy > .sponsorship-offer,
+.role-detail-summary > .sponsorship-offer {
+  margin-top: 8px;
+}
+
 .job-meta-location svg {
   height: 12px;
   width: 12px;
@@ -4511,4 +4529,33 @@ select {
   .dashboard-crawl-health .run-stat:nth-child(even) {
     border-left: 0;
   }
+}
+
+/* Keep the added resume action inside the existing listing action column. */
+.listing-row-actions--large:has(.resume-action) > :is(.watchlist-toggle, .job-apply-link, .listing-action-button) {
+  width: auto;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow-wrap: anywhere;
+}
+.resume-action[aria-busy="true"] {
+  cursor: progress;
+  opacity: .65;
+}
+.resume-action {
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.resume-action:hover:not(:disabled) {
+  background: var(--line);
+}
+.listing-row-actions--large > .resume-action {
+  min-width: 82px;
+  flex-grow: 1.3;
+  overflow-wrap: normal;
 }

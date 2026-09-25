@@ -199,9 +199,9 @@ const YEAR = "20\\d{2}";
 const DEGREE_PATTERN = /\b(?:bachelor(?:['’]s|s)?|master(?:['’]s|s)?|ph\.?d\.?|doctor(?:al|ate)|associate(?:['’]s|s)?|b\.?s\.?|b\.?a\.?|m\.?s\.?|m\.?a\.?|b\.?eng\.?|m\.?eng\.?|computer science|computer engineering|electrical engineering|degree\s+(?:in|program|from))\b/i;
 const AUTHORIZATION_REQUIRED_PATTERN = /\b(?:must|need(?:s)?|required|required to be|eligible|legally)\b[^.\n]{0,100}\b(?:authori[sz](?:ed|ation)|work in|work authorization|right to work|employ(?:ment)? eligibility)\b|\b(?:authori[sz](?:ed|ation) to work|legally entitled to work|right to work)\b/i;
 const AUTHORIZATION_NOT_REQUIRED_PATTERN = /\b(?:no|without|not required|does not require|doesn['’]?t require)\b[^.\n]{0,80}\b(?:work authorization|right to work|employment authorization|employment eligibility|legally authorized to work)\b/i;
-const SPONSORSHIP_AVAILABLE_PATTERN = /\b(?:(?:visa|employment|immigration|employer)\s+)?sponsorship\s+(?:(?:is|may be|can be)\s+)?(?:available|provided|offered)|\bwill sponsor\b|\bsponsor(?:s|ed|ing)?\s+(?:eligible )?candidates?\b/i;
-const SPONSORSHIP_UNAVAILABLE_PATTERN = /\b(?:will not|won['’]?t|cannot|can['’]?t|unable to|does not|doesn['’]?t|do not|don['’]?t)\s+(?:provide|offer|support)\b[^.!?;\n]{0,70}\b(?:visa|employment|immigration|work)?\s*sponsorship\b|\b(?:will not|won['’]?t|cannot|can['’]?t|unable to|does not|doesn['’]?t|do not|don['’]?t)\s+sponsor(?:s|ed|ing)?\b|\b(?:no|not\s+available|unavailable|not\s+provided|not\s+offered|not\s+supported)\s+(?:(?:visa|employment|immigration|work)\s+)?sponsorship\b|\b(?:(?:visa|employment|immigration|work)\s+)?sponsorship\s*(?::|is)?\s*(?:not available|unavailable|not provided|not offered|not supported)\b|\bnot eligible for\s+(?:(?:visa|employment|immigration|work)\s+)?sponsorship\b|\bwithout sponsorship\b|\bnot sponsor(?:ed|ing)?\b/i;
-const SPONSORSHIP_REQUIRED_PATTERN = /\b(?:must|need(?:s)?|require(?:s|d)?)\b[^.\n]{0,70}\b(?:(?:visa|employment|immigration|employer)\s+)?sponsorship\b/i;
+const SPONSORSHIP_AVAILABLE_PATTERN = /\b(?:visa|employment|immigration|employer|work(?: permit)?|H-?1B)\s+sponsorship\s*(?:(?:is|will be)\s+)?(?:available|provided|offered|supported)\b|\b(?:provide|offer|support)(?:s|ed|ing)?\s+(?:(?:visa|employment|immigration|employer|work(?: permit)?|H-?1B)\s+)?sponsorship\b|\bwill sponsor\b|\bsponsor(?:s|ed|ing)?\s+(?:eligible )?candidates?\b|\bsponsorship\s*:\s*(?:yes|available|provided|offered)\b/i;
+const SPONSORSHIP_UNAVAILABLE_PATTERN = /\b(?:will not|won['’]?t|cannot|can['’]?t|unable to|does not|doesn['’]?t|do not|don['’]?t)\s+(?:(?:be|being)\s+)?(?:currently\s+)?(?:provid(?:e|ing)|offer(?:ing)?|support(?:ing)?)\b[^.!?;\n]{0,70}\b(?:visa|employment|immigration|work)?\s*sponsorship\b|\b(?:will not|won['’]?t|cannot|can['’]?t|unable to|does not|doesn['’]?t|do not|don['’]?t)\s+(?:currently\s+)?pursue\b[^.!?;\n]{0,60}\b(?:visa|employment|immigration|work)?\s*sponsorship\b|\b(?:will not|won['’]?t|cannot|can['’]?t|unable to|does not|doesn['’]?t|do not|don['’]?t)\s+sponsor(?:s|ed|ing)?\b|\b(?:not\s+available|unavailable|not\s+provided|not\s+offered|not\s+supported)\s+(?:(?:visa|employment|immigration|work)\s+)?sponsorship\b|\bno\s+(?:(?:visa|employment|immigration|work|employer)\s+)?sponsorship\s+(?:(?:is|will be)\s+)?(?:available|provided|offered|supported)\b|\bno\s+(?:(?:visa|employment|immigration|work|employer)\s+)?sponsorship\b(?!\s+(?:(?:is|will be)\s+)?(?:required|needed|necessary))|\b(?:(?:visa|employment|immigration|work)\s+)?sponsorship\b[^.!?;\n]{0,60}\b(?:isn['’]?t|is not|will not be|won['’]?t be|not)\s+(?:available|provided|offered|supported)\b|\bnot eligible for\b[^.!?;\n]{0,60}\bsponsorship\b|\bwithout\b[^.!?;\n]{0,45}\bsponsorship\b|\b(?:unable to|cannot|can['’]?t|not able to|will not|won['’]?t)\s+(?:consider|accept|hire|employ)\b[^.!?;\n]{0,100}\bcandidates?\b[^.!?;\n]{0,50}\b(?:require|requiring|requires|required|need|needs|needing)\s+(?:(?:visa|employment|immigration|employer)\s+)?sponsorship\b|\bsponsorship\s*:\s*(?:no|unavailable|not available|not offered|not provided)\b|\bnot\s+a\s+(?:position|role)\s+for\s+which\b[^.!?;\n]{0,90}\bsponsorship\b[^.!?;\n]{0,35}\b(?:will|would|can|could)\s+be\s+(?:provided|offered)\b|\b(?:does not|doesn['’]?t|do not|don['’]?t|will not|won['’]?t)\s+intend\s+to\s+(?:hire|employ)\b[^.!?;\n]{0,120}\bcandidates?\b[^.!?;\n]{0,80}\b(?:need|needs|require|requires|requiring)\s+(?:(?:visa|employment|immigration|employer)\s+)?sponsorship\b|\b(?:temporary\s+visas?|candidates?|applicants?|individuals?)\b[^.!?;\n]{0,140}\b(?:need|needs|require|requires|requiring)\b[^.!?;\n]{0,50}\bsponsorship\b[^.!?;\n]{0,80}\b(?:are\s+)?(?:not eligible|ineligible)\b[^.!?;\n]{0,40}\b(?:for hire|to be hired)\b|\b(?:must|should|may)\s+not\s+require\b[^.!?;\n]{0,50}\b(?:(?:visa|employment|immigration|employer|work)\s+)?sponsorship\b/i;
+const SPONSORSHIP_OFFER_CONTRADICTION_PATTERN = /\b(?:but|however|yet|although)\b[^.!?;\n]{0,80}\b(?:not|never|cannot|can['’]?t|will not|won['’]?t|does not|doesn['’]?t|do not|don['’]?t|unable to)\b[^.!?;\n]{0,50}\b(?:provide|offer|support|sponsor|available|provided|offered|it for this role)\b/i;
 
 function isSoftOnlyQualification(sentence: string): boolean {
   const soft = /\b(?:preferred|nice to have|nice-to-have|desired|bonus|ideal|plus|asset)\b/i.test(sentence);
@@ -214,7 +214,97 @@ function structuredSentences(text: string): string[] {
 }
 
 export function hasUnavailableSponsorshipStatement(text: string): boolean {
-  return SPONSORSHIP_UNAVAILABLE_PATTERN.test(text);
+  const normalized = text.replace(/\bU\.S\.\s+(?=[A-Z])/g, "US ").replace(/\bU\.K\.\s+(?=[A-Z])/g, "UK ");
+  return SPONSORSHIP_UNAVAILABLE_PATTERN.test(normalized);
+}
+
+function isSponsorshipQuestion(sentence: string): boolean {
+  const asksCandidate = /^(?:will|would|do|does|are|is|have|has|can|could|may|might)\s+(?:you|the applicant|applicants?|candidates?)\b/i.test(sentence);
+  const hasFormOptions = /\?\s*(?:\*|select\b|choose\b|please select\b|please choose\b)/i.test(sentence);
+  return Boolean(sentence.includes("?") && (asksCandidate || hasFormOptions)
+    && /\b(?:sponsor|sponsorship|visa|immigration)\b/i.test(sentence));
+}
+
+function isHistoricalSponsorshipEvidence(sentence: string): boolean {
+  return /\b(?:track record|history)\b[^.!?;\n]{0,100}\b(?:offer|provid|sponsor)(?:s|ed|ing)?\b[^.!?;\n]{0,70}\bsponsorship\b/i.test(sentence);
+}
+
+function isConditionalSponsorshipOffer(sentence: string): boolean {
+  return /\b(?:may|might|could)\b[^.!?;\n]{0,50}\b(?:sponsor|provide|offer|support)\b/i.test(sentence)
+    || /\bsponsorship\b[^.!?;\n]{0,40}\b(?:may|might|could)\b[^.!?;\n]{0,30}\b(?:be\s+)?(?:available|provided|offered|supported)\b/i.test(sentence)
+    || /\bdetermines?\s+whether\s+to\s+(?:offer|provide|support|sponsor)\b[^.!?;\n]{0,60}\bsponsorship\b/i.test(sentence)
+    || /\b(?:at )?(?:its|our|the company['’]?s) sole discretion\b[^.!?;\n]{0,100}\bsponsorship\b/i.test(sentence);
+}
+
+function isCandidateSponsorshipEligibilityStatement(sentence: string): boolean {
+  return /\b(?:role|position)\b[^.!?;\n]{0,80}\bcan be filled by\b[^.!?;\n]{0,80}\bcandidates? requiring sponsorship\s*:\s*yes\b/i.test(sentence);
+}
+
+function isRoleAgnosticSponsorshipPolicy(sentence: string): boolean {
+  const broadScope = /\b(?:select|some|certain|qualifying|eligible)\s+(?:roles?|positions?|jobs?|openings?)\b|\bcandidates?\s+in\s+some\s+(?:roles?|positions?|jobs?)\b/i.test(sentence);
+  const namesCurrentRole = /\b(?:this|the current)\s+(?:role|position|job|internship|opportunity|opening)\b|\bincluding\s+this\s+one\b/i.test(sentence);
+  return broadScope && !namesCurrentRole;
+}
+
+function isNonEmploymentSponsorshipObject(followingText: string): boolean {
+  return /^\s+(?:of|for)\s+(?:(?:the|a|an|our|its|their|community|campus|STEM|science|education|cultural|academic|research|charity|charitable|nonprofit|arts?)\s+){0,4}(?:events?|programs?|hackathons?|conferences?|festivals?|arts?)\b/i.test(followingText);
+}
+
+function hasExplicitSponsorshipOffer(sentence: string): boolean {
+  if (isConditionalSponsorshipOffer(sentence)
+    || isCandidateSponsorshipEligibilityStatement(sentence)
+    || isRoleAgnosticSponsorshipPolicy(sentence)) return false;
+  const isLabeledOffer = /\bsponsorship\s*:\s*(?:yes|available|provided|offered)\b/i.test(sentence);
+  const matcher = new RegExp(SPONSORSHIP_AVAILABLE_PATTERN.source, `${SPONSORSHIP_AVAILABLE_PATTERN.flags}g`);
+  for (const match of sentence.matchAll(matcher)) {
+    if (isLabeledOffer) return true;
+    const matchIndex = match.index ?? 0;
+    const phraseEnd = matchIndex + match[0].length;
+    const matchText = match[0];
+    const followingText = sentence.slice(phraseEnd);
+    if (isNonEmploymentSponsorshipObject(followingText)) continue;
+    const explicitlyQualified = /\b(?:visa|employment|immigration|employer|work(?: permit)?|H-?1B)\s+sponsorship\b/i.test(matchText);
+    const directCandidateOffer = /\bsponsor(?:s|ed|ing)?\s+(?:eligible\s+)?candidates?\b/i.test(matchText);
+    const immediateVisaContext = /\b(?:visa|immigration|employment|work(?: permit| authorization)?|H-?1B)\b/i.test(
+      sentence.slice(Math.max(0, matchIndex - 45), Math.min(sentence.length, phraseEnd + 65)),
+    );
+    const immediateRoleContext = /\b(?:for|to)\s+(?:(?:this|the|a|an|our|eligible|qualified)\s+)?(?:role|position|job|candidate|applicant|employee|worker|employment)\b/i.test(followingText.slice(0, 90));
+    if (!explicitlyQualified && !directCandidateOffer && !immediateVisaContext && !immediateRoleContext) continue;
+    const precedingText = sentence.slice(0, matchIndex);
+    const currentClause = precedingText.split(/;|\b(?:but|however|although|yet|and)\b/i).at(-1) ?? "";
+    if (!/\b(?:no|not|without|never|cannot|can['’]?t|will not|won['’]?t|does not|doesn['’]?t|do not|don['’]?t|unable to)\b/i.test(currentClause)) return true;
+  }
+  return false;
+}
+
+function sponsorshipEvidenceSentences(inspected: string[]): {
+  available: string[];
+  unavailable: string[];
+} {
+  // The sentence splitter treats periods in initials such as "U.S." as
+  // sentence boundaries. Include those adjacent pairs so a company name
+  // between a negation and sponsorship (for example, "U.S. Venture's
+  // sponsorship") does not hide the denial.
+  const evidenceUnits = uniqueStrings([
+    ...inspected,
+    ...inspected.slice(0, -1).flatMap((sentence, index) => /\b(?:U\.S|U\.K)\.$/i.test(sentence)
+      ? [`${sentence} ${inspected[index + 1] ?? ""}`]
+      : []),
+  ]);
+  const relevant = evidenceUnits.filter((sentence) => {
+    if (isSponsorshipQuestion(sentence)) return false;
+    // Clearance sponsorship concerns security-clearance processing, not work visas.
+    if (/\bclearance\s+sponsorship\b/i.test(sentence)
+      && !/\b(?:visa|immigration|employment|work permit|H-?1B)\s+sponsorship\b/i.test(sentence)) return false;
+    return true;
+  });
+  const historicalDisclaimer = relevant.some((sentence) => /\b(?:does not|doesn['’]?t|cannot|can['’]?t)\s+guarantee\b[^.!?;\n]{0,100}\bsponsorship\b[^.!?;\n]{0,60}\b(?:this|the)\s+(?:specific\s+)?role\b/i.test(sentence));
+  return {
+    available: relevant.filter((sentence) => hasExplicitSponsorshipOffer(sentence)
+      && !(historicalDisclaimer && isHistoricalSponsorshipEvidence(sentence))),
+    unavailable: relevant.filter((sentence) => hasUnavailableSponsorshipStatement(sentence)
+      || (SPONSORSHIP_AVAILABLE_PATTERN.test(sentence) && SPONSORSHIP_OFFER_CONTRADICTION_PATTERN.test(sentence))),
+  };
 }
 
 function contiguousYears(years: number[]): boolean {
@@ -468,15 +558,16 @@ export function extractQualificationDetails(
   }
 
   let sponsorship: QualificationDetails["sponsorship"] = "unknown";
-  const sponsorshipUnavailable = hasUnavailableSponsorshipStatement(bounded);
-  const sponsorshipRequired = SPONSORSHIP_REQUIRED_PATTERN.test(bounded);
-  const sponsorshipAvailable = SPONSORSHIP_AVAILABLE_PATTERN.test(bounded);
-  if (sponsorshipUnavailable) sponsorship = "unavailable";
-  else if (sponsorshipRequired) sponsorship = "required";
-  else if (sponsorshipAvailable) sponsorship = "available";
-  if (sponsorshipUnavailable && (sponsorshipRequired || sponsorshipAvailable)) {
-    const sponsorshipEvidence = inspected.filter((sentence) => hasUnavailableSponsorshipStatement(sentence) || SPONSORSHIP_REQUIRED_PATTERN.test(sentence) || SPONSORSHIP_AVAILABLE_PATTERN.test(sentence));
-    conflicts.push({ key: "sponsorship", evidence: uniqueStrings(sponsorshipEvidence) });
+  const sponsorshipEvidence = sponsorshipEvidenceSentences(inspected);
+  const hasSponsorshipOffer = sponsorshipEvidence.available.length > 0;
+  const hasSponsorshipDenial = sponsorshipEvidence.unavailable.length > 0;
+  if (hasSponsorshipOffer && !hasSponsorshipDenial) sponsorship = "available";
+  else if (hasSponsorshipDenial && !hasSponsorshipOffer) sponsorship = "unavailable";
+  if (hasSponsorshipOffer && hasSponsorshipDenial) {
+    conflicts.push({
+      key: "sponsorship",
+      evidence: uniqueStrings([...sponsorshipEvidence.available, ...sponsorshipEvidence.unavailable]),
+    });
   }
 
   return {

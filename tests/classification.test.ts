@@ -129,6 +129,21 @@ describe("technology extraction", () => {
 });
 
 describe("job analysis normalization", () => {
+  it("writes the explicit sponsorship offer from the newly crawled listing", async () => {
+    const result = await analyzeRawJob({
+      company: "Example Systems",
+      title: "Software Engineer Intern",
+      locations: ["Toronto, ON, Canada"],
+      description: "Build and test production software using Python and TypeScript. Currently pursuing a Computer Science degree. This is a full-time internship program. Sponsorship: Yes.",
+      postingUrl: "https://example.com/jobs/software-intern-2027",
+      sourceProvider: "generic",
+    }, "https://example.com/list", 60, async (url) => url);
+    expect(result.accepted).toBe(true);
+    if (!result.accepted) return;
+    expect(result.value.internship.qualificationDetails.sponsorship).toBe("available");
+    expect(result.value.internship.sponsorshipInformation).toContain("Sponsorship: Yes");
+  });
+
   it("rejects jobs routed to a known ATS integration sandbox", async () => {
     const result = await analyzeRawJob({
       company: "Atoms",

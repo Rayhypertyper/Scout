@@ -5,7 +5,7 @@ import {
   internshipListingActionIdentities,
   listingActionIdentityMatches,
 } from "../src/database/actions.js";
-import { deduplicateJobs, deduplicateListings, ListingIdentityIndex, listingIdentityKey, listingIdentityMatches } from "../src/deduplication/deduplicate.js";
+import { deduplicateJobs, deduplicateListings, ListingIdentityIndex, listingIdentityKey, listingIdentityMatches, mergeInternships } from "../src/deduplication/deduplicate.js";
 import { analyzed, makeInternship } from "./helpers.js";
 
 describe("deduplication", () => {
@@ -119,6 +119,39 @@ describe("deduplication", () => {
     const result = deduplicateJobs([analyzed(aggregatorCopy), analyzed(directCopy)]);
     expect(result).toHaveLength(1);
     expect(result[0]?.internship.sources).toHaveLength(2);
+  });
+
+  it("keeps direct sponsorship policy when merging a newer sparse aggregator payload", () => {
+    const direct = makeInternship({
+      postingUrl: "https://boards.greenhouse.io/northstar/jobs/100",
+      applicationUrl: "https://boards.greenhouse.io/northstar/jobs/100/apply",
+      description: "Develop production software. Visa sponsorship is available for this position.",
+      sponsorshipInformation: "Visa sponsorship is available for this position.",
+      qualificationDetails: {
+        ...makeInternship().qualificationDetails,
+        sponsorship: "available",
+      },
+      lastVerifiedAt: "2027-01-01T00:00:00.000Z",
+    });
+    const newerAggregator = makeInternship({
+      postingUrl: "https://jobright.ai/jobs/info/northstar-100",
+      applicationUrl: "https://jobright.ai/jobs/info/northstar-100",
+      sourceUrl: "https://jobright.ai",
+      sources: ["https://jobright.ai"],
+      description: "Software engineering internship for students.",
+      sponsorshipInformation: null,
+      qualificationDetails: {
+        ...makeInternship().qualificationDetails,
+        sponsorship: "unknown",
+      },
+      lastVerifiedAt: "2027-01-03T00:00:00.000Z",
+    });
+
+    // The newer sparse copy is primary here, matching the quality-merge call
+    // shape that exposed timestamp-only sponsorship selection.
+    const merged = mergeInternships(newerAggregator, direct);
+    expect(merged.qualificationDetails.sponsorship).toBe("available");
+    expect(merged.sponsorshipInformation).toContain("Visa sponsorship is available");
   });
 
   it("matches provider URL job IDs even when extractor job IDs are slugs", () => {

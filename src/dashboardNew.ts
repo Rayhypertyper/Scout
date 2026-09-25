@@ -55,3 +55,17 @@ export function readNewListingKeys(database: DatabaseSync, now: Date | number = 
   `).all({ cutoff }) as unknown as NewListingRow[];
   return rows.map((row) => listingActionKey("internship", row.internship_id));
 }
+
+/**
+ * Return the time-independent evidence used to decide whether a stored role
+ * can receive the NEW banner. Callers apply the 16-hour window at read time.
+ */
+export function readNewListingEvidenceKeys(database: DatabaseSync): string[] {
+  const rows = database.prepare(`
+    SELECT DISTINCT internship_id
+    FROM run_internships
+    WHERE lifecycle_status = 'NEW'
+    ORDER BY internship_id
+  `).all() as unknown as NewListingRow[];
+  return rows.map((row) => listingActionKey("internship", row.internship_id));
+}

@@ -349,7 +349,7 @@ const WATCHLIST_ROLE_FIELDS = [
   "technologies", "categories", "relevanceScore", "relevanceReason", "internshipTerm",
   "seasons", "internshipYear", "duration", "postingDate", "discoveredAt", "firstSeenAt", "lastSeenAt",
   "availabilityStatus", "lifecycleStatus", "statusRunId", "missCount", "isNew",
-  "normalizedLocations", "eligibilityStatus", "description",
+  "normalizedLocations", "eligibilityStatus", "sponsorshipOfferStatus", "description",
   "responsibilities", "requiredQualifications", "preferredQualifications",
   "workAuthorizationRequirements", "sponsorshipInformation", "qualificationDetails",
 ];
@@ -2002,13 +2002,18 @@ function formatLocation(role) {
   return roleDisplayLocation(role, state.activeTab);
 }
 
-function formatPosted(value) {
+export function formatPosted(value, now = Date.now()) {
   if (!value) return "—";
-  const parsed = Date.parse(value);
-  if (Number.isFinite(parsed)) {
-    const delta = Date.now() - parsed;
-    if (delta < 6 * 86_400_000) return relativeDate(value);
-    return formatDate(value);
+  // A source's zero-day label has no minute/hour precision.
+  if (/^(?:(?:posted|date posted)\s*:?\s*)?(?:today|0\s*d(?:ays?)?(?:\s+ago)?)$/i.test(String(value).trim())) return "Today";
+  const parsed = parseSortDate(value, now);
+  if (parsed !== null) {
+    const delta = Math.max(0, now - parsed);
+    if (delta < 60_000) return "<1 min ago";
+    if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} min ago`;
+    if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h ago`;
+    if (delta < 28 * 86_400_000) return `${Math.floor(delta / 86_400_000)}d ago`;
+    return formatDate(new Date(parsed).toISOString());
   }
   return String(value);
 }
@@ -2168,6 +2173,40 @@ export function eligibilityPresentation(role) {
   };
 }
 
+const SPONSORSHIP_OFFER_LABELS = Object.freeze({
+  offered: "Visa sponsorship offered",
+  not_offered: "No visa sponsorship",
+  not_stated: "Visa sponsorship not stated",
+});
+
+function normalizeSponsorshipOfferStatus(value) {
+  const normalized = String(value || "").trim().toLocaleLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "offered" || normalized === "available") return "offered";
+  if (normalized === "not_offered" || normalized === "unavailable") return "not_offered";
+  if (normalized === "not_stated" || normalized === "unknown" || normalized === "required") return "not_stated";
+  return null;
+}
+
+export function sponsorshipOfferPresentation(role) {
+  const candidate = role && typeof role === "object" ? role : {};
+  const qualificationDetails = candidate.qualificationDetails && typeof candidate.qualificationDetails === "object"
+    ? candidate.qualificationDetails
+    : {};
+  const conflicts = Array.isArray(qualificationDetails.conflicts) ? qualificationDetails.conflicts : [];
+  const hasSponsorshipConflict = conflicts.some((conflict) => conflict && typeof conflict === "object" && conflict.key === "sponsorship");
+  const status = hasSponsorshipConflict
+    ? "not_stated"
+    : normalizeSponsorshipOfferStatus(candidate.sponsorshipOfferStatus)
+      || normalizeSponsorshipOfferStatus(qualificationDetails.sponsorship)
+      || "not_stated";
+  return { status, label: SPONSORSHIP_OFFER_LABELS[status] };
+}
+
+export function sponsorshipOfferHtml(role) {
+  const { status, label } = sponsorshipOfferPresentation(role);
+  return `<span class="sponsorship-offer sponsorship-offer--${status}" data-sponsorship-offer="${status}">${escapeHtml(label)}</span>`;
+}
+
 const HIDDEN_MATCH_REASON = "The posting states only part of an internship term.";
 
 function roleSignalReasons(role) {
@@ -2236,6 +2275,43 @@ function eligibilityBadgeHtml(role) {
   return `<span class="eligibility-badge eligibility-badge-${status}" data-eligibility-status="${status}"><span class="eligibility-badge-dot" aria-hidden="true"></span><span class="sr-only">Eligibility: </span><span>${label}</span></span>`;
 }
 
+function resumeButton(role) {
+  const url = `/api/resumes/${encodeURIComponent(role.listingType || "internship")}/${encodeURIComponent(role.listingId || role.id)}`;
+  return `<button type="button" class="listing-action-button resume-action" data-resume-url="${escapeHtml(url)}" aria-label="Download tailored resume for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}" title="Download a LaTeX PDF with relevant projects, bullets, and skills prioritized">Download resume</button>`;
+}
+
+async function downloadResume(button) {
+  if (button.disabled) return;
+  button.disabled = true;
+  button.setAttribute("aria-busy", "true");
+  button.textContent = "Preparing PDF…";
+  try {
+    const response = await fetch(button.dataset.resumeUrl, { method: "POST", credentials: "same-origin" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || "Could not prepare your resume. Please try again.");
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] || "tailored-resume.pdf";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    showToast(Number(response.headers.get("x-resume-matched-skills")) > 0
+      ? "Resume downloaded. Relevant experience and skills are prioritized; review before applying."
+      : "Resume downloaded. No direct skill matches found; review the role before applying.");
+  } catch (error) {
+    showToast(error.message || "Could not download your resume. Please try again.");
+  } finally {
+    button.disabled = false;
+    button.removeAttribute("aria-busy");
+    button.textContent = "Download resume";
+  }
+}
+
 function featuredHtml(role) {
   const listingType = role.listingType || "internship";
   const listingId = role.listingId || role.id;
@@ -2262,6 +2338,7 @@ function featuredHtml(role) {
         <h3 class="featured-title">${escapeHtml(role.title)}</h3>
         </div>
         <div class="featured-meta"><span>${metaIcon("pin")}${escapeHtml(formatLocation(role))}</span><span>${metaIcon("briefcase")}${escapeHtml(formatMode(role))}</span>${schedule ? `<span class="featured-schedule">${escapeHtml(schedule)}</span>` : ""}</div>
+        ${sponsorshipOfferHtml(role)}
         <div class="featured-pills">${newPill}${categories}${technologies}</div>
         <div class="featured-foot">
           <time class="job-posted job-posted--left">${escapeHtml(posted)}</time>
@@ -2271,7 +2348,7 @@ function featuredHtml(role) {
       <div class="featured-side featured-side--large">
         <div class="listing-actions listing-row-actions listing-row-actions--large" aria-label="Actions for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}">
           ${watchlistButton(role)}
-          ${applyLink}
+          ${applyLink}${resumeButton(role)}
           ${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}
         </div>
       </div>
@@ -2295,7 +2372,7 @@ function roleRowHtml(role) {
   const menuId = `row-menu-${String(listingType)}-${String(listingId)}`.replace(/[^a-zA-Z0-9_-]+/g, "-");
   const detailButton = `<button class="listing-card-link" type="button" data-open-role-detail aria-expanded="false" aria-controls="role-detail-panel" aria-label="${escapeHtml(`Inspect ${role.title} at ${role.company}`)}"></button>`;
   const applyLink = role.applicationUrl && applyUrl !== "#" ? `<a class="job-apply-link" href="${escapeHtml(applyUrl)}" target="_blank" rel="noopener noreferrer" aria-label="${applicationLabel}">Apply</a>` : "";
-  const rowActions = `<div class="job-card-actions"><div class="listing-actions listing-row-actions listing-row-actions--large" aria-label="Actions for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}">${watchlistButton(role)}${applyLink}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}</div></div>`;
+  const rowActions = `<div class="job-card-actions"><div class="listing-actions listing-row-actions listing-row-actions--large" aria-label="Actions for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}">${watchlistButton(role)}${applyLink}${resumeButton(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}</div></div>`;
   const menu = `<div class="row-menu job-card-menu"><button class="row-menu-trigger job-more" type="button" aria-label="More actions for ${escapeHtml(role.title)}" aria-haspopup="dialog" aria-expanded="false" aria-controls="${escapeHtml(menuId)}" data-menu-trigger>${moreActionsIconHtml()}</button><div class="row-menu-popover" id="${escapeHtml(menuId)}" role="dialog" aria-label="Actions for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}" hidden><button class="ghost-action" type="button" data-open-role-detail aria-expanded="false" aria-controls="role-detail-panel">Inspect details</button>${watchlistButton(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true })}</div></div>`;
   return `<article class="job-card listing-clickable${isNew ? " job-card-new" : ""}" data-listing-key="${escapeHtml(roleKey(role))}" role="listitem">
     ${detailButton}
@@ -2308,6 +2385,7 @@ function roleRowHtml(role) {
         ${mode !== "—" ? `<span class="job-mode">${escapeHtml(mode)}</span>` : ""}
         ${schedule ? `<span class="job-season">${escapeHtml(schedule)}</span>` : ""}
       </div>
+      ${sponsorshipOfferHtml(role)}
       ${tags ? `<div class="job-tags" aria-label="Skills and categories">${tags}</div>` : ""}
       <div class="job-card-foot">
         <time class="job-posted job-posted--left">${escapeHtml(posted)}</time>
@@ -3248,8 +3326,9 @@ function openRoleDetail(row, trigger = null) {
   summary.innerHTML = `<div class="role-detail-company">${companyLogoHtml(role)}<span>${escapeHtml(role.company)}</span></div>
     <h2 id="role-detail-title">${escapeHtml(role.title)}</h2>
     <div class="role-detail-meta"><span>${escapeHtml(formatLocation(role))}</span><span>${escapeHtml(formatMode(role))}</span>${schedule ? `<span>${escapeHtml(schedule)}</span>` : ""}<span>Posted ${escapeHtml(formatPosted(role.postingDate || role.firstSeenAt || role.discoveredAt))}</span></div>
+    ${sponsorshipOfferHtml(role)}
     ${roleSignal ? `<div class="role-detail-match"><strong>${escapeHtml(roleSignal.value)} ${escapeHtml(roleSignal.label)}</strong><span>${escapeHtml(roleReason)}</span></div>` : ""}
-    <div class="role-detail-actions">${applyLink}${watchlistButton(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}</div>`;
+    <div class="role-detail-actions">${applyLink}${resumeButton(role)}${watchlistButton(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}</div>`;
   bindCompanyLogos(summary);
   details.dataset.detailKey = key;
   details.open = true;
@@ -5111,6 +5190,8 @@ function bindEvents() {
       clearLocalSettingsData(settingsAction.dataset.settingsAction);
       return;
     }
+    const resumeDownload = target.closest("button[data-resume-url]");
+    if (resumeDownload) { event.preventDefault(); void downloadResume(resumeDownload); return; }
     const actionButton = target.closest("button[data-listing-action]");
     if (actionButton) { void saveListingAction(actionButton); return; }
     const roleDetailTrigger = target.closest("button[data-open-role-detail]");

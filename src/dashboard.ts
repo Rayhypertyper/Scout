@@ -1,9 +1,12 @@
+import { authorizeResume } from "./resume/access.js";
+import { generateResume, readBaseResume, ResumeError } from "./resume/service.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { brotliCompressSync, gzipSync } from "node:zlib";
+import { performance } from "node:perf_hooks";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +29,7 @@ import {
   mergeListingActionContext,
   readPersistedListingActionIdentities,
   readListingActionIdentities,
+  readListingActionMatcherCooperatively,
   replaceListingActionIdentities,
   type ListingAction,
   type ListingActionRecord,
@@ -39,6 +43,7 @@ import {
   requestRunTermination,
 } from "./database/runControl.js";
 import { InternshipDatabase } from "./database/db.js";
+import { readDashboardRevisionCounters, ensureDashboardRevisionSchema, type DashboardRevisionCounters } from "./database/dashboardRevisions.js";
 import {
   applicationStageFromLegacyStatus,
   isApplicationStage,
@@ -58,9 +63,11 @@ import {
 } from "./integrations/grindJobBoard.js";
 import {
   hasRequiredListingKeywords,
-  isListingContentAllowed,
-  isListingWorkAuthorizationAllowed,
+  hasUSCitizenshipRequirement,
+  isListingKeywordPolicyAllowed,
+  isSecurityClearanceAllowed,
 } from "./output/eligibility.js";
+import { isExcludedJobTitle } from "./classification/titlePolicy.js";
 import {
   hasVerifiedLinkedInDestinations,
   readVerifiedLinkedInUrls,
@@ -69,12 +76,11 @@ import {
 } from "./output/linkEligibility.js";
 import { normalizeCompanyIdentity } from "./utils/text.js";
 import { ROLE_TABS, buildRoleTabKeys, canadianLocationForRole, roleMatchesTab, type RoleTab } from "./dashboardTabs.js";
-import { isWithinNewRoleBannerWindow, newRoleBannerCacheKey, readNewListingKeys } from "./dashboardNew.js";
+import { isWithinNewRoleBannerWindow, newRoleBannerCacheKey, newRoleBannerCutoffIso, readNewListingKeys } from "./dashboardNew.js";
 import {
   compareByDashboardSeason,
   dashboardLocalDayKey,
   dashboardPostingAgeKey,
-  dashboardRoleHasSeason,
   dashboardRoleSeasons,
   isDashboardPostingTooOld,
   DASHBOARD_SEASON_FILTERS,
@@ -83,6 +89,7 @@ import {
   type DashboardSeason,
 } from "./dashboardSort.js";
 import { sha256 } from "./utils/hash.js";
+import { hasUnavailablePageContent } from "./verification/pageContent.js";
 import { handleAuthRequest } from "./auth/router.js";
 import { writeAuthJson } from "./auth/http.js";
 import type { EligibilityEvaluation } from "./eligibility/index.js";
@@ -108,6 +115,15 @@ const grindJobBoardClient = new GrindJobBoardClient({
   cachePath: process.env.GRIND_JOB_BOARD_CACHE_PATH?.trim() || defaultGrindJobBoardCachePath,
   cacheTtlMs: 5 * 60_000,
 });
+
+function dashboardPerfStart(): number {
+  return performance.now();
+}
+
+function dashboardPerfLog(label: string, startedAt: number, detail: Record<string, unknown> = {}): void {
+  if (process.env.DASHBOARD_PERF_LOGS !== "1") return;
+  console.error(`[DASHBOARD PERF] ${label} ${(performance.now() - startedAt).toFixed(1)}ms ${JSON.stringify(detail)}`);
+}
 
 interface RunRow {
   id: number;
@@ -450,6 +466,10 @@ type FastExperienceView = "all" | "matches";
 
 interface FastInternshipRow extends InternshipRow {
   id: string;
+  company: string;
+  title: string;
+  has_new_evidence: number | bigint;
+  sort_relevance_score: number | bigint | null;
 }
 
 interface FastVersionMetadata {
@@ -458,8 +478,13 @@ interface FastVersionMetadata {
   // remain in `version` and are refreshed on cache hits without reparsing all
   // roles; only content-affecting revisions use this key.
   contentKey: string;
+  // Content that makes it unsafe to temporarily show the last complete list
+  // while a crawler-only catalog refresh is being assembled.
+  staleSafetyKey: string;
+  databaseFileIdentity: string;
+  usesDashboardRevisionCounters: boolean;
+  isStaleProjection: boolean;
   databaseDataVersion: number | null;
-  roleCount: number;
   actionCount: number;
   hiddenCount: number;
   appliedRoleCount: number;
@@ -468,20 +493,6 @@ interface FastVersionMetadata {
   latestRunHeartbeat: string | null;
   boardLastSuccessfulSyncAt: string | null;
   verificationRevision: string;
-}
-
-interface FastRoleRevisionMeta {
-  role_count: number | bigint;
-  role_verified: string | null;
-  role_seen: string | null;
-  role_status_run: number | bigint | null;
-  role_hash: string | null;
-  open_count: number | bigint | null;
-  closed_count: number | bigint | null;
-  unknown_count: number | bigint | null;
-  new_count: number | bigint | null;
-  updated_count: number | bigint | null;
-  unchanged_count: number | bigint | null;
 }
 
 interface FastActionRevisionMeta {
@@ -493,7 +504,8 @@ interface FastActionRevisionMeta {
 
 interface FastDatabaseRevisionSnapshot {
   dataVersion: number | null;
-  roleMeta: FastRoleRevisionMeta;
+  fileIdentity: string;
+  revisionCounters: DashboardRevisionCounters | null;
   actionMeta: FastActionRevisionMeta;
   roleRevision: string;
   newListingRevision: string;
@@ -529,6 +541,7 @@ interface FastRoleCard {
   internshipYear: string | null;
   duration: string | null;
   salary: string | null;
+  sponsorshipOfferStatus: "offered" | "not_offered" | "not_stated";
   postingDate: string | null;
   deadline: string | null;
   lifecycleStatus: Internship["lifecycleStatus"];
@@ -557,6 +570,7 @@ interface FastRoleEntry {
   card: FastRoleCard;
   searchText: string;
   tabs: Set<RoleTab>;
+  hasNewEvidence: boolean;
   isNew: boolean;
 }
 
@@ -608,6 +622,24 @@ interface FastDashboardIndex {
   appliedRoleCount: number;
 }
 
+interface FastDashboardIndexBase {
+  versionMetadata: FastVersionMetadata;
+  generatedAt: string;
+  storedEntries: FastRoleEntry[];
+  boardEntries: FastRoleEntry[];
+  closedCount: number;
+  hiddenCount: number;
+  latestRun: RunRow | null;
+  latestCompletedRun: RunRow | null;
+  runs: RunRow[];
+  scan: Record<string, unknown>;
+  sources: DashboardSourceHealth["sources"];
+  sourceResults: CompactSourceResult[];
+  failures: FailureRow[];
+  errors24h: number;
+  appliedRoleCount: number;
+}
+
 interface FastRoleDetailRead {
   role: DashboardInternship;
   isNew: boolean;
@@ -633,10 +665,30 @@ interface FastRolesQuery {
 interface FastDashboardIndexReadOptions {
   startBackgroundBoardRefresh?: boolean;
   verification?: VerificationSnapshotReadOptions;
+  relativeBase?: number;
+  allowStaleDuringCatalogRefresh?: boolean;
 }
 
-let fastDashboardIndexCache: { key: string; index: FastDashboardIndex } | null = null;
-const fastDashboardIndexInflight = new Map<string, Promise<FastDashboardIndex>>();
+interface FastDashboardIndexCache {
+  key: string;
+  base: FastDashboardIndexBase;
+  projectionKey: string | null;
+  projectedIndex: FastDashboardIndex | null;
+}
+
+let fastDashboardIndexCache: FastDashboardIndexCache | null = null;
+let fastDashboardCacheGeneration = 0;
+interface FastDashboardActionProjection {
+  actionRows: FastActionContextRow[];
+  hiddenListingKeys: Set<string>;
+  hiddenDestinationLinks: Set<string>;
+  actionMatcher: { matches(internship: Internship): boolean };
+}
+const fastDashboardActionProjectionCache = new Map<string, Promise<FastDashboardActionProjection>>();
+const fastDashboardIndexInflight = new Map<string, {
+  key: string;
+  promise: Promise<FastDashboardIndexBase>;
+}>();
 const FAST_FILTERED_PAGE_CACHE_MAX = 24;
 const fastFilteredPageCache = new Map<string, FastRoleEntry[]>();
 const postRunFastDashboardPrewarms = new Map<string, Promise<boolean>>();
@@ -1081,9 +1133,13 @@ export function closeFastRevisionTrackersForTests(): void {
 }
 
 export function clearFastDashboardCacheForTests(): void {
+  fastDashboardCacheGeneration += 1;
   fastDashboardIndexCache = null;
   fastDashboardIndexInflight.clear();
+  fastDashboardActionProjectionCache.clear();
   fastFilteredPageCache.clear();
+  closingSoonNotificationCache.clear();
+  closingSoonNotificationInflight.clear();
   latestSuccessfulFastPrewarm = null;
 }
 
@@ -1109,6 +1165,10 @@ let fastRunRevisionCaptureTestHook: (() => void) | null = null;
 let fastStartupWatcherBaselineGapTestHook: (() => void) | null = null;
 let fastStartupWatcherAfterBaselineTestHook: (() => void) | null = null;
 let fastDashboardIndexBuildTestHook: (() => void) | null = null;
+let fastDashboardBuildBatchTestHook: (() => Promise<void>) | null = null;
+let fastRoleFilterEntryTestHook: (() => void) | null = null;
+let fastDatabaseRevisionScanTestHook: ((domain: "roles" | "memberships" | "actions" | "identities") => void) | null = null;
+let fastChangesAfterHydrationTestHook: (() => void) | null = null;
 
 export function setFastSnapshotReadHookForTests(hook: (() => void) | null): void {
   fastSnapshotReadTestHook = hook;
@@ -1130,6 +1190,24 @@ export function setFastDashboardIndexBuildHookForTests(hook: (() => void) | null
   fastDashboardIndexBuildTestHook = hook;
 }
 
+export function setFastDashboardBuildBatchHookForTests(hook: (() => Promise<void>) | null): void {
+  fastDashboardBuildBatchTestHook = hook;
+}
+
+export function setFastRoleFilterEntryHookForTests(hook: (() => void) | null): void {
+  fastRoleFilterEntryTestHook = hook;
+}
+
+export function setFastDatabaseRevisionScanHookForTests(
+  hook: ((domain: "roles" | "memberships" | "actions" | "identities") => void) | null,
+): void {
+  fastDatabaseRevisionScanTestHook = hook;
+}
+
+export function setFastChangesAfterHydrationHookForTests(hook: (() => void) | null): void {
+  fastChangesAfterHydrationTestHook = hook;
+}
+
 function consumeFastSnapshotReadTestHook(): void {
   const hook = fastSnapshotReadTestHook;
   fastSnapshotReadTestHook = null;
@@ -1139,6 +1217,12 @@ function consumeFastSnapshotReadTestHook(): void {
 function consumeFastRunRevisionCaptureTestHook(): void {
   const hook = fastRunRevisionCaptureTestHook;
   fastRunRevisionCaptureTestHook = null;
+  hook?.();
+}
+
+function consumeFastChangesAfterHydrationTestHook(): void {
+  const hook = fastChangesAfterHydrationTestHook;
+  fastChangesAfterHydrationTestHook = null;
   hook?.();
 }
 
@@ -1886,6 +1970,7 @@ function ensureListingActionsTable(databasePath: string): void {
     try {
       ensureRunCancellationSchema(database);
       ensureListingActionSchema(database);
+      ensureDashboardRevisionSchema(database);
       backfillListingActionIdentities(database);
       database.exec("COMMIT");
     } catch (error) {
@@ -2171,6 +2256,40 @@ function dashboardRoleIsHandled(
     || roleLinkKeys(role).some((link) => hiddenDestinationLinks.has(link));
 }
 
+function dashboardAuthorizationText(role: DashboardInternship): string {
+  return [
+    role.title,
+    role.description,
+    ...role.responsibilities,
+    ...role.requiredQualifications,
+    ...role.preferredQualifications,
+    ...role.educationRequirements,
+    ...role.graduationRequirements,
+    ...role.experienceRequirements,
+    ...role.workAuthorizationRequirements,
+    role.sponsorshipInformation ?? "",
+    ...(role.qualificationDetails?.evidence ?? []),
+    ...(role.qualificationDetails?.degreeRequirements ?? []),
+    ...(role.qualificationDetails?.yearOfStudy ?? []),
+    role.qualificationDetails?.expectedGraduation ?? "",
+    role.qualificationDetails?.upperYearRequirement ?? "",
+  ].join("\n");
+}
+
+function dashboardWorkAuthorizationAllowed(role: DashboardInternship): boolean {
+  // Sponsorship availability is an offer attribute for applicants to evaluate.
+  // Keep the dashboard's hard exclusion for postings that require US citizenship.
+  return !hasUSCitizenshipRequirement(dashboardAuthorizationText(role));
+}
+
+function dashboardListingContentAllowed(role: DashboardInternship): boolean {
+  return isListingKeywordPolicyAllowed(role)
+    && dashboardWorkAuthorizationAllowed(role)
+    && isSecurityClearanceAllowed(role)
+    && !isExcludedJobTitle(role.title)
+    && !hasUnavailablePageContent([role.title, role.description, ...role.responsibilities].join("\n"));
+}
+
 function dashboardRolePassesHardFilters(
   role: DashboardInternship,
   handled: boolean,
@@ -2194,9 +2313,9 @@ function dashboardRolePassesHardFilters(
   // have sparse metadata, but they still carry enough normalized title,
   // location, authorization, destination, and lifecycle data to be checked by
   // the shared rules below.
-  if (!isListingWorkAuthorizationAllowed(role)) return false;
+  if (!dashboardWorkAuthorizationAllowed(role)) return false;
   const isClosed = role.availabilityStatus === "closed";
-  if (!isClosed && !isListingContentAllowed(role)) return false;
+  if (!isClosed && !dashboardListingContentAllowed(role)) return false;
   if (!isClosed && !hasVerifiedLinkedInDestinations(role, verifiedLinkedInUrls)) return false;
   if (!isClosed && !isAllowedPostingLocation(role.normalizedLocations, role.remoteStatus)) return false;
   if (!isClosed && !includeHistoricalPosting && isDashboardPostingTooOld(role.postingDate)) return false;
@@ -2513,6 +2632,7 @@ function readFastDatabaseRevisionSnapshot(
   database: DatabaseSync,
 ): FastDatabaseRevisionSnapshot {
   const tracker = readFastDatabaseRevisionTracker(databasePath);
+  const fileIdentity = tracker?.fileIdentity ?? fastDatabaseFileIdentity(databasePath);
   let before = tracker ? readTrackerDataVersion(tracker) : null;
   if (before === null) before = readDatabaseDataVersion(database);
   if (tracker?.snapshot && before !== null && tracker.snapshot.dataVersion === before) {
@@ -2526,89 +2646,134 @@ function readFastDatabaseRevisionSnapshot(
   }
 
   const readCurrentSnapshot = (snapshotDataVersion: number | null): FastDatabaseRevisionSnapshot => {
-    // A read transaction makes role/action/membership hashes come from one
-    // SQLite snapshot. This matters when a crawler commits during a poll.
+    // A read transaction keeps the cheap durable revision counters coherent
+    // with aggregate metadata. This matters when a crawler commits during a
+    // poll and also lets heartbeat-only writes skip catalog materialization.
     database.exec("BEGIN");
     let committed = false;
     try {
-      const roleMeta = database.prepare(`
-        SELECT COUNT(*) AS role_count,
-               MAX(last_verified_at) AS role_verified,
-               MAX(last_seen_at) AS role_seen,
-               MAX(status_run_id) AS role_status_run,
-               MAX(content_hash) AS role_hash,
-               SUM(CASE WHEN availability_status = 'open' THEN 1 ELSE 0 END) AS open_count,
-               SUM(CASE WHEN availability_status = 'closed' THEN 1 ELSE 0 END) AS closed_count,
-               SUM(CASE WHEN availability_status = 'unknown' THEN 1 ELSE 0 END) AS unknown_count,
-               SUM(CASE WHEN lifecycle_status = 'NEW' THEN 1 ELSE 0 END) AS new_count,
-               SUM(CASE WHEN lifecycle_status = 'UPDATED' THEN 1 ELSE 0 END) AS updated_count,
-               SUM(CASE WHEN lifecycle_status = 'UNCHANGED' THEN 1 ELSE 0 END) AS unchanged_count
-        FROM internships
-      `).get() as unknown as FastRoleRevisionMeta;
-      const roleRevisionRows = database.prepare(`
-        SELECT id, payload_json, content_hash, lifecycle_status, availability_status, first_seen_at,
-               last_seen_at, last_verified_at, status_run_id, miss_count
-        FROM internships ORDER BY id
-      `).all() as unknown as Array<Record<string, unknown>>;
-      // Keep payload-only writes visible even when an older writer forgot to
-      // refresh content_hash. This snapshot is reused while data_version is
-      // stable, so it does not add work to ordinary warm polls.
-      const roleRevision = sha256(JSON.stringify(roleRevisionRows));
-      let newListingRevision = "none";
-      try {
-        const newListingRows = database.prepare(`
-          SELECT run_id, internship_id, lifecycle_status
-          FROM run_internships ORDER BY run_id, internship_id
-        `).all() as unknown as Array<Record<string, unknown>>;
-        newListingRevision = sha256(JSON.stringify(newListingRows));
-      } catch {
-        // Legacy fixtures may not include run membership history.
+      const revisions = readDashboardRevisionCounters(database);
+      const previous = tracker?.snapshot?.fileIdentity === fileIdentity
+        && tracker.snapshot.revisionCounters !== null
+        ? tracker.snapshot
+        : null;
+      const countersUnchanged = revisions !== null
+        && previous !== null
+        && revisions.roles === previous.revisionCounters?.roles
+        && revisions.memberships === previous.revisionCounters?.memberships
+        && revisions.actions === previous.revisionCounters?.actions
+        && revisions.identities === previous.revisionCounters?.identities;
+      if (countersUnchanged && previous !== null) {
+        database.exec("COMMIT");
+        committed = true;
+        return {
+          ...previous,
+          dataVersion: snapshotDataVersion,
+          fileIdentity,
+          revisionCounters: revisions,
+        };
       }
 
-      let actionMeta: FastActionRevisionMeta = {
-        action_count: 0,
-        action_created: null,
-        hidden_count: 0,
-        applied_roles: 0,
-      };
-      try {
-        actionMeta = database.prepare(`
-          SELECT COUNT(*) AS action_count,
-                 MAX(created_at) AS action_created,
-                 SUM(CASE WHEN action = 'cant_fit' THEN 1 ELSE 0 END) AS hidden_count,
-                 COUNT(CASE WHEN action = 'applied' THEN 1 END) AS applied_roles
-          FROM listing_actions
-        `).get() as unknown as FastActionRevisionMeta;
-      } catch {
-        // Legacy databases may not have action tables until dashboard startup
-        // finishes its best-effort migration.
-      }
+      const readActionMeta = (): FastActionRevisionMeta => database.prepare(`
+        SELECT COUNT(*) AS action_count,
+               MAX(created_at) AS action_created,
+               SUM(CASE WHEN action = 'cant_fit' THEN 1 ELSE 0 END) AS hidden_count,
+               COUNT(CASE WHEN action = 'applied' THEN 1 END) AS applied_roles
+        FROM listing_actions
+      `).get() as unknown as FastActionRevisionMeta;
 
-      let actionRevision = "none";
-      try {
-        const actionRevisionRows = database.prepare(`
-          SELECT listing_key, listing_type, listing_id, action, company, normalized_company, title,
-                 application_status, application_stage, application_url, posting_url, job_id, location, created_at
-          FROM listing_actions ORDER BY listing_key
+      const actionMeta = revisions !== null
+        && previous !== null
+        && revisions.actions === previous.revisionCounters?.actions
+        ? previous.actionMeta
+        : (() => {
+          try {
+            return readActionMeta();
+          } catch {
+            // Legacy databases may not have action tables until dashboard startup finishes its migration.
+            return { action_count: 0, action_created: null, hidden_count: 0, applied_roles: 0 };
+          }
+        })();
+
+      let roleRevision: string;
+      let newListingRevision: string;
+      let actionRevision: string;
+      if (revisions !== null) {
+        // The file identity prevents equal counter values in a replaced DB
+        // from colliding with the prior file's cached catalog.
+        roleRevision = sha256(JSON.stringify({ fileIdentity, revision: revisions.roles }));
+        newListingRevision = sha256(JSON.stringify({ fileIdentity, revision: revisions.memberships }));
+        actionRevision = sha256(JSON.stringify({
+          fileIdentity,
+          actions: revisions.actions,
+          identities: revisions.identities,
+        }));
+      } else {
+        fastDatabaseRevisionScanTestHook?.("roles");
+        const roleRevisionRows = database.prepare(`
+          SELECT id, payload_json, content_hash, lifecycle_status, availability_status, first_seen_at,
+                 last_seen_at, last_verified_at, status_run_id, miss_count
+          FROM internships ORDER BY id
         `).all() as unknown as Array<Record<string, unknown>>;
-        let identityRevisionRows: Array<Record<string, unknown>> = [];
+        // Legacy stores without the complete trigger set retain payload-only
+        // write detection through the original full-content hashes.
+        roleRevision = sha256(JSON.stringify(roleRevisionRows));
+        let newListingRows: Array<Record<string, unknown>> = [];
+        let membershipHistoryAvailable = false;
         try {
-          identityRevisionRows = database.prepare(`
-            SELECT listing_key, identity_key, direct_job_ids_json
-            FROM listing_action_identities ORDER BY listing_key, identity_key
+          fastDatabaseRevisionScanTestHook?.("memberships");
+          newListingRows = database.prepare(`
+            SELECT run_id, internship_id, lifecycle_status
+            FROM run_internships ORDER BY run_id, internship_id
           `).all();
+          membershipHistoryAvailable = true;
         } catch {
-          // The identity table is optional on the oldest dashboard databases.
+          // Legacy fixtures may not include run membership history.
         }
-        actionRevision = sha256(JSON.stringify({ actions: actionRevisionRows, identities: identityRevisionRows }));
-      } catch {
-        // Keep the legacy no-action schema versionable.
+        newListingRevision = membershipHistoryAvailable ? sha256(JSON.stringify(newListingRows)) : "none";
+        actionRevision = "none";
+        try {
+          fastDatabaseRevisionScanTestHook?.("actions");
+          const actionRevisionRows = database.prepare(`
+            SELECT listing_key, listing_type, listing_id, action, company, normalized_company, title,
+                   application_status, application_stage, application_url, posting_url, job_id, location, created_at
+            FROM listing_actions ORDER BY listing_key
+          `).all() as unknown as Array<Record<string, unknown>>;
+          let identityRevisionRows: Array<Record<string, unknown>> = [];
+          try {
+            fastDatabaseRevisionScanTestHook?.("identities");
+            identityRevisionRows = database.prepare(`
+              SELECT listing_key, identity_key, direct_job_ids_json
+              FROM listing_action_identities ORDER BY listing_key, identity_key
+            `).all();
+          } catch {
+            // The identity table is optional on the oldest dashboard databases.
+          }
+          actionRevision = sha256(JSON.stringify({ actions: actionRevisionRows, identities: identityRevisionRows }));
+        } catch {
+          // Keep the legacy no-action schema versionable.
+        }
+        // Store the scoped revision values in the generic revision fields to
+        // match the legacy fallback's original semantics.
+        const snapshot: FastDatabaseRevisionSnapshot = {
+          dataVersion: snapshotDataVersion,
+          fileIdentity,
+          revisionCounters: null,
+          actionMeta,
+          roleRevision,
+          newListingRevision,
+          actionRevision,
+        };
+        database.exec("COMMIT");
+        committed = true;
+        return snapshot;
       }
       database.exec("COMMIT");
       committed = true;
       return {
         dataVersion: snapshotDataVersion,
-        roleMeta,
+        fileIdentity,
+        revisionCounters: revisions,
         actionMeta,
         roleRevision,
         newListingRevision,
@@ -2665,7 +2830,9 @@ function readFastVersionMetadata(
   board: GrindJobBoardSnapshot,
   verification: VerificationSnapshot,
   databasePath: string,
+  relativeBase = Date.now(),
 ): FastVersionMetadata {
+  const metadataStarted = dashboardPerfStart();
   // In the deterministic race test, perform the initial run query before the
   // revision capture and commit the injected progress update immediately
   // afterward. Production requests skip this test-only pre-query; their run
@@ -2675,22 +2842,23 @@ function readFastVersionMetadata(
     readDashboardRuns(database, 1);
     consumeFastRunRevisionCaptureTestHook();
   }
+  const revisionStarted = dashboardPerfStart();
   const revisionSnapshot = readFastDatabaseRevisionSnapshot(databasePath, database);
+  dashboardPerfLog("metadata.revisionSnapshot", revisionStarted, { path: databasePath });
   const latestRun = asRun(readDashboardRuns(database, 1)[0]);
   if (!fastDatabaseRevisionIsCurrent(databasePath, revisionSnapshot.dataVersion, database)) {
     throw new FastSnapshotChangedError();
   }
-  const { roleMeta, actionMeta, roleRevision, newListingRevision, actionRevision } = revisionSnapshot;
+  const { actionMeta, roleRevision, newListingRevision, actionRevision } = revisionSnapshot;
   const latestRunId = latestRun?.id ?? null;
   const latestRunStatus = latestRun?.status ?? null;
   const latestRunHeartbeat = latestRun?.heartbeat_at ?? null;
   const boardLastSuccessfulSyncAt = board.lastSuccessfulSyncAt;
   const boardJobsRevision = sha256(JSON.stringify(board.jobs));
   // A crawler heartbeat/progress write changes SQLite's data_version but does
-  // not change any role-card content. Include the 16-hour NEW banner window so
-  // labels can expire between scans, while leaving run-only metadata to the
-  // public version and dynamic cache hydration below. This avoids rebuilding
-  // all cards when the normal startup scan creates its RUNNING row after prewarm.
+  // not change any role-card content. Clock windows stay in the public version,
+  // while their card visibility/banner effects are projected from the cached
+  // base index at request time.
   const latestCompletedRun = readLatestCompletedRun(database);
   const latestCompletedRunRevision = sha256(JSON.stringify(latestCompletedRun === null
     ? null
@@ -2700,11 +2868,15 @@ function readFastVersionMetadata(
       finished_at: latestCompletedRun.finished_at,
       status: latestCompletedRun.status,
     }));
+  const staleSafetyKey = sha256(JSON.stringify({
+    databaseFileIdentity: revisionSnapshot.fileIdentity,
+    actionRevision,
+    board: { jobsRevision: boardJobsRevision, lastSuccessfulSyncAt: boardLastSuccessfulSyncAt },
+    verification: { path: verification.path, revision: verification.revision },
+  }));
   const contentKey = sha256(JSON.stringify({
     roles: { roleRevision, newListingRevision },
     latestCompletedRunRevision,
-    newRoleBannerWindow: newRoleBannerCacheKey(),
-    postingAgeWindow: dashboardPostingAgeKey(),
     actions: actionRevision,
     board: { jobsRevision: boardJobsRevision, lastSuccessfulSyncAt: boardLastSuccessfulSyncAt },
     verificationRevision: verification.revision,
@@ -2716,23 +2888,12 @@ function readFastVersionMetadata(
     databaseDataVersion: revisionSnapshot.dataVersion,
     // Relative labels such as "yesterday" change meaning at local midnight
     // even when the database and board are untouched.
-    relativeDay: dashboardLocalDayKey(),
-    newRoleBannerWindow: newRoleBannerCacheKey(),
-    postingAgeWindow: dashboardPostingAgeKey(),
+    relativeDay: dashboardLocalDayKey(relativeBase),
+    newRoleBannerWindow: newRoleBannerCacheKey(relativeBase),
+    postingAgeWindow: dashboardPostingAgeKey(relativeBase),
     roles: {
       revision: roleRevision,
       newListingRevision,
-      count: asFiniteNumber(roleMeta.role_count),
-      verified: roleMeta.role_verified,
-      seen: roleMeta.role_seen,
-      statusRun: asFiniteNumber(roleMeta.role_status_run),
-      hash: roleMeta.role_hash,
-      open: asFiniteNumber(roleMeta.open_count),
-      closed: asFiniteNumber(roleMeta.closed_count),
-      unknown: asFiniteNumber(roleMeta.unknown_count),
-      new: asFiniteNumber(roleMeta.new_count),
-      updated: asFiniteNumber(roleMeta.updated_count),
-      unchanged: asFiniteNumber(roleMeta.unchanged_count),
     },
     actions: {
       revision: actionRevision,
@@ -2775,11 +2936,14 @@ function readFastVersionMetadata(
       revision: verification.revision,
     },
   }));
-  return {
+  const metadata: FastVersionMetadata = {
     version,
     contentKey,
+    staleSafetyKey,
+    databaseFileIdentity: revisionSnapshot.fileIdentity,
+    usesDashboardRevisionCounters: revisionSnapshot.revisionCounters !== null,
+    isStaleProjection: false,
     databaseDataVersion: revisionSnapshot.dataVersion,
-    roleCount: asFiniteNumber(roleMeta.role_count),
     actionCount: asFiniteNumber(actionMeta.action_count),
     hiddenCount: asFiniteNumber(actionMeta.hidden_count),
     appliedRoleCount: asFiniteNumber(actionMeta.applied_roles),
@@ -2789,6 +2953,8 @@ function readFastVersionMetadata(
     boardLastSuccessfulSyncAt,
     verificationRevision: verification.revision,
   };
+  dashboardPerfLog("metadata.total", metadataStarted, { path: databasePath });
+  return metadata;
 }
 
 function fastListingKey(role: Pick<DashboardInternship, "id" | "listingType" | "listingId">): string {
@@ -2807,6 +2973,20 @@ function fastRoleSearchText(role: DashboardInternship): string {
     role.sourceUrl,
     ...role.sources,
   ].join(" ").toLocaleLowerCase();
+}
+
+type SponsorshipOfferStatus = FastRoleCard["sponsorshipOfferStatus"];
+
+function sponsorshipOfferStatusForRole(role: DashboardInternship): SponsorshipOfferStatus {
+  const qualificationDetails = role.qualificationDetails;
+  if (qualificationDetails?.conflicts?.some((conflict) => conflict.key === "sponsorship")) {
+    return "not_stated";
+  }
+  if (qualificationDetails?.sponsorship === "available") return "offered";
+  if (qualificationDetails?.sponsorship === "unavailable") return "not_offered";
+  // `required` describes the candidate's need for sponsorship, not the
+  // employer's offer. Unknown and future enum values also stay conservative.
+  return "not_stated";
 }
 
 function compactRole(
@@ -2838,6 +3018,7 @@ function compactRole(
     internshipYear: role.internshipYear,
     duration: role.duration,
     salary: role.salary,
+    sponsorshipOfferStatus: sponsorshipOfferStatusForRole(role),
     postingDate: role.postingDate,
     deadline: role.deadline,
     lifecycleStatus: role.lifecycleStatus,
@@ -2850,6 +3031,239 @@ function compactRole(
     missCount: role.missCount ?? 0,
     isNew,
   };
+}
+
+function fastRoleHasNewBanner(
+  role: DashboardInternship,
+  hasNewEvidence: boolean,
+  relativeBase: number,
+): boolean {
+  if ((role.listingType ?? "internship") === "grind") {
+    return isWithinNewRoleBannerWindow(role.firstSeenAt, relativeBase);
+  }
+  if (!hasNewEvidence || !role.firstSeenAt) return false;
+  // Keep stored-role semantics aligned with readNewListingKeys, whose SQL
+  // compares stored timestamps to this ISO cutoff and includes future values.
+  return role.firstSeenAt >= newRoleBannerCutoffIso(relativeBase);
+}
+
+function createFastRoleEntry(
+  role: DashboardInternship,
+  hasNewEvidence: boolean,
+  relativeBase: number,
+): FastRoleEntry {
+  const key = fastListingKey(role);
+  const isNew = fastRoleHasNewBanner(role, hasNewEvidence, relativeBase);
+  return {
+    key,
+    role,
+    card: compactRole(role, isNew),
+    searchText: fastRoleSearchText(role),
+    tabs: new Set(ROLE_TABS.filter((tab) => roleMatchesTab(role, tab))),
+    hasNewEvidence,
+    isNew,
+  };
+}
+
+interface FastStoredRoleCandidate {
+  entry: FastRoleEntry;
+  availabilityStatus: string;
+  relevanceScore: number;
+  company: string;
+  title: string;
+  companySortKey: Buffer;
+  titleSortKey: Buffer;
+}
+
+function sqliteNoCaseKey(value: string): Buffer {
+  // SQLite's built-in NOCASE collation folds ASCII only. Preserve that rule
+  // instead of using localeCompare, whose order varies by machine locale.
+  const folded = value.replace(/[A-Z]/g, (letter) => (
+    String.fromCharCode(letter.charCodeAt(0) + 32)
+  ));
+  return Buffer.from(folded, "utf8");
+}
+
+function compareFastStoredRoleCandidates(left: FastStoredRoleCandidate, right: FastStoredRoleCandidate): number {
+  const availability = Number(left.availabilityStatus !== "open") - Number(right.availabilityStatus !== "open");
+  if (availability !== 0) return availability;
+  if (left.relevanceScore !== right.relevanceScore) return right.relevanceScore - left.relevanceScore;
+  const company = Buffer.compare(left.companySortKey, right.companySortKey);
+  if (company !== 0) return company;
+  return Buffer.compare(left.titleSortKey, right.titleSortKey);
+}
+
+async function yieldFastDashboardBuildBatch(rowCount: number): Promise<void> {
+  if (fastDashboardBuildBatchTestHook !== null) {
+    await fastDashboardBuildBatchTestHook();
+    return;
+  }
+  if (rowCount === FAST_DASHBOARD_INDEX_BATCH_SIZE) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+}
+
+function fastTimedProjectionBucket(relativeBase: number): string {
+  return [
+    dashboardLocalDayKey(relativeBase),
+    String(newRoleBannerCacheKey(relativeBase)),
+    dashboardPostingAgeKey(relativeBase),
+  ].join("|");
+}
+
+function canServeStaleFastDashboardIndex(
+  versionMetadata: FastVersionMetadata,
+  relativeBase: number,
+  options: FastDashboardIndexReadOptions,
+): FastDashboardIndex | null {
+  if (options.allowStaleDuringCatalogRefresh !== true || !versionMetadata.usesDashboardRevisionCounters) return null;
+  const cached = fastDashboardIndexCache;
+  if (!cached?.projectedIndex || cached.base.versionMetadata.staleSafetyKey !== versionMetadata.staleSafetyKey) return null;
+  const oldMetadata = cached.base.versionMetadata;
+  const oldBucket = cached.projectionKey?.split("|").slice(1).join("|") ?? null;
+  const currentBucket = fastTimedProjectionBucket(relativeBase);
+  const staleVersionMetadata: FastVersionMetadata = {
+    ...oldMetadata,
+    version: oldBucket === currentBucket
+      ? oldMetadata.version
+      : sha256(JSON.stringify({
+        staleContentKey: oldMetadata.contentKey,
+        staleVersion: oldMetadata.version,
+        timeBucket: currentBucket,
+      })),
+    isStaleProjection: true,
+  };
+  // Reproject age and NEW labels from the immutable old candidate pool, while
+  // deriving validators only from that old snapshot and the current time.
+  // Never pair stale cards with the current database version.
+  return projectTimedFastDashboardIndex(cached.key, cached.base, staleVersionMetadata, relativeBase);
+}
+
+function projectTimedFastDashboardIndex(
+  cacheKey: string,
+  baseIndex: FastDashboardIndexBase,
+  versionMetadata: FastVersionMetadata = baseIndex.versionMetadata,
+  relativeBase = Date.now(),
+): FastDashboardIndex {
+  const projectionKey = [
+    versionMetadata.contentKey,
+    fastTimedProjectionBucket(relativeBase),
+  ].join("|");
+  const cached = fastDashboardIndexCache;
+  if (cached?.key === cacheKey
+    && cached.base === baseIndex
+    && cached.projectionKey === projectionKey
+    && cached.projectedIndex !== null) {
+    return {
+      ...cached.projectedIndex,
+      versionMetadata,
+      deadlineNotifications: buildClosingSoonNotifications(
+        cached.projectedIndex.entries.map((entry) => entry.role as DeadlineNotificationRole),
+        relativeBase,
+      ),
+    };
+  }
+
+  const projectEntry = (entry: FastRoleEntry): FastRoleEntry => {
+    const isNew = fastRoleHasNewBanner(entry.role, entry.hasNewEvidence, relativeBase);
+    const lifecycleStatus = (entry.role.listingType ?? "internship") === "grind"
+      ? isNew ? "NEW" : "UNCHANGED"
+      : entry.role.lifecycleStatus;
+    // Projection is memoized once per time bucket. Clone the role and its
+    // source list so mergeLiveBoardInternships can add board provenance
+    // without mutating the immutable base candidate pools.
+    const role: DashboardInternship = {
+      ...entry.role,
+      sources: [...entry.role.sources],
+      lifecycleStatus,
+    };
+    return {
+      ...entry,
+      role,
+      isNew,
+      card: {
+        ...entry.card,
+        sources: role.sources,
+        lifecycleStatus,
+        isNew,
+      },
+    };
+  };
+  const visibleStoredEntries = baseIndex.storedEntries
+    .filter((entry) => entry.role.availabilityStatus === "closed"
+      || !isDashboardPostingTooOld(entry.role.postingDate, relativeBase))
+    .map(projectEntry);
+  const visibleBoardEntries = baseIndex.boardEntries
+    .filter((entry) => entry.role.availabilityStatus === "closed"
+      || !isDashboardPostingTooOld(entry.role.postingDate, relativeBase))
+    .map(projectEntry);
+
+  // Age-filter the independent sources before merging. Otherwise an expired
+  // stored row could still suppress the same fresh live-board posting.
+  const entryByRole = new Map<DashboardInternship, FastRoleEntry>();
+  for (const entry of [...visibleStoredEntries, ...visibleBoardEntries]) {
+    entryByRole.set(entry.role, entry);
+  }
+  const mergedRoles = mergeLiveBoardInternships(
+    visibleStoredEntries.map((entry) => entry.role),
+    visibleBoardEntries.map((entry) => entry.role),
+  );
+  const entries = mergedRoles.map((role) => {
+    const entry = entryByRole.get(role);
+    if (!entry) throw new Error("Merged role is missing its fast dashboard entry");
+    if (entry.card.sources === role.sources) return entry;
+    return {
+      ...entry,
+      role,
+      searchText: fastRoleSearchText(role),
+      card: { ...entry.card, sources: role.sources },
+    };
+  });
+  const tabCounts = Object.fromEntries(ROLE_TABS.map((tab) => [
+    tab,
+    entries.filter((entry) => entry.tabs.has(tab) && entry.role.availabilityStatus === "open").length,
+  ])) as Record<RoleTab, number>;
+  const categories = [...new Set(entries.flatMap((entry) => entry.role.categories))].toSorted();
+  const stats = {
+    total: entries.length,
+    closed: baseIndex.closedCount,
+    hidden: baseIndex.hiddenCount,
+    open: entries.filter((entry) => entry.role.availabilityStatus === "open").length,
+    unknown: entries.filter((entry) => entry.role.availabilityStatus === "unknown").length,
+    new: entries.filter((entry) => entry.isNew && entry.role.availabilityStatus === "open").length,
+    updated: entries.filter((entry) => !entry.isNew && entry.role.lifecycleStatus === "UPDATED" && entry.role.availabilityStatus === "open").length,
+    unchanged: entries.filter((entry) => !entry.isNew && entry.role.lifecycleStatus === "UNCHANGED" && entry.role.availabilityStatus === "open").length,
+  };
+  const sharedIndex: Omit<FastDashboardIndexBase, "storedEntries" | "boardEntries" | "closedCount" | "hiddenCount"> = {
+    versionMetadata: baseIndex.versionMetadata,
+    generatedAt: baseIndex.generatedAt,
+    latestRun: baseIndex.latestRun,
+    latestCompletedRun: baseIndex.latestCompletedRun,
+    runs: baseIndex.runs,
+    scan: baseIndex.scan,
+    sources: baseIndex.sources,
+    sourceResults: baseIndex.sourceResults,
+    failures: baseIndex.failures,
+    errors24h: baseIndex.errors24h,
+    appliedRoleCount: baseIndex.appliedRoleCount,
+  };
+  const projectedIndex: FastDashboardIndex = {
+    ...sharedIndex,
+    versionMetadata,
+    entries,
+    tabCounts,
+    categories,
+    stats,
+    deadlineNotifications: buildClosingSoonNotifications(
+      entries.map((entry) => entry.role as DeadlineNotificationRole),
+      relativeBase,
+    ),
+  };
+  if (fastDashboardIndexCache?.key === cacheKey && fastDashboardIndexCache.base === baseIndex) {
+    fastDashboardIndexCache.projectionKey = projectionKey;
+    fastDashboardIndexCache.projectedIndex = projectedIndex;
+  }
+  return projectedIndex;
 }
 
 function firstParseableFastSortValue(values: Array<string | null | undefined>, relativeBase: number): string | null {
@@ -3031,6 +3445,7 @@ function fastFilterCacheKey(index: FastDashboardIndex, query: FastRolesQuery): s
     query.sort,
     dashboardLocalDayKey(query.relativeBase),
     String(newRoleBannerCacheKey(query.relativeBase)),
+    dashboardPostingAgeKey(query.relativeBase),
   ].join("|");
 }
 
@@ -3049,13 +3464,29 @@ function fastFilterAndPage(
   query: FastRolesQuery,
   preferences: InternshipPreferences | null = null,
 ): { items: FastRoleCard[]; total: number; hasMore: boolean; nextOffset: number | null } {
+  const cacheKey = query.view === "all" ? fastFilterCacheKey(index, query) : null;
+  if (cacheKey) {
+    const cached = fastFilteredPageCache.get(cacheKey);
+    if (cached) {
+      rememberFastFilteredPage(cacheKey, cached);
+      const page = cached.slice(query.offset, query.offset + query.limit);
+      const nextOffset = query.offset + page.length < cached.length ? query.offset + page.length : null;
+      return { items: page.map((entry) => entry.card), total: cached.length, hasMore: nextOffset !== null, nextOffset };
+    }
+  }
+
   const requestedLocation = query.location;
   const filtered = index.entries
-    .filter((entry) => entry.tabs.has(query.tab))
+    .filter((entry) => {
+      fastRoleFilterEntryTestHook?.();
+      return entry.tabs.has(query.tab);
+    })
     .filter((entry) => fastStatusMatches(entry, query.status))
     .filter((entry) => query.category === null || entry.role.categories.includes(query.category as Internship["categories"][number]))
     .filter((entry) => query.workMode === null || entry.role.remoteStatus === query.workMode)
-    .filter((entry) => query.seasons.length === 0 || query.seasons.some((season) => dashboardRoleHasSeason(entry.role, season)))
+    .filter((entry) => query.seasons.length === 0 || query.seasons.some((season) => (
+      season === "unknown" ? entry.card.seasons.length === 0 : entry.card.seasons.includes(season)
+    )))
     .filter((entry) => {
       if (requestedLocation === null) return true;
       return entry.role.location.some((value) => value.toLocaleLowerCase().includes(requestedLocation));
@@ -3102,13 +3533,9 @@ function fastFilterAndPage(
     };
   }
 
-  const cacheKey = fastFilterCacheKey(index, query);
-  let matching = fastFilteredPageCache.get(cacheKey);
-  if (!matching) {
-    matching = filtered
-      .toSorted((left, right) => compareFastEntries(left, right, query));
-  }
-  rememberFastFilteredPage(cacheKey, matching);
+  const matching = filtered.toSorted((left, right) => compareFastEntries(left, right, query));
+  const publicCacheKey = cacheKey ?? fastFilterCacheKey(index, query);
+  rememberFastFilteredPage(publicCacheKey, matching);
   const page = matching.slice(query.offset, query.offset + query.limit);
   const nextOffset = query.offset + page.length < matching.length ? query.offset + page.length : null;
   return {
@@ -3139,100 +3566,103 @@ function prewarmFastTabPages(index: FastDashboardIndex, relativeBase = Date.now(
       relativeBase,
     });
   }
+  // The initial dashboard view defaults to Canada plus the broad internship
+  // season choices. Warm the exact first-page filter so opening the feed is a
+  // cache lookup even when those defaults differ from the unfiltered tab set.
+  fastFilterAndPage(index, {
+    view: "all",
+    tab: "canada",
+    status: "open",
+    category: null,
+    workMode: null,
+    seasons: ["summer", "unknown"],
+    location: null,
+    search: "",
+    sort: "posted",
+    limit: 1,
+    offset: 0,
+    relativeBase,
+  });
 }
 
-async function readFastDashboardIndexAttempt(
+const FAST_DASHBOARD_INDEX_BATCH_SIZE = 40;
+
+async function buildFastDashboardIndexBase(
+  database: DatabaseSync,
   databasePath: string,
-  options: FastDashboardIndexReadOptions = {},
-): Promise<FastDashboardIndex> {
-  if (!existsSync(databasePath)) throw new Error(`Database not found: ${databasePath}`);
-  if (options.startBackgroundBoardRefresh !== false) startBackgroundGrindRefresh();
-  const verification = await readVerificationSnapshot(options.verification);
-  const board = grindJobBoardClient.getCachedSnapshot();
-  const database = new DatabaseSync(databasePath, { readOnly: true });
-  try {
-    const versionMetadata = readFastVersionMetadata(database, board, verification, databasePath);
-    consumeFastSnapshotReadTestHook();
-    // Run rows are read after the coherent version boundary. If a run starts
-    // or reports progress while the rest of the index is being built, the
-    // post-build data_version check below discards this mixed snapshot.
-    const runs = readDashboardRuns(database);
-    const latestRun = asRun(runs[0]);
-    const cacheKey = `${databasePath}:${versionMetadata.contentKey}`;
-    if (fastDashboardIndexCache?.key === cacheKey) {
-      if (!fastDatabaseRevisionIsCurrent(databasePath, versionMetadata.databaseDataVersion, database)) {
-        throw new FastSnapshotChangedError();
-      }
-      const index = {
-        ...fastDashboardIndexCache.index,
-        versionMetadata,
-        deadlineNotifications: buildClosingSoonNotifications(
-          fastDashboardIndexCache.index.entries.map((entry) => entry.role as DeadlineNotificationRole),
-        ),
-        latestRun,
-        latestCompletedRun: fastDashboardIndexCache.index.latestCompletedRun,
-        runs,
-        ...liveSourceState(database, latestRun, fastDashboardIndexCache.index.latestCompletedRun),
-      };
-      fastDashboardIndexCache = { key: cacheKey, index };
-      if (fastFilteredPageCache.size === 0) queueMicrotask(() => prewarmFastTabPages(index));
-      return index;
-    }
-    const existingBuild = fastDashboardIndexInflight.get(cacheKey);
-    if (existingBuild) {
-      const index = await existingBuild;
-      if (!fastDatabaseRevisionIsCurrent(databasePath, versionMetadata.databaseDataVersion, database)) {
-        throw new FastSnapshotChangedError();
-      }
-      return {
-        ...index,
-        versionMetadata,
-        deadlineNotifications: buildClosingSoonNotifications(
-          index.entries.map((entry) => entry.role as DeadlineNotificationRole),
-        ),
-        latestRun,
-        runs,
-        ...liveSourceState(database, latestRun, index.latestCompletedRun),
-      };
-    }
+  versionMetadata: FastVersionMetadata,
+  board: GrindJobBoardSnapshot,
+  verification: VerificationSnapshot,
+  latestRun: RunRow | null,
+  runs: RunRow[],
+  relativeBase: number,
+): Promise<FastDashboardIndexBase> {
+  const buildStarted = dashboardPerfStart();
+  // Let the request path return the prior coherent catalog before any setup
+  // query or object construction for a potentially large background refresh.
+  const initialYieldStarted = dashboardPerfStart();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  dashboardPerfLog("roles.build.initialYield", initialYieldStarted);
+  const setupStarted = dashboardPerfStart();
+  const latestCompletedStarted = dashboardPerfStart();
+  const latestCompletedRun = readLatestCompletedRun(database);
+  dashboardPerfLog("roles.build.latestCompletedRun", latestCompletedStarted);
+  const verifiedLinkedInUrls = verification.urls;
 
-    fastDashboardIndexBuildTestHook?.();
-    const buildPromise = (async (): Promise<FastDashboardIndex> => {
-    const latestCompletedRun = readLatestCompletedRun(database);
-    const newListingKeys = new Set(readNewListingKeys(database));
-    const verifiedLinkedInUrls = verification.urls;
-
-    let listingActionRows: ListingActionRow[] = [];
-    try {
-      listingActionRows = database.prepare(`
-        SELECT listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at
-        FROM listing_actions
-      `).all() as unknown as ListingActionRow[];
-    } catch {
-      // Keep legacy databases readable while action tables are being migrated.
-    }
-    const hiddenListingKeys = new Set(listingActionRows.map((row) => row.listing_key));
-    const actionContextRows = readFastActionContextRows(database);
-    const actionMatcher = readDashboardActionMatcher(database);
-    const hiddenBoardLinks = new Set(board.jobs
-      .filter((job) => hiddenListingKeys.has(listingActionKey("grind", job.id)))
-      .map((job) => canonicalizeUrl(job.link)));
-    const hiddenDestinationLinks = new Set([
-      ...hiddenBoardLinks,
-      ...actionContextRows.flatMap((row) => fastActionLinks(row)),
-      ...readFastHiddenInternshipLinks(database, actionContextRows),
-    ]);
-    const jobrightDestinations = readJobrightDestinationMap(database);
-    const storedInternships: DashboardInternship[] = [];
-    const internshipRows = database.prepare(`
-      SELECT id, payload_json, lifecycle_status, availability_status, first_seen_at,
-             last_seen_at, last_verified_at, status_run_id, miss_count
-      FROM internships
-      ORDER BY CASE availability_status WHEN 'open' THEN 0 ELSE 1 END,
-               CAST(json_extract(payload_json, '$.relevanceScore') AS INTEGER) DESC,
-               company COLLATE NOCASE, title COLLATE NOCASE
-    `).all() as unknown as FastInternshipRow[];
-    for (const row of internshipRows) {
+  const actionsStarted = dashboardPerfStart();
+  const actionProjection = await readFastDashboardActionProjection(database, databasePath, versionMetadata);
+  const listingActionRows = actionProjection.actionRows;
+  const hiddenListingKeys = actionProjection.hiddenListingKeys;
+  const actionMatcher = actionProjection.actionMatcher;
+  dashboardPerfLog("roles.build.actionContext", actionsStarted, { actionRows: listingActionRows.length });
+  const hiddenLinksStarted = dashboardPerfStart();
+  const hiddenBoardLinks = new Set(board.jobs
+    .filter((job) => hiddenListingKeys.has(listingActionKey("grind", job.id)))
+    .map((job) => canonicalizeUrl(job.link)));
+  const hiddenDestinationLinks = new Set([...hiddenBoardLinks, ...actionProjection.hiddenDestinationLinks]);
+  dashboardPerfLog("roles.build.hiddenLinks", hiddenLinksStarted, { links: hiddenDestinationLinks.size });
+  const jobrightStarted = dashboardPerfStart();
+  const jobrightDestinations = readJobrightDestinationMap(database);
+  dashboardPerfLog("roles.build.jobrightDestinations", jobrightStarted, { count: jobrightDestinations.size });
+  const storedCandidates: FastStoredRoleCandidate[] = [];
+  const selectFirstBatch = database.prepare(`
+    SELECT id, company, title,
+           CAST(json_extract(payload_json, '$.relevanceScore') AS INTEGER) AS sort_relevance_score,
+           EXISTS (
+             SELECT 1 FROM run_internships ri
+             WHERE ri.internship_id = internships.id AND ri.lifecycle_status = 'NEW'
+           ) AS has_new_evidence,
+           payload_json, lifecycle_status, availability_status, first_seen_at,
+           last_seen_at, last_verified_at, status_run_id, miss_count
+    FROM internships ORDER BY id LIMIT @limit
+  `);
+  const selectNextBatch = database.prepare(`
+    SELECT id, company, title,
+           CAST(json_extract(payload_json, '$.relevanceScore') AS INTEGER) AS sort_relevance_score,
+           EXISTS (
+             SELECT 1 FROM run_internships ri
+             WHERE ri.internship_id = internships.id AND ri.lifecycle_status = 'NEW'
+           ) AS has_new_evidence,
+           payload_json, lifecycle_status, availability_status, first_seen_at,
+           last_seen_at, last_verified_at, status_run_id, miss_count
+    FROM internships WHERE id > @after ORDER BY id LIMIT @limit
+  `);
+  dashboardPerfLog("roles.build.setup", setupStarted);
+  const batchesStarted = dashboardPerfStart();
+  let batchCount = 0;
+  let totalRowsRead = 0;
+  let maxBatchQueryMs = 0;
+  let maxBatchProcessMs = 0;
+  let cursor: string | null = null;
+  while (true) {
+    const batchQueryStarted = dashboardPerfStart();
+    const rows = (cursor === null
+      ? selectFirstBatch.all({ limit: FAST_DASHBOARD_INDEX_BATCH_SIZE })
+      : selectNextBatch.all({ after: cursor, limit: FAST_DASHBOARD_INDEX_BATCH_SIZE })) as unknown as FastInternshipRow[];
+    maxBatchQueryMs = Math.max(maxBatchQueryMs, performance.now() - batchQueryStarted);
+    if (rows.length === 0) break;
+    const batchProcessStarted = dashboardPerfStart();
+    for (const row of rows) {
       try {
         const payload = InternshipSchema.parse(JSON.parse(row.payload_json));
         const candidate: DashboardInternship = {
@@ -3246,99 +3676,304 @@ async function readFastDashboardIndexAttempt(
           missCount: row.miss_count,
         };
         const resolved = dashboardRoleWithOriginalLinks(candidate, jobrightDestinations);
-        if (resolved) storedInternships.push(resolved);
+        if (resolved && dashboardRolePassesHardFilters(
+          resolved,
+          dashboardRoleIsHandled(resolved, hiddenListingKeys, actionMatcher, hiddenDestinationLinks),
+          verifiedLinkedInUrls,
+          true,
+        )) {
+          storedCandidates.push({
+            entry: createFastRoleEntry(
+              resolved,
+              asFiniteNumber(row.has_new_evidence) === 1,
+              relativeBase,
+            ),
+            availabilityStatus: row.availability_status,
+            relevanceScore: asFiniteNumber(row.sort_relevance_score),
+            company: row.company,
+            title: row.title,
+            companySortKey: sqliteNoCaseKey(row.company),
+            titleSortKey: sqliteNoCaseKey(row.title),
+          });
+        }
       } catch {
         // A malformed legacy row is not a user-facing listing.
       }
     }
-    const visibleStoredInternships = storedInternships.filter((role) => dashboardRolePassesHardFilters(
-      role,
-      dashboardRoleIsHandled(role, hiddenListingKeys, actionMatcher, hiddenDestinationLinks),
-      verifiedLinkedInUrls,
-    ));
-    const liveBoardInternships = board.jobs
-      .map((job) => toLiveBoardInternship(job, latestCompletedRun, board.lastSuccessfulSyncAt ?? new Date().toISOString()))
-      .filter((role) => dashboardRolePassesHardFilters(
+    maxBatchProcessMs = Math.max(maxBatchProcessMs, performance.now() - batchProcessStarted);
+    batchCount += 1;
+    totalRowsRead += rows.length;
+    cursor = rows[rows.length - 1]?.id ?? cursor;
+    const finished = rows.length < FAST_DASHBOARD_INDEX_BATCH_SIZE;
+    await yieldFastDashboardBuildBatch(rows.length);
+    if (finished) break;
+  }
+  dashboardPerfLog("roles.build.batches", batchesStarted, {
+    batches: batchCount,
+    rows: totalRowsRead,
+    accepted: storedCandidates.length,
+    maxQueryMs: +maxBatchQueryMs.toFixed(1),
+    maxProcessMs: +maxBatchProcessMs.toFixed(1),
+  });
+  const finalizeStarted = dashboardPerfStart();
+  const sortStarted = dashboardPerfStart();
+  const visibleStoredInternships = storedCandidates
+    .toSorted(compareFastStoredRoleCandidates)
+    .map((candidate) => candidate.entry);
+  dashboardPerfLog("roles.build.finalize.sort", sortStarted, { entries: visibleStoredInternships.length });
+  const boardStarted = dashboardPerfStart();
+  const boardEntries: FastRoleEntry[] = [];
+  const boardVerifiedAt = board.lastSuccessfulSyncAt ?? new Date().toISOString();
+  let maxBoardSliceMs = 0;
+  for (let offset = 0; offset < board.jobs.length; offset += FAST_DASHBOARD_INDEX_BATCH_SIZE) {
+    const boardSliceStarted = dashboardPerfStart();
+    for (const job of board.jobs.slice(offset, offset + FAST_DASHBOARD_INDEX_BATCH_SIZE)) {
+      const role = toLiveBoardInternship(job, latestCompletedRun, boardVerifiedAt);
+      if (dashboardRolePassesHardFilters(
         role,
         dashboardRoleIsHandled(role, hiddenListingKeys, actionMatcher, hiddenDestinationLinks),
         verifiedLinkedInUrls,
-      ));
-    for (const role of liveBoardInternships) {
-      if (role.lifecycleStatus === "NEW") newListingKeys.add(fastListingKey(role));
+        true,
+      )) boardEntries.push(createFastRoleEntry(role, true, relativeBase));
     }
-    const internships = mergeLiveBoardInternships(visibleStoredInternships, liveBoardInternships);
-    const entries: FastRoleEntry[] = internships.map((role) => {
-      const key = fastListingKey(role);
-      const isNew = newListingKeys.has(key);
-      return {
-        key,
-        role,
-        card: compactRole(role, isNew),
-        searchText: fastRoleSearchText(role),
-        tabs: new Set(ROLE_TABS.filter((tab) => roleMatchesTab(role, tab))),
-        isNew,
-      };
-    });
-    const tabCounts = Object.fromEntries(ROLE_TABS.map((tab) => [
-      tab,
-      entries.filter((entry) => entry.tabs.has(tab) && entry.role.availabilityStatus === "open").length,
-    ])) as Record<RoleTab, number>;
-    const categories = [...new Set(entries.flatMap((entry) => entry.role.categories))].toSorted();
-    const closedCount = readClosedCount(database);
-    const hiddenCount = readHiddenCount(database);
-    const appliedRoleCount = listingActionRows.filter((row) => row.action === "applied").length;
-    const stats = {
-      total: entries.length,
-      open: entries.filter((entry) => entry.role.availabilityStatus === "open").length,
-      closed: closedCount,
-      hidden: hiddenCount,
-      unknown: entries.filter((entry) => entry.role.availabilityStatus === "unknown").length,
-      new: entries.filter((entry) => entry.isNew && entry.role.availabilityStatus === "open").length,
-      updated: entries.filter((entry) => !entry.isNew && entry.role.lifecycleStatus === "UPDATED" && entry.role.availabilityStatus === "open").length,
-      unchanged: entries.filter((entry) => !entry.isNew && entry.role.lifecycleStatus === "UNCHANGED" && entry.role.availabilityStatus === "open").length,
-    };
-    const index: FastDashboardIndex = {
-      versionMetadata,
-      generatedAt: new Date().toISOString(),
-      entries,
-      deadlineNotifications: buildClosingSoonNotifications(
-        entries.map((entry) => entry.role as DeadlineNotificationRole),
-      ),
-      tabCounts,
-      categories,
-      stats,
-      latestRun,
-      latestCompletedRun,
-      runs,
-      appliedRoleCount,
-      ...liveSourceState(database, latestRun, latestCompletedRun),
-    };
-    return index;
-    })();
-    fastDashboardIndexInflight.set(cacheKey, buildPromise);
-    try {
-      const index = await buildPromise;
+    maxBoardSliceMs = Math.max(maxBoardSliceMs, performance.now() - boardSliceStarted);
+    if (offset + FAST_DASHBOARD_INDEX_BATCH_SIZE < board.jobs.length) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+  dashboardPerfLog("roles.build.finalize.board", boardStarted, {
+    jobs: board.jobs.length,
+    entries: boardEntries.length,
+    maxSliceMs: +maxBoardSliceMs.toFixed(1),
+  });
+  const countsStarted = dashboardPerfStart();
+  const closedCount = readClosedCount(database);
+  const hiddenCount = readHiddenCount(database);
+  const appliedRoleCount = listingActionRows.filter((row) => row.action === "applied").length;
+  dashboardPerfLog("roles.build.finalize.counts", countsStarted);
+  const sourceStateStarted = dashboardPerfStart();
+  const sourceState = liveSourceState(database, latestRun, latestCompletedRun);
+  dashboardPerfLog("roles.build.finalize.sourceState", sourceStateStarted);
+  const baseIndex: FastDashboardIndexBase = {
+    versionMetadata,
+    generatedAt: new Date().toISOString(),
+    storedEntries: visibleStoredInternships,
+    boardEntries,
+    closedCount,
+    hiddenCount,
+    latestRun,
+    latestCompletedRun,
+    runs,
+    appliedRoleCount,
+    ...sourceState,
+  };
+  dashboardPerfLog("roles.build.finalize", finalizeStarted, { entries: visibleStoredInternships.length });
+  dashboardPerfLog("roles.build.total", buildStarted, { rows: totalRowsRead });
+  return baseIndex;
+}
+
+async function readFastDashboardIndexAttempt(
+  databasePath: string,
+  options: FastDashboardIndexReadOptions = {},
+): Promise<FastDashboardIndex> {
+  const attemptStarted = dashboardPerfStart();
+  if (!existsSync(databasePath)) throw new Error(`Database not found: ${databasePath}`);
+  const relativeBase = options.relativeBase ?? Date.now();
+  if (options.startBackgroundBoardRefresh !== false) startBackgroundGrindRefresh();
+  const verification = await readVerificationSnapshot(options.verification);
+  const board = grindJobBoardClient.getCachedSnapshot();
+  const database = new DatabaseSync(databasePath, { readOnly: true });
+  let databaseOwnedByBuild = false;
+  try {
+    const versionMetadata = readFastVersionMetadata(database, board, verification, databasePath, relativeBase);
+    consumeFastSnapshotReadTestHook();
+    const runs = readDashboardRuns(database);
+    const latestRun = asRun(runs[0]);
+    const cacheKey = `${databasePath}:${versionMetadata.contentKey}`;
+    if (fastDashboardIndexCache?.key === cacheKey) {
       if (!fastDatabaseRevisionIsCurrent(databasePath, versionMetadata.databaseDataVersion, database)) {
         throw new FastSnapshotChangedError();
       }
-      fastFilteredPageCache.clear();
-      fastDashboardIndexCache = { key: cacheKey, index };
-      queueMicrotask(() => prewarmFastTabPages(index));
-      return index;
-    } finally {
-      if (fastDashboardIndexInflight.get(cacheKey) === buildPromise) fastDashboardIndexInflight.delete(cacheKey);
+      const index = projectTimedFastDashboardIndex(cacheKey, fastDashboardIndexCache.base, versionMetadata, relativeBase);
+      const currentIndex = {
+        ...index,
+        latestRun,
+        runs,
+        ...liveSourceState(database, latestRun, index.latestCompletedRun),
+      };
+      if (!fastDatabaseRevisionIsCurrent(databasePath, versionMetadata.databaseDataVersion, database)) {
+        throw new FastSnapshotChangedError();
+      }
+      if (fastFilteredPageCache.size === 0) queueMicrotask(() => prewarmFastTabPages(index, relativeBase));
+      dashboardPerfLog("roles.index.cacheHit", attemptStarted);
+      return currentIndex;
     }
+    const staleIndex = canServeStaleFastDashboardIndex(versionMetadata, relativeBase, options);
+    const activeBuild = fastDashboardIndexInflight.get(databasePath);
+    if (activeBuild) {
+      if (activeBuild.key !== cacheKey) {
+        if (staleIndex) {
+          dashboardPerfLog("roles.index.staleInflightReturn", attemptStarted);
+          return staleIndex;
+        }
+        await activeBuild.promise.catch(() => undefined);
+        throw new FastSnapshotChangedError();
+      }
+      if (staleIndex) {
+        dashboardPerfLog("roles.index.staleInflightReturn", attemptStarted);
+        return staleIndex;
+      }
+      const baseIndex = await activeBuild.promise;
+      const latestVerification = await readVerificationSnapshot(options.verification);
+      const latestBoard = grindJobBoardClient.getCachedSnapshot();
+      const latestMetadata = readFastVersionMetadata(database, latestBoard, latestVerification, databasePath, relativeBase);
+      if (latestMetadata.contentKey !== cacheKey.slice(databasePath.length + 1)) throw new FastSnapshotChangedError();
+      const latestRuns = readDashboardRuns(database);
+      const latestRunSnapshot = asRun(latestRuns[0]);
+      const index = projectTimedFastDashboardIndex(cacheKey, baseIndex, latestMetadata, relativeBase);
+      const currentIndex = {
+        ...index,
+        latestRun: latestRunSnapshot,
+        runs: latestRuns,
+        ...liveSourceState(database, latestRunSnapshot, index.latestCompletedRun),
+      };
+      if (fastDatabaseFileIdentity(databasePath) !== latestMetadata.databaseFileIdentity
+        || !fastDatabaseRevisionIsCurrent(databasePath, latestMetadata.databaseDataVersion, database)) {
+        throw new FastSnapshotChangedError();
+      }
+      return currentIndex;
+    }
+
+    fastDashboardIndexBuildTestHook?.();
+    const cacheGeneration = fastDashboardCacheGeneration;
+    // A stale response transfers this request's DB handle to the async builder;
+    // its tracked promise closes the handle after final validation and handoff.
+    databaseOwnedByBuild = staleIndex !== null;
+    const buildPromise = (async (): Promise<FastDashboardIndexBase> => {
+      const legacySnapshot = !versionMetadata.usesDashboardRevisionCounters;
+      let legacyTransactionStarted = false;
+      let baseIndex: FastDashboardIndexBase;
+      try {
+        // Legacy stores without complete trigger coverage need one consistent
+        // read snapshot across batches. Durable counters make a long snapshot
+        // unnecessary on current stores and avoid pinning crawler writes.
+        if (legacySnapshot) {
+          database.exec("BEGIN");
+          legacyTransactionStarted = true;
+        }
+        baseIndex = await buildFastDashboardIndexBase(
+          database,
+          databasePath,
+          versionMetadata,
+          board,
+          verification,
+          latestRun,
+          runs,
+          relativeBase,
+        );
+        if (legacyTransactionStarted) {
+          database.exec("COMMIT");
+          legacyTransactionStarted = false;
+        }
+      } catch (error) {
+        if (legacyTransactionStarted) {
+          try {
+            database.exec("ROLLBACK");
+          } catch {
+            // Preserve the original build error.
+          }
+        }
+        throw error;
+      }
+      const latestVerification = await readVerificationSnapshot(options.verification);
+      const latestBoard = grindJobBoardClient.getCachedSnapshot();
+      const latestMetadata = readFastVersionMetadata(database, latestBoard, latestVerification, databasePath, relativeBase);
+      if (latestMetadata.contentKey !== versionMetadata.contentKey
+        || latestMetadata.databaseFileIdentity !== versionMetadata.databaseFileIdentity
+        || (!versionMetadata.usesDashboardRevisionCounters
+          && (versionMetadata.databaseDataVersion === null
+            || latestMetadata.databaseDataVersion !== versionMetadata.databaseDataVersion))) {
+        throw new FastSnapshotChangedError();
+      }
+      const latestRuns = readDashboardRuns(database);
+      const latestRunSnapshot = asRun(latestRuns[0]);
+      const liveState = liveSourceState(database, latestRunSnapshot, baseIndex.latestCompletedRun);
+      // Revalidate after all dynamic rows are hydrated. An external writer can
+      // commit while source health is assembled, so install only the complete
+      // candidate observed before this final stamp.
+      if (!fastDatabaseRevisionIsCurrent(databasePath, latestMetadata.databaseDataVersion, database)) {
+        throw new FastSnapshotChangedError();
+      }
+      if (cacheGeneration !== fastDashboardCacheGeneration) throw new FastSnapshotChangedError();
+      const readyBase: FastDashboardIndexBase = {
+        ...baseIndex,
+        versionMetadata: latestMetadata,
+        latestRun: latestRunSnapshot,
+        runs: latestRuns,
+        ...liveState,
+      };
+      fastFilteredPageCache.clear();
+      fastDashboardIndexCache = {
+        key: cacheKey,
+        base: readyBase,
+        projectionKey: null,
+        projectedIndex: null,
+      };
+      return readyBase;
+    })();
+    const trackedBuild = buildPromise.finally(() => {
+      if (fastDashboardIndexInflight.get(databasePath)?.promise === trackedBuild) {
+        fastDashboardIndexInflight.delete(databasePath);
+      }
+      if (databaseOwnedByBuild) database.close();
+    });
+    fastDashboardIndexInflight.set(databasePath, { key: cacheKey, promise: trackedBuild });
+    if (staleIndex) {
+      // Attach a handler now because this build can outlive its initiating HTTP
+      // request. A later read will retry against the newest durable revision.
+      void trackedBuild.catch((error: unknown) => {
+        if (!(error instanceof FastSnapshotChangedError)) {
+          console.error(`[DASHBOARD INDEX REFRESH FAILED] ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+      dashboardPerfLog("roles.index.staleReturn", attemptStarted);
+      return staleIndex;
+    }
+    const baseIndex = await trackedBuild;
+    const index = projectTimedFastDashboardIndex(cacheKey, baseIndex, baseIndex.versionMetadata, relativeBase);
+    queueMicrotask(() => prewarmFastTabPages(index, relativeBase));
+    dashboardPerfLog("roles.index.freshReturn", attemptStarted);
+    return index;
   } finally {
-    database.close();
+    if (!databaseOwnedByBuild) database.close();
   }
 }
 
 const FAST_SNAPSHOT_MAX_RETRIES = 3;
 
-function cachedFastDashboardIndexForDatabase(databasePath: string): FastDashboardIndex | null {
+async function cachedFastDashboardIndexForDatabase(
+  databasePath: string,
+  options: FastDashboardIndexReadOptions,
+): Promise<FastDashboardIndex | null> {
   const cached = fastDashboardIndexCache;
-  if (!cached || !cached.key.startsWith(`${databasePath}:`)) return null;
-  return cached.index;
+  if (!cached || !cached.projectedIndex || !cached.key.startsWith(`${databasePath}:`)) return null;
+  if (options.allowStaleDuringCatalogRefresh !== true) return null;
+  const relativeBase = options.relativeBase ?? Date.now();
+  const verification = await readVerificationSnapshot(options.verification);
+  const board = grindJobBoardClient.getCachedSnapshot();
+  const database = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    const versionMetadata = readFastVersionMetadata(database, board, verification, databasePath, relativeBase);
+    if (cached.base.versionMetadata.staleSafetyKey !== versionMetadata.staleSafetyKey) return null;
+    // Exhausted snapshot retries may reuse only a same-file, action-safe old
+    // representation. The helper reprojects time-dependent fields and keeps
+    // its validator tied to that cached catalog revision.
+    return canServeStaleFastDashboardIndex(versionMetadata, relativeBase, options);
+  } catch {
+    return null;
+  } finally {
+    database.close();
+  }
 }
 
 async function readFastDashboardIndex(
@@ -3346,18 +3981,20 @@ async function readFastDashboardIndex(
   retryCount = 0,
   options: FastDashboardIndexReadOptions = {},
 ): Promise<FastDashboardIndex> {
+  const stableOptions = options.relativeBase === undefined
+    ? { ...options, relativeBase: Date.now() }
+    : options;
   try {
-    return await readFastDashboardIndexAttempt(databasePath, options);
+    return await readFastDashboardIndexAttempt(databasePath, stableOptions);
   } catch (error) {
     if (error instanceof FastSnapshotChangedError && retryCount < FAST_SNAPSHOT_MAX_RETRIES - 1) {
-      return readFastDashboardIndex(databasePath, retryCount + 1, options);
+      return readFastDashboardIndex(databasePath, retryCount + 1, stableOptions);
     }
     if (error instanceof FastSnapshotChangedError) {
       // A crawl can commit often enough that three coherent read attempts all
-      // lose the revision race. Keep the dashboard usable with the last
-      // coherent index; the next request will retry against the new revision.
-      // Never borrow an index belonging to another database path.
-      const cached = cachedFastDashboardIndexForDatabase(databasePath);
+      // lose the revision race. Reuse the prior view only when the current
+      // action/identity, verifier, board, and database safety key still match.
+      const cached = await cachedFastDashboardIndexForDatabase(databasePath, stableOptions);
       if (cached) return cached;
     }
     throw error;
@@ -3495,6 +4132,123 @@ function readFastActionContextRows(database: DatabaseSync): FastActionContextRow
     // The action schema is created lazily for old databases. A detail read
     // remains useful while that migration is pending.
     return [];
+  }
+}
+
+const FAST_ACTION_CONTEXT_BATCH_SIZE = 40;
+
+async function readFastActionContextRowsCooperatively(database: DatabaseSync): Promise<FastActionContextRow[]> {
+  const rows: FastActionContextRow[] = [];
+  try {
+    const firstPage = database.prepare(`
+      SELECT rowid AS row_id, listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at,
+             application_url, posting_url, job_id, location
+      FROM listing_actions
+      ORDER BY rowid
+      LIMIT @limit
+    `);
+    const nextPage = database.prepare(`
+      SELECT rowid AS row_id, listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at,
+             application_url, posting_url, job_id, location
+      FROM listing_actions
+      WHERE rowid > @after
+      ORDER BY rowid
+      LIMIT @limit
+    `);
+    let after: number | null = null;
+    while (true) {
+      const page = (after === null
+        ? firstPage.all({ limit: FAST_ACTION_CONTEXT_BATCH_SIZE })
+        : nextPage.all({ after, limit: FAST_ACTION_CONTEXT_BATCH_SIZE })) as unknown as Array<FastActionContextRow & { row_id: number }>;
+      if (page.length === 0) break;
+      rows.push(...page);
+      after = page[page.length - 1]?.row_id ?? after;
+      if (page.length === FAST_ACTION_CONTEXT_BATCH_SIZE) {
+        await new Promise<void>((resolve) => setImmediate(resolve));
+      } else {
+        break;
+      }
+    }
+  } catch {
+    // Keep old databases readable while action columns are being migrated.
+    return [];
+  }
+  return rows;
+}
+
+async function readFastHiddenInternshipLinksCooperatively(
+  database: DatabaseSync,
+  actionRows: readonly FastActionContextRow[],
+): Promise<Set<string>> {
+  const links = new Set<string>();
+  const fallbackListingIds: string[] = [];
+  for (const row of actionRows) {
+    if (row.listing_type !== "internship") continue;
+    for (const link of fastActionLinks(row)) links.add(link);
+    if (!row.application_url && !row.posting_url) fallbackListingIds.push(row.listing_id);
+  }
+  for (let offset = 0; offset < fallbackListingIds.length; offset += FAST_ACTION_CONTEXT_BATCH_SIZE) {
+    const ids = fallbackListingIds.slice(offset, offset + FAST_ACTION_CONTEXT_BATCH_SIZE);
+    try {
+      const placeholders = ids.map(() => "?").join(",");
+      const rows = database.prepare(`
+        SELECT application_url, posting_url
+        FROM internships WHERE id IN (${placeholders})
+      `).all(...ids) as unknown as Array<{ application_url: string | null; posting_url: string | null }>;
+      for (const row of rows) for (const link of fastActionLinks(row)) links.add(link);
+    } catch {
+      // Keep the key-based hide decision even when legacy role links are unavailable.
+    }
+    if (offset + FAST_ACTION_CONTEXT_BATCH_SIZE < fallbackListingIds.length) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+  }
+  return links;
+}
+
+async function readFastDashboardActionProjection(
+  database: DatabaseSync,
+  databasePath: string,
+  versionMetadata: FastVersionMetadata,
+): Promise<FastDashboardActionProjection> {
+  const revisionKey = versionMetadata.usesDashboardRevisionCounters
+    ? versionMetadata.contentKey
+    : `${versionMetadata.contentKey}:${versionMetadata.databaseDataVersion ?? "unknown"}`;
+  const cacheKey = `${databasePath}:${versionMetadata.databaseFileIdentity}:${revisionKey}`;
+  const cached = fastDashboardActionProjectionCache.get(cacheKey);
+  if (cached) {
+    dashboardPerfLog("roles.build.actionContext.cacheHit", performance.now());
+    return cached;
+  }
+
+  const projectionPromise = (async (): Promise<FastDashboardActionProjection> => {
+    const actionRowsStarted = dashboardPerfStart();
+    const actionRows = await readFastActionContextRowsCooperatively(database);
+    dashboardPerfLog("roles.build.actionRows", actionRowsStarted, { rows: actionRows.length });
+    const matcherStarted = dashboardPerfStart();
+    const actionMatcher = await readListingActionMatcherCooperatively(database, FAST_ACTION_CONTEXT_BATCH_SIZE);
+    dashboardPerfLog("roles.build.actionMatcher", matcherStarted, { rows: actionRows.length });
+    const hiddenListingKeys = new Set(actionRows.map((row) => row.listing_key));
+    const hiddenLinksStarted = dashboardPerfStart();
+    const hiddenDestinationLinks = new Set([
+      ...actionRows.flatMap((row) => fastActionLinks(row)),
+      ...await readFastHiddenInternshipLinksCooperatively(database, actionRows),
+    ]);
+    dashboardPerfLog("roles.build.hiddenActionLinks", hiddenLinksStarted, { links: hiddenDestinationLinks.size });
+    return { actionRows, hiddenListingKeys, hiddenDestinationLinks, actionMatcher };
+  })();
+  fastDashboardActionProjectionCache.set(cacheKey, projectionPromise);
+  if (fastDashboardActionProjectionCache.size > 8) {
+    const oldestKey = fastDashboardActionProjectionCache.keys().next().value;
+    if (oldestKey !== undefined && oldestKey !== cacheKey) fastDashboardActionProjectionCache.delete(oldestKey);
+  }
+  try {
+    return await projectionPromise;
+  } catch (error) {
+    if (fastDashboardActionProjectionCache.get(cacheKey) === projectionPromise) {
+      fastDashboardActionProjectionCache.delete(cacheKey);
+    }
+    throw error;
   }
 }
 
@@ -3738,59 +4492,145 @@ async function readFastRoleDetail(
 
 interface ClosingSoonNotificationCache {
   contentKey: string;
+  roles: DeadlineNotificationRole[];
   notifications: ClosingSoonNotification[];
   nextRefreshAt: number;
 }
 
-const closingSoonNotificationCache = new Map<string, ClosingSoonNotificationCache>();
+interface ClosingSoonNotificationRead {
+  notifications: ClosingSoonNotification[];
+  pendingCache: ClosingSoonNotificationCache | null;
+}
 
-function readStoredClosingSoonNotifications(
+const closingSoonNotificationCache = new Map<string, ClosingSoonNotificationCache>();
+const closingSoonNotificationInflight = new Map<string, {
+  contentKey: string;
+  promise: Promise<ClosingSoonNotificationRead>;
+}>();
+const FAST_CHANGES_NOTIFICATION_BATCH_SIZE = 64;
+
+async function readStoredClosingSoonNotifications(
   database: DatabaseSync,
   databasePath: string,
   contentKey: string,
+  versionMetadata: FastVersionMetadata,
   now = Date.now(),
-): ClosingSoonNotification[] {
+  requestKey = contentKey,
+): Promise<ClosingSoonNotificationRead> {
   const cached = closingSoonNotificationCache.get(databasePath);
-  if (cached?.contentKey === contentKey && now < cached.nextRefreshAt) return cached.notifications;
+  if (cached?.contentKey === contentKey) {
+    if (now < cached.nextRefreshAt) return { notifications: cached.notifications, pendingCache: null };
+    const notifications = buildClosingSoonNotifications(cached.roles, now);
+    const nextRefreshAt = nextClosingSoonRefreshAt(cached.roles, now) ?? Number.POSITIVE_INFINITY;
+    closingSoonNotificationCache.set(databasePath, { ...cached, notifications, nextRefreshAt });
+    return { notifications, pendingCache: null };
+  }
 
-  const rows = database.prepare(`
-    SELECT id, payload_json
-    FROM internships
-    WHERE availability_status = 'open'
-  `).all() as unknown as Array<{ id: string; payload_json: string }>;
-  const roles: DeadlineNotificationRole[] = [];
-  const jobrightDestinations = readJobrightDestinationMap(database);
-  const actionRows = readFastActionContextRows(database);
-  const hiddenListingKeys = new Set(actionRows.map((row) => row.listing_key));
-  const hiddenDestinationLinks = new Set([
-    ...actionRows.flatMap((row) => fastActionLinks(row)),
-    ...readFastHiddenInternshipLinks(database, actionRows),
-  ]);
-  const actionMatcher = readDashboardActionMatcher(database);
-  for (const row of rows) {
-    try {
-      const role = InternshipSchema.parse(JSON.parse(row.payload_json));
-      const candidate = dashboardRoleWithOriginalLinks(
-        { ...role, listingType: "internship" as const, listingId: row.id },
-        jobrightDestinations,
-      );
-      if (!candidate) continue;
-      if (dashboardRoleIsHandled(candidate, hiddenListingKeys, actionMatcher, hiddenDestinationLinks)) continue;
-      if (!hasRequiredListingKeywords(candidate)) continue;
-      roles.push(candidate);
-    } catch {
-      // A malformed historical payload cannot produce a trustworthy alert.
+  const activeBuild = closingSoonNotificationInflight.get(databasePath);
+  if (activeBuild) {
+    if (activeBuild.contentKey === requestKey) return activeBuild.promise;
+    await activeBuild.promise.catch(() => undefined);
+    return readStoredClosingSoonNotifications(database, databasePath, contentKey, versionMetadata, now, requestKey);
+  }
+
+  const buildPromise = (async (): Promise<ClosingSoonNotificationRead> => {
+    const setupStarted = dashboardPerfStart();
+    const roles: DeadlineNotificationRole[] = [];
+    const jobrightDestinations = readJobrightDestinationMap(database);
+    const actionProjection = await readFastDashboardActionProjection(database, databasePath, versionMetadata);
+    const { actionRows, hiddenListingKeys, hiddenDestinationLinks, actionMatcher } = actionProjection;
+    const selectFirstBatch = database.prepare(`
+      SELECT id, availability_status
+      FROM internships INDEXED BY sqlite_autoindex_internships_1
+      ORDER BY id
+      LIMIT @limit
+    `);
+    const selectNextBatch = database.prepare(`
+      SELECT id, availability_status
+      FROM internships INDEXED BY sqlite_autoindex_internships_1
+      WHERE id > @after
+      ORDER BY id
+      LIMIT @limit
+    `);
+    dashboardPerfLog("changes.notifications.setup", setupStarted, {
+      actions: actionRows.length,
+      jobrightDestinations: jobrightDestinations.size,
+    });
+    let batchCount = 0;
+    let totalRows = 0;
+    let maxPageReadMs = 0;
+    let maxPayloadReadMs = 0;
+    let maxParseMs = 0;
+    const notificationBuildStarted = dashboardPerfStart();
+    let cursor: string | null = null;
+    while (true) {
+      const pageReadStarted = dashboardPerfStart();
+      const rows = (cursor === null
+        ? selectFirstBatch.all({ limit: FAST_CHANGES_NOTIFICATION_BATCH_SIZE })
+        : selectNextBatch.all({ after: cursor, limit: FAST_CHANGES_NOTIFICATION_BATCH_SIZE })) as unknown as Array<{ id: string; availability_status: string }>;
+      maxPageReadMs = Math.max(maxPageReadMs, performance.now() - pageReadStarted);
+      if (rows.length === 0) break;
+      const openIds = rows
+        .filter((row) => row.availability_status === "open")
+        .map((row) => row.id);
+      let payloadRows: Array<{ id: string; payload_json: string }> = [];
+      if (openIds.length > 0) {
+        const placeholders = openIds.map(() => "?").join(",");
+        const payloadReadStarted = dashboardPerfStart();
+        payloadRows = database.prepare(`
+          SELECT id, payload_json FROM internships WHERE id IN (${placeholders})
+        `).all(...openIds) as unknown as Array<{ id: string; payload_json: string }>;
+        maxPayloadReadMs = Math.max(maxPayloadReadMs, performance.now() - payloadReadStarted);
+      }
+      const payloadById = new Map(payloadRows.map((row) => [row.id, row]));
+      const parseStarted = dashboardPerfStart();
+      for (const id of openIds) {
+        const row = payloadById.get(id);
+        if (!row) continue;
+        try {
+          const role = InternshipSchema.parse(JSON.parse(row.payload_json));
+          const candidate = dashboardRoleWithOriginalLinks(
+            { ...role, listingType: "internship" as const, listingId: row.id },
+            jobrightDestinations,
+          );
+          if (!candidate) continue;
+          if (dashboardRoleIsHandled(candidate, hiddenListingKeys, actionMatcher, hiddenDestinationLinks)) continue;
+          if (!hasRequiredListingKeywords(candidate)) continue;
+          roles.push(candidate);
+        } catch {
+          // A malformed historical payload cannot produce a trustworthy alert.
+        }
+      }
+      maxParseMs = Math.max(maxParseMs, performance.now() - parseStarted);
+      batchCount += 1;
+      totalRows += rows.length;
+      cursor = rows[rows.length - 1]?.id ?? cursor;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    dashboardPerfLog("changes.notifications.scan", notificationBuildStarted, {
+      batches: batchCount,
+      rows: totalRows,
+      eligible: roles.length,
+      maxPageReadMs: +maxPageReadMs.toFixed(1),
+      maxPayloadReadMs: +maxPayloadReadMs.toFixed(1),
+      maxParseMs: +maxParseMs.toFixed(1),
+    });
+
+    const notifications = buildClosingSoonNotifications(roles, now);
+    const nextRefreshAt = nextClosingSoonRefreshAt(roles, now) ?? Number.POSITIVE_INFINITY;
+    return {
+      notifications,
+      pendingCache: { contentKey, roles, notifications, nextRefreshAt },
+    };
+  })();
+  closingSoonNotificationInflight.set(databasePath, { contentKey: requestKey, promise: buildPromise });
+  try {
+    return await buildPromise;
+  } finally {
+    if (closingSoonNotificationInflight.get(databasePath)?.promise === buildPromise) {
+      closingSoonNotificationInflight.delete(databasePath);
     }
   }
-
-  const notifications = buildClosingSoonNotifications(roles, now);
-  const nextRefreshAt = nextClosingSoonRefreshAt(roles, now) ?? Number.POSITIVE_INFINITY;
-  closingSoonNotificationCache.set(databasePath, { contentKey, notifications, nextRefreshAt });
-  if (closingSoonNotificationCache.size > 16) {
-    const oldestKey = closingSoonNotificationCache.keys().next().value;
-    if (oldestKey !== undefined && oldestKey !== databasePath) closingSoonNotificationCache.delete(oldestKey);
-  }
-  return notifications;
 }
 
 type FastChangesRead = {
@@ -3804,30 +4644,65 @@ type FastChangesRead = {
 } & DashboardSourceHealth;
 
 async function readFastChangesAttempt(databasePath: string): Promise<FastChangesRead> {
+  const attemptStarted = dashboardPerfStart();
   if (!existsSync(databasePath)) throw new Error(`Database not found: ${databasePath}`);
+  const cacheGeneration = fastDashboardCacheGeneration;
   const verification = await readVerificationSnapshot();
   const board = grindJobBoardClient.getCachedSnapshot();
   const database = new DatabaseSync(databasePath, { readOnly: true });
   try {
+    const initialMetadata = readFastVersionMetadata(database, board, verification, databasePath);
+    const notificationsStarted = dashboardPerfStart();
+    const notificationRead = await readStoredClosingSoonNotifications(
+      database,
+      databasePath,
+      initialMetadata.contentKey,
+      initialMetadata,
+      Date.now(),
+      initialMetadata.usesDashboardRevisionCounters
+        ? initialMetadata.contentKey
+      : `${initialMetadata.contentKey}:${initialMetadata.databaseDataVersion ?? "unknown"}`,
+    );
+    dashboardPerfLog("changes.notifications.await", notificationsStarted);
     const metadata = readFastVersionMetadata(database, board, verification, databasePath);
+    if (metadata.contentKey !== initialMetadata.contentKey
+      || metadata.staleSafetyKey !== initialMetadata.staleSafetyKey
+      || (!metadata.usesDashboardRevisionCounters
+        && metadata.databaseDataVersion !== initialMetadata.databaseDataVersion)) {
+      throw new FastSnapshotChangedError();
+    }
     const recentRuns = readDashboardRuns(database, RECENT_DASHBOARD_RUN_LIMIT);
     const latestRun = asRun(recentRuns[0]);
     const latestCompletedRun = readLatestCompletedRun(database);
-    if (!fastDatabaseRevisionIsCurrent(databasePath, metadata.databaseDataVersion, database)) {
+    const sourceHealth = liveSourceState(database, latestRun, latestCompletedRun);
+    consumeFastChangesAfterHydrationTestHook();
+    const confirmedMetadata = readFastVersionMetadata(database, board, verification, databasePath);
+    if (confirmedMetadata.contentKey !== metadata.contentKey
+      || confirmedMetadata.staleSafetyKey !== metadata.staleSafetyKey
+      || confirmedMetadata.databaseDataVersion !== metadata.databaseDataVersion
+      || !fastDatabaseRevisionIsCurrent(databasePath, metadata.databaseDataVersion, database)) {
       throw new FastSnapshotChangedError();
+    }
+    dashboardPerfLog("changes.dynamicHydration", attemptStarted);
+    if (notificationRead.pendingCache && cacheGeneration === fastDashboardCacheGeneration) {
+      closingSoonNotificationCache.set(databasePath, notificationRead.pendingCache);
+      if (closingSoonNotificationCache.size > 16) {
+        const oldestKey = closingSoonNotificationCache.keys().next().value;
+        if (oldestKey !== undefined && oldestKey !== databasePath) closingSoonNotificationCache.delete(oldestKey);
+      }
     }
     return {
       metadata,
       latestRun,
       latestCompletedRun,
       runs: compactRecentDashboardRuns(recentRuns),
-      deadlineNotifications: readStoredClosingSoonNotifications(database, databasePath, metadata.contentKey),
+      deadlineNotifications: notificationRead.notifications,
       board: {
         status: board.status,
         lastAttemptAt: board.lastAttemptAt,
         lastSuccessfulSyncAt: board.lastSuccessfulSyncAt,
       },
-      ...liveSourceState(database, latestRun, latestCompletedRun),
+      ...sourceHealth,
     };
   } finally {
     database.close();
@@ -3866,20 +4741,58 @@ function fastChangesEtag(changes: FastChangesRead): string {
   }))}"`;
 }
 
+async function staleFastDashboardIndexStillSafe(
+  databasePath: string,
+  index: FastDashboardIndex,
+  relativeBase: number,
+): Promise<boolean> {
+  if (!index.versionMetadata.isStaleProjection) return true;
+  if (!existsSync(databasePath)) return false;
+  const verification = await readVerificationSnapshot();
+  const board = grindJobBoardClient.getCachedSnapshot();
+  const database = new DatabaseSync(databasePath, { readOnly: true });
+  try {
+    const current = readFastVersionMetadata(database, board, verification, databasePath, relativeBase);
+    return current.databaseFileIdentity === index.versionMetadata.databaseFileIdentity
+      && current.staleSafetyKey === index.versionMetadata.staleSafetyKey
+      && fastDatabaseRevisionIsCurrent(databasePath, current.databaseDataVersion, database);
+  } catch {
+    return false;
+  } finally {
+    database.close();
+  }
+}
+
 async function serveFastRoles(
   request: IncomingMessage,
   response: ServerResponse,
   databasePath: string,
   requestUrl: URL,
 ): Promise<void> {
+  const routeStarted = dashboardPerfStart();
   try {
     const query = parseFastQuery(requestUrl);
     const matchAccess = query.view === "matches"
       ? await loadAuthenticatedMatchPreferences(request, response, databasePath)
       : null;
     if (query.view === "matches" && !matchAccess) return;
-    const index = await readFastDashboardIndex(databasePath);
-    const page = fastFilterAndPage(index, query, matchAccess?.preferences ?? null);
+    let index = await readFastDashboardIndex(databasePath, 0, {
+      relativeBase: query.relativeBase,
+      allowStaleDuringCatalogRefresh: true,
+    });
+    dashboardPerfLog("roles.route.index", routeStarted, { stale: index.versionMetadata.isStaleProjection });
+    const filterStarted = dashboardPerfStart();
+    let page = fastFilterAndPage(index, query, matchAccess?.preferences ?? null);
+    dashboardPerfLog("roles.route.filter", filterStarted);
+    const safetyStarted = dashboardPerfStart();
+    const staleSafe = await staleFastDashboardIndexStillSafe(databasePath, index, query.relativeBase);
+    dashboardPerfLog("roles.route.staleSafety", safetyStarted, { stale: index.versionMetadata.isStaleProjection, safe: staleSafe });
+    if (!staleSafe) {
+      // A handled-action or identity update crossed the stale response window.
+      // Wait for a projection built from that newer safety state before sending.
+      index = await readFastDashboardIndex(databasePath, 0, { relativeBase: query.relativeBase });
+      page = fastFilterAndPage(index, query, matchAccess?.preferences ?? null);
+    }
     const etag = fastRolesEtag(index, query);
     const payload = {
       contract: "dashboard.roles.v1",
@@ -3938,6 +4851,7 @@ async function serveFastRoles(
         },
       } : {}),
     };
+    dashboardPerfLog("roles.route.ready", routeStarted, { stale: index.versionMetadata.isStaleProjection });
     if (matchAccess) {
       writeAuthJson(response, 200, payload, matchAccess.context.config, matchAccess.context.responseState);
     } else {
@@ -3948,6 +4862,7 @@ async function serveFastRoles(
       });
     }
   } catch (error) {
+    dashboardPerfLog("roles.route.error", routeStarted, { error: error instanceof Error ? error.message : String(error) });
     const status = error instanceof DashboardValidationError ? 400 : 503;
     jsonResponse(response, status, { error: error instanceof Error ? error.message : String(error) }, { request });
   }
@@ -3973,6 +4888,7 @@ async function serveFastRoleDetail(
       listingId,
       isNew: detail.isNew,
       canadianLocation: canadianLocationForRole(detail.role),
+      sponsorshipOfferStatus: sponsorshipOfferStatusForRole(detail.role),
     };
     const etag = `"${detail.version}"`;
     jsonResponse(response, 200, {
@@ -4429,8 +5345,15 @@ export function startDashboardStartupScanForTests(databasePath: string, settings
 }
 
 export async function requestHandler(request: IncomingMessage, response: ServerResponse, databasePath: string): Promise<void> {
+  const requestStarted = dashboardPerfStart();
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
   const pathname = requestUrl.pathname;
+  if (typeof response.once === "function") {
+    response.once("finish", () => dashboardPerfLog(`http.${pathname}`, requestStarted, {
+      method: request.method ?? "GET",
+      status: response.statusCode,
+    }));
+  }
   if (await handleAuthRequest(request, response, requestUrl)) return;
   if (await handlePreferenceRequest(request, response, requestUrl, databasePath)) return;
   if (pathname === "/api/changes" || pathname === "/api/status") {
@@ -4447,6 +5370,42 @@ export async function requestHandler(request: IncomingMessage, response: ServerR
       return;
     }
     await serveFastRoles(request, response, databasePath, requestUrl);
+    return;
+  }
+  if (pathname.startsWith("/api/resumes/")) {
+    if (request.method !== "POST") {
+      jsonResponse(response, 405, { error: "Use POST to generate a resume" }, { request });
+      return;
+    }
+    try {
+      if (request.headers["sec-fetch-site"] === "cross-site"
+        || (request.headers.origin && request.headers.origin !== `http://${request.headers.host}` && request.headers.origin !== `https://${request.headers.host}`)) {
+        throw new ResumeError(403, "Resume downloads must be requested from this dashboard.");
+      }
+      const segments = pathname.split("/").filter(Boolean);
+      if (segments.length !== 4) throw new ResumeError(404, "Resume route requires listing type and id.");
+      const listingType = decodeURIComponent(segments[2] ?? "");
+      const listingId = decodeURIComponent(segments[3] ?? "");
+      if (!isListingType(listingType)) throw new ResumeError(400, "Invalid listing type.");
+      const base = await readBaseResume();
+      await authorizeResume(request, response, base.ownerEmail);
+      const detail = await readFastRoleDetail(databasePath, listingType, listingId);
+      if (!detail) throw new ResumeError(404, "Role not found.");
+      const result = await generateResume(base, detail.role);
+      response.writeHead(200, {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${result.filename}"`,
+        "Content-Length": result.pdf.length,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+        "X-Resume-Matched-Skills": String(result.matches),
+      });
+      response.end(result.pdf);
+    } catch (error) {
+      const status = error instanceof ResumeError ? error.status : error instanceof URIError ? 400
+        : typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 503;
+      jsonResponse(response, status, { error: error instanceof ResumeError ? error.message : status === 401 ? "Sign in to download your resume." : "Resume generation is unavailable. Check your server configuration and try again." }, { request });
+    }
     return;
   }
   if (pathname.startsWith("/api/roles/")) {

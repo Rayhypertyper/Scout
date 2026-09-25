@@ -159,6 +159,18 @@ function isGithubDigestSource(sourceUrl: string): boolean {
   }
 }
 
+function isSuryaInternshipTrackerListingSource(sourceUrl: string): boolean {
+  try {
+    const url = new URL(sourceUrl);
+    return (
+      url.hostname.replace(/^www\./i, "") === "raw.githubusercontent.com" &&
+      /^\/SuryaHarikrishnan\/2027-internship-tracker\/[^/]+\/listings\/[^/]+\.md$/i.test(url.pathname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 function extractMarkdownTableJobs(markdown: string, sourceUrl: string): RawJob[] {
   const jobs: RawJob[] = [];
   const lines = markdown.split(/\r?\n/);
@@ -208,9 +220,10 @@ function extractMarkdownTableJobs(markdown: string, sourceUrl: string): RawJob[]
           .map((link) => safeCanonicalizeUrl(link, sourceUrl))
           .filter((link): link is string => Boolean(link)),
       );
-      // SuryaHarikrishnan's digest tables put the row-specific employer listing
-      // in the Company cell, unlike normal boards where that link is shared.
-      const digestListingUrl = isGithubDigestSource(sourceUrl)
+      // These specific GitHub tables put the row-specific employer listing in
+      // the Company cell, unlike normal boards where that link is shared.
+      const companyCellPostingUrl = isGithubDigestSource(sourceUrl)
+        || isSuryaInternshipTrackerListingSource(sourceUrl)
         ? firstMarkdownUrl(
             companyIndex >= 0 ? [row[companyIndex] ?? ""] : [],
             sourceUrl,
@@ -231,8 +244,8 @@ function extractMarkdownTableJobs(markdown: string, sourceUrl: string): RawJob[]
         sourceUrl,
         companyUrls,
       );
-      const postingUrl = titleUrl ?? applyUrl ?? otherRowUrl ?? digestListingUrl ?? sourceUrl;
-      const applicationUrl = applyUrl ?? titleUrl ?? otherRowUrl ?? digestListingUrl;
+      const postingUrl = titleUrl ?? applyUrl ?? otherRowUrl ?? companyCellPostingUrl ?? sourceUrl;
+      const applicationUrl = applyUrl ?? titleUrl ?? otherRowUrl ?? companyCellPostingUrl;
       const metadata = columns
         .filter(({ index: column }) => ![companyIndex, titleIndex, locationIndex, applyIndex].includes(column))
         .map(({ index: column }) => cellAt(row, column))

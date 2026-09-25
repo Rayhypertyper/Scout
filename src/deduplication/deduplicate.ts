@@ -321,9 +321,14 @@ function hasAggregatorSurface(job: Internship): boolean {
   return isAggregatorUrl(job.applicationUrl) || isAggregatorUrl(job.postingUrl);
 }
 
-function mergeQualificationDetails(primary: Internship["qualificationDetails"], secondary: Internship["qualificationDetails"]): Internship["qualificationDetails"] {
+function mergeQualificationDetails(
+  primary: Internship["qualificationDetails"],
+  secondary: Internship["qualificationDetails"],
+  preferPrimarySponsorship: boolean,
+): Internship["qualificationDetails"] {
   const left = primary ?? {};
   const right = secondary ?? {};
+  const sponsorshipSource = preferPrimarySponsorship ? left : right;
   const choose = <T>(a: T | undefined, b: T | undefined, unknownValue: T): T => (
     a === undefined || a === unknownValue ? (b === undefined ? unknownValue : b) : a
   );
@@ -337,14 +342,19 @@ function mergeQualificationDetails(primary: Internship["qualificationDetails"], 
     upperYearRequirement: choose(left.upperYearRequirement, right.upperYearRequirement, null),
     degreeRequirements: uniqueStrings([...(left.degreeRequirements ?? []), ...(right.degreeRequirements ?? [])]),
     workAuthorization: choose(left.workAuthorization, right.workAuthorization, "unknown"),
-    sponsorship: choose(left.sponsorship, right.sponsorship, "unknown"),
+    // Sponsorship is posting policy that may change on recrawl. Prefer the
+    // newest source even when it reports unknown, rather than pinning a stale
+    // available/unavailable value forever.
+    sponsorship: sponsorshipSource.sponsorship ?? "unknown",
     studentStatusRequirement: choose(left.studentStatusRequirement, right.studentStatusRequirement, "unknown"),
     enrollmentRequirement: choose(left.enrollmentRequirement, right.enrollmentRequirement, "unknown"),
     returningToSchoolRequirement: choose(left.returningToSchoolRequirement, right.returningToSchoolRequirement, "unknown"),
     conflicts: [
       ...(left.conflicts ?? []),
       ...(right.conflicts ?? []),
-    ].filter((conflict, index, values) => values.findIndex((candidate) => candidate.key === conflict.key
+    ].filter((conflict) => conflict.key !== "sponsorship")
+      .concat((sponsorshipSource.conflicts ?? []).filter((conflict) => conflict.key === "sponsorship"))
+      .filter((conflict, index, values) => values.findIndex((candidate) => candidate.key === conflict.key
       && JSON.stringify(candidate.evidence) === JSON.stringify(conflict.evidence)) === index),
     locationModality: choose(left.locationModality, right.locationModality, "unknown"),
     applicationUrl: choose(left.applicationUrl, right.applicationUrl, null),
@@ -410,6 +420,15 @@ export function internshipQuality(job: Internship): number {
 
 export function mergeInternships(primary: Internship, secondary: Internship): Internship {
   const choose = <T>(left: T, right: T, empty: (value: T) => boolean): T => empty(left) && !empty(right) ? right : left;
+  const primaryVerifiedAt = Date.parse(primary.lastVerifiedAt);
+  const secondaryVerifiedAt = Date.parse(secondary.lastVerifiedAt);
+  const primaryIsDirectPosting = !isAggregatorUrl(primary.postingUrl);
+  const secondaryIsDirectPosting = !isAggregatorUrl(secondary.postingUrl);
+  const preferPrimarySponsorship = primaryIsDirectPosting !== secondaryIsDirectPosting
+    ? primaryIsDirectPosting
+    : !Number.isFinite(secondaryVerifiedAt)
+      || (Number.isFinite(primaryVerifiedAt) && primaryVerifiedAt >= secondaryVerifiedAt)
+      || (!Number.isFinite(primaryVerifiedAt) && !Number.isFinite(secondaryVerifiedAt));
   return {
     ...primary,
     company: isAggregatorUrl(primary.postingUrl) && !isAggregatorUrl(secondary.postingUrl) ? secondary.company : primary.company,
@@ -426,8 +445,8 @@ export function mergeInternships(primary: Internship, secondary: Internship): In
     graduationRequirements: uniqueStrings([...primary.graduationRequirements, ...secondary.graduationRequirements]),
     experienceRequirements: uniqueStrings([...primary.experienceRequirements, ...secondary.experienceRequirements]),
     workAuthorizationRequirements: uniqueStrings([...primary.workAuthorizationRequirements, ...secondary.workAuthorizationRequirements]),
-    sponsorshipInformation: primary.sponsorshipInformation ?? secondary.sponsorshipInformation,
-    qualificationDetails: mergeQualificationDetails(primary.qualificationDetails, secondary.qualificationDetails),
+    sponsorshipInformation: preferPrimarySponsorship ? primary.sponsorshipInformation : secondary.sponsorshipInformation,
+    qualificationDetails: mergeQualificationDetails(primary.qualificationDetails, secondary.qualificationDetails, preferPrimarySponsorship),
     internshipTerm: primary.internshipTerm ?? secondary.internshipTerm,
     internshipYear: primary.internshipYear ?? secondary.internshipYear,
     duration: primary.duration ?? secondary.duration,
