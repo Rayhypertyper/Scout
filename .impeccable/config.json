@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "12px",
+        "files": [
+          "public/redesign.css"
+        ],
+        "createdAt": "2026-10-03T20:29:02.047Z",
+        "reason": "Agent retained the incumbent app 12px supporting-copy and disclosure-control size, matching the role metadata and resume review description on this narrow refinement."
+      }
+    ]
+  }
+}

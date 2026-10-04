@@ -1,3 +1,5 @@
+import "./config/env.js";
+
 import { pathToFileURL } from "node:url";
 
 import { readConfiguredSourcesAtPath } from "./config/sourceCatalog.js";

@@ -13,6 +13,7 @@ import { extractWorkAuthorization } from "./parsing/workAuthorization.js";
 import { parseLocations } from "./parsing/locations.js";
 import { decodeHtmlEntities, normalizeCompanyIdentity, normalizeRoleIdentity, uniqueStrings } from "./utils/text.js";
 import { canonicalizeUrl, isAggregatorUrl } from "./utils/url.js";
+import { alignFieldEvidence } from "./llm/evidence.js";
 
 interface InternshipRow {
   id: string;
@@ -81,7 +82,7 @@ async function main(): Promise<void> {
       const preserveUsenoSourceLocation = /(?:^|\.)useno\.app\/internship-masterlist(?:\/|$)/i.test(internship.sourceUrl);
       const parsedLocations = parseLocations(rawLocations, internship.description);
       const title = decodeHtmlEntities(internship.title);
-      const next = InternshipSchema.parse({
+      const nextBase = InternshipSchema.parse({
         ...internship,
         postingUrl,
         company: companyFromEvidence(
@@ -115,6 +116,10 @@ async function main(): Promise<void> {
         categories: classification.categories,
         relevanceScore: classification.score,
         relevanceReason: `${classification.reason} ${detection.reason}`,
+      });
+      const next = InternshipSchema.parse({
+        ...nextBase,
+        provenance: alignFieldEvidence(nextBase, internship.provenance),
       });
       const payload = JSON.stringify(next);
       if (payload === row.payload_json) continue;

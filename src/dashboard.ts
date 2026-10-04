@@ -1,5 +1,10 @@
-import { authorizeResume } from "./resume/access.js";
-import { generateResume, readBaseResume, ResumeError } from "./resume/service.js";
+import "./config/env.js";
+
+import { createApplicationDraft } from "./resume/drafts.js";
+import { generateResume, compileResumePdf, ResumeError } from "./resume/service.js";
+import { resumeSchema } from "./resume/tailor.js";
+import { resolveResumeForRequest } from "./resume/profile.js";
+import { handleResumeProfileRequest } from "./resume/profileHttp.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -4991,6 +4996,60 @@ async function readRequestBody(request: IncomingMessage): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
+async function readResumeRequestBody(request: IncomingMessage, maximumBytes: number): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  const rawLength = request.headers["content-length"];
+  const advertisedLength = Array.isArray(rawLength) ? Number(rawLength[0]) : typeof rawLength === "string" ? Number(rawLength) : Number.NaN;
+  if (Number.isFinite(advertisedLength) && advertisedLength > maximumBytes) {
+    throw new ResumeError(413, "The resume request is too large.");
+  }
+  for await (const chunk of request as AsyncIterable<Buffer | string>) {
+    const buffer = Buffer.from(chunk);
+    size += buffer.byteLength;
+    if (size > maximumBytes) throw new ResumeError(413, "The resume request is too large.");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function assertResumeSameOrigin(request: IncomingMessage): void {
+  const host = request.headers.host ?? "";
+  const origin = request.headers.origin;
+  if (request.headers["sec-fetch-site"] === "cross-site"
+    || (origin && origin !== `http://${host}` && origin !== `https://${host}`)) {
+    throw new ResumeError(403, "This request did not come from Scout. Reload the page and try again.");
+  }
+}
+
+function requestDraftAbortSignal(request: IncomingMessage, response: ServerResponse): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const onAborted = () => controller.abort(new Error("client disconnected"));
+  const onClosed = () => {
+    if (!response.writableEnded) controller.abort(new Error("client disconnected"));
+  };
+  const requestEvents = typeof request.once === "function";
+  const responseEvents = typeof response.once === "function";
+  if (requestEvents) request.once("aborted", onAborted);
+  if (responseEvents) response.once("close", onClosed);
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      if (requestEvents) request.removeListener("aborted", onAborted);
+      if (responseEvents) response.removeListener("close", onClosed);
+    },
+  };
+}
+
+function resumeRouteError(error: unknown, genericMessage: string): { status: number; message: string } {
+  const candidate = error as { status?: unknown; message?: unknown };
+  if (typeof candidate?.status === "number" && candidate.status >= 400 && candidate.status <= 599) {
+    const message = error instanceof Error ? error.message : typeof candidate.message === "string" ? candidate.message : genericMessage;
+    return { status: candidate.status, message };
+  }
+  return { status: 503, message: genericMessage };
+}
+
 async function recordListingAction(
   request: IncomingMessage,
   response: ServerResponse,
@@ -5356,6 +5415,7 @@ export async function requestHandler(request: IncomingMessage, response: ServerR
   }
   if (await handleAuthRequest(request, response, requestUrl)) return;
   if (await handlePreferenceRequest(request, response, requestUrl, databasePath)) return;
+  if (await handleResumeProfileRequest(request, response, databasePath)) return;
   if (pathname === "/api/changes" || pathname === "/api/status") {
     if (request.method !== "GET" && request.method !== "HEAD") {
       jsonResponse(response, 405, { error: "Only GET is supported for dashboard status" }, { request });
@@ -5372,26 +5432,89 @@ export async function requestHandler(request: IncomingMessage, response: ServerR
     await serveFastRoles(request, response, databasePath, requestUrl);
     return;
   }
-  if (pathname.startsWith("/api/resumes/")) {
+  if (pathname.startsWith("/api/application-drafts/")) {
     if (request.method !== "POST") {
-      jsonResponse(response, 405, { error: "Use POST to generate a resume" }, { request });
+      jsonResponse(response, 405, { error: "Use POST to create an application draft" }, { request, cacheControl: "private, no-store" });
       return;
     }
     try {
-      if (request.headers["sec-fetch-site"] === "cross-site"
-        || (request.headers.origin && request.headers.origin !== `http://${request.headers.host}` && request.headers.origin !== `https://${request.headers.host}`)) {
-        throw new ResumeError(403, "Resume downloads must be requested from this dashboard.");
+      assertResumeSameOrigin(request);
+      if (request.headers["content-type"] && !String(request.headers["content-type"]).toLowerCase().includes("application/json")) {
+        throw new ResumeError(415, "Send the application draft request as JSON.");
+      }
+      const rawBody = await readResumeRequestBody(request, 8_192);
+      let body: unknown;
+      try { body = JSON.parse(rawBody) as unknown; } catch { throw new ResumeError(400, "Request body must be valid JSON."); }
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new ResumeError(400, "Request body must be a JSON object.");
+      const kind = (body as Record<string, unknown>).kind;
+      if (kind !== "resume" && kind !== "cover-letter") throw new ResumeError(400, "kind must be resume or cover-letter.");
+      const segments = pathname.split("/").filter(Boolean);
+      if (segments.length !== 4) throw new ResumeError(404, "Application draft route requires listing type and id.");
+      let listingType: string;
+      let listingId: string;
+      try {
+        listingType = decodeURIComponent(segments[2] ?? "");
+        listingId = decodeURIComponent(segments[3] ?? "");
+      } catch {
+        throw new ResumeError(400, "Invalid application draft route.");
+      }
+      if (!isListingType(listingType)) throw new ResumeError(400, "Invalid listing type.");
+      const base = await resolveResumeForRequest(request, response, databasePath);
+      const detail = await readFastRoleDetail(databasePath, listingType, listingId);
+      if (!detail) throw new ResumeError(404, "Role not found.");
+      const abort = requestDraftAbortSignal(request, response);
+      try {
+        const draft = await createApplicationDraft(base, detail.role, kind, abort.signal);
+        jsonResponse(response, 200, draft, { request, cacheControl: "private, no-store" });
+      } finally {
+        abort.cleanup();
+      }
+    } catch (error) {
+      const normalized = resumeRouteError(error, "Application drafting is unavailable. Check your server configuration and try again.");
+      jsonResponse(response, normalized.status, { error: normalized.message }, { request, cacheControl: "private, no-store" });
+    }
+    return;
+  }
+  if (pathname.startsWith("/api/resumes/")) {
+    if (request.method !== "POST") {
+      jsonResponse(response, 405, { error: "Use POST to export a resume PDF" }, { request, cacheControl: "private, no-store" });
+      return;
+    }
+    try {
+      assertResumeSameOrigin(request);
+      const rawBody = await readResumeRequestBody(request, 512_000);
+      if (rawBody.trim() && request.headers["content-type"]
+        && !String(request.headers["content-type"]).toLowerCase().includes("application/json")) {
+        throw new ResumeError(415, "Send an edited resume export as JSON.");
       }
       const segments = pathname.split("/").filter(Boolean);
       if (segments.length !== 4) throw new ResumeError(404, "Resume route requires listing type and id.");
-      const listingType = decodeURIComponent(segments[2] ?? "");
-      const listingId = decodeURIComponent(segments[3] ?? "");
+      let listingType: string;
+      let listingId: string;
+      try {
+        listingType = decodeURIComponent(segments[2] ?? "");
+        listingId = decodeURIComponent(segments[3] ?? "");
+      } catch {
+        throw new ResumeError(400, "Invalid resume route.");
+      }
       if (!isListingType(listingType)) throw new ResumeError(400, "Invalid listing type.");
-      const base = await readBaseResume();
-      await authorizeResume(request, response, base.ownerEmail);
+      const base = await resolveResumeForRequest(request, response, databasePath);
       const detail = await readFastRoleDetail(databasePath, listingType, listingId);
       if (!detail) throw new ResumeError(404, "Role not found.");
-      const result = await generateResume(base, detail.role);
+      let result: { pdf: Buffer; filename: string; matches: number };
+      if (rawBody.trim()) {
+        let body: unknown;
+        try { body = JSON.parse(rawBody) as unknown; } catch { throw new ResumeError(400, "Request body must be valid JSON."); }
+        if (!body || typeof body !== "object" || Array.isArray(body) || !("resume" in body)) {
+          throw new ResumeError(400, "Edited PDF exports must include a resume object.");
+        }
+        const edited = resumeSchema.strict().safeParse(body.resume);
+        if (!edited.success) throw new ResumeError(400, "The edited resume does not match the supported resume format.");
+        const exported = await compileResumePdf(edited.data, detail.role);
+        result = { ...exported, matches: 0 };
+      } else {
+        result = await generateResume(base, detail.role);
+      }
       response.writeHead(200, {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${result.filename}"`,
@@ -5402,9 +5525,8 @@ export async function requestHandler(request: IncomingMessage, response: ServerR
       });
       response.end(result.pdf);
     } catch (error) {
-      const status = error instanceof ResumeError ? error.status : error instanceof URIError ? 400
-        : typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : 503;
-      jsonResponse(response, status, { error: error instanceof ResumeError ? error.message : status === 401 ? "Sign in to download your resume." : "Resume generation is unavailable. Check your server configuration and try again." }, { request });
+      const normalized = resumeRouteError(error, "Resume PDF export is unavailable. Check your server configuration and try again.");
+      jsonResponse(response, normalized.status, { error: normalized.message }, { request, cacheControl: "private, no-store" });
     }
     return;
   }

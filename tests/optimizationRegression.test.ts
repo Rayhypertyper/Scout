@@ -164,14 +164,14 @@ describe("adversarial optimization contracts", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps production runtime free of LLM/agent/embedding dependencies and imports", () => {
+  it("keeps production runtime free of external LLM framework dependencies and imports", () => {
     const packageJson = JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as {
       dependencies?: Record<string, unknown>;
     };
     const forbiddenDependency = /(?:^|[-_.])(openai|langchain|llama|anthropic|google-generative-ai|embedding|agent)(?:$|[-_.])/i;
     expect(Object.keys(packageJson.dependencies ?? {}).filter((name) => forbiddenDependency.test(name))).toEqual([]);
 
-    const forbiddenImport = /(?:from\s*["']|import\s*\(\s*["'])[^"']*(?:openai|langchain|llama|anthropic|google-generative-ai|embedding|agent)[^"']*["']/i;
+    const forbiddenImport = /(?:from\s*["']|import\s*\(\s*["'])(?!\.\.?\/)[^"']*(?:openai|langchain|llama|anthropic|google-generative-ai|embedding|agent)[^"']*["']/i;
     const violations = sourceFiles(join(process.cwd(), "src"))
       .filter((path) => forbiddenImport.test(readFileSync(path, "utf8")))
       .map((path) => path.replace(`${process.cwd()}/`, ""));

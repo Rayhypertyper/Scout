@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "build:resume": "tsc -p tsconfig.resume.json",
     "check": "npm run typecheck && npm run lint && npm test",
     "lint": "eslint .",
     "report:final": "node dist/src/finalReport.js",

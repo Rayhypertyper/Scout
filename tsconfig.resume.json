@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    "noEmitOnError": true
+  },
+  "include": [
+    "src/resume/drafts.ts",
+    "src/resume/openai.ts",
+    "src/resume/service.ts",
+    "src/resume/tailor.ts"
+  ]
+}

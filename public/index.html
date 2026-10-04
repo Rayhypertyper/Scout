@@ -97,6 +97,10 @@
           <kbd id="search-hotkey">⌘K</kbd>
         </label>
         <div class="topbar-actions">
+          <button id="resume-profile-button" class="button button-subtle resume-profile-toolbar-button" type="button" data-open-resume-profile aria-label="Upload or manage your resume" title="Upload or manage your resume">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 15V4m-4 4 4-4 4 4M5 14v5h14v-5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span id="resume-profile-button-label">Your resume</span>
+          </button>
           <button id="add-source-button" class="button button-subtle" type="button">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 6v12M6 12h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
             Add source
@@ -823,6 +827,37 @@
             <button id="submit-add-source" class="dialog-primary" type="submit">Add &amp; crawl</button>
           </div>
         </form>
+      </section>
+    </dialog>
+    <dialog id="application-draft-dialog" class="dialog-backdrop application-draft-dialog" aria-labelledby="application-draft-title" aria-describedby="application-draft-description">
+      <section class="application-draft-shell">
+        <header class="application-draft-header">
+          <div>
+            <h2 id="application-draft-title">Draft for this role</h2>
+            <p id="application-draft-role" class="application-draft-role"></p>
+          </div>
+          <button id="application-draft-close" class="icon-button dialog-close" type="button" aria-label="Close draft">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </header>
+        <p id="application-draft-description" class="application-draft-description">Review this draft before using it.</p>
+        <div id="application-draft-content" class="application-draft-content"></div>
+      </section>
+    </dialog>
+    <dialog id="resume-profile-dialog" class="dialog-backdrop application-draft-dialog" aria-labelledby="resume-profile-title" aria-describedby="resume-profile-description">
+      <section class="application-draft-shell resume-profile-shell">
+        <header class="application-draft-header">
+          <div>
+            <h2 id="resume-profile-title">Your resume</h2>
+            <p id="resume-profile-filename" class="application-draft-role"></p>
+          </div>
+          <button id="resume-profile-close" class="icon-button dialog-close" type="button" aria-label="Close your resume">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </header>
+        <p id="resume-profile-description" class="application-draft-description">Upload a PDF or text resume to use in role-specific drafts.</p>
+        <input id="resume-profile-file" class="sr-only" type="file" accept=".pdf,.txt,application/pdf,text/plain" tabindex="-1" aria-label="Choose a PDF or text resume" />
+        <div id="resume-profile-content" class="application-draft-content"></div>
       </section>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true">

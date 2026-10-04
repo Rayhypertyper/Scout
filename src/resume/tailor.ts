@@ -13,6 +13,12 @@ export const resumeSchema = z.object({
   skills: z.array(z.object({ label: text, items: z.array(text).max(40) })).max(8),
 });
 export type Resume = z.infer<typeof resumeSchema>;
+export interface ResumeTailoringOrder {
+  experienceBullets: number[][];
+  projects: number[];
+  projectBullets: number[][];
+  skillItems: number[][];
+}
 export interface ResumeRole {
   title: string;
   company: string;
@@ -21,6 +27,19 @@ export interface ResumeRole {
   requiredQualifications?: string[];
   preferredQualifications?: string[];
   technologies?: string[];
+  location?: string[];
+  remoteStatus?: string;
+  educationRequirements?: string[];
+  graduationRequirements?: string[];
+  experienceRequirements?: string[];
+  workAuthorizationRequirements?: string[];
+  sponsorshipInformation?: string | null;
+  internshipTerm?: string | null;
+  internshipYear?: string | null;
+  duration?: string | null;
+  salary?: string | null;
+  postingDate?: string | null;
+  deadline?: string | null;
 }
 
 const aliases: Record<string, string[]> = {
@@ -38,7 +57,7 @@ function contains(haystack: string, needle: string): boolean {
 }
 
 /** Reorder only supplied facts. Job text is data, never instructions or new claims. */
-export function tailorResume(base: Resume, role: ResumeRole): { resume: Resume; matchedSkills: string[] } {
+export function tailorResume(base: Resume, role: ResumeRole): { resume: Resume; matchedSkills: string[]; order: ResumeTailoringOrder } {
   const corpus = [role.title, role.description ?? "", ...(role.responsibilities ?? []), ...(role.requiredQualifications ?? []), ...(role.preferredQualifications ?? []), ...(role.technologies ?? [])].join(" ").slice(0, 150_000).toLowerCase();
   const skills = base.skills.flatMap((group) => group.items);
   const matches = (value: string) => (aliases[value.toLowerCase()] ?? [value.toLowerCase()]).some((term) => contains(corpus, term));
@@ -47,15 +66,21 @@ export function tailorResume(base: Resume, role: ResumeRole): { resume: Resume; 
   const score = (value: string) => keywords.reduce((sum, term) => sum + Number(contains(value, term)), 0)
     + matchedSkills.reduce((sum, skill) => sum + (contains(value, skill) ? 5 : 0), 0)
     + Object.values(aliases).reduce((sum, terms) => sum + (terms.some((term) => contains(corpus, term)) && terms.some((term) => contains(value, term)) ? 3 : 0), 0);
-  const rank = <T>(items: T[], content: (item: T) => string): T[] => [...items].sort((a, b) => score(content(b)) - score(content(a)));
-  const reorderBullets = (item: Resume["projects"][number]) => ({ ...item, bullets: rank(item.bullets, (bullet) => bullet) });
+  const rank = <T>(items: T[], content: (item: T) => string): number[] => items.map((_item, index) => index)
+    .sort((a, b) => score(content(items[b]!)) - score(content(items[a]!)));
+  const experienceBullets = base.experience.map((item) => rank(item.bullets, (bullet) => bullet));
+  const projectBullets = base.projects.map((item) => rank(item.bullets, (bullet) => bullet));
+  const projects = rank(base.projects, (item) => [item.title, item.subtitle, ...item.bullets].join(" "));
+  const skillItems = base.skills.map((group) => group.items.map((_item, index) => index)
+    .sort((a, b) => Number(matches(group.items[b]!)) - Number(matches(group.items[a]!))));
   return {
     matchedSkills,
+    order: { experienceBullets, projects, projectBullets, skillItems },
     resume: {
       ...base,
-      experience: base.experience.map(reorderBullets), // Keep employment chronology intact.
-      projects: rank(base.projects.map(reorderBullets), (item) => [item.title, item.subtitle, ...item.bullets].join(" ")),
-      skills: base.skills.map((group) => ({ ...group, items: [...group.items].sort((a, b) => Number(matches(b)) - Number(matches(a))) })),
+      experience: base.experience.map((item, index) => ({ ...item, bullets: experienceBullets[index]!.map((bullet) => item.bullets[bullet]!) })), // Keep employment chronology intact.
+      projects: projects.map((index) => ({ ...base.projects[index]!, bullets: projectBullets[index]!.map((bullet) => base.projects[index]!.bullets[bullet]!) })),
+      skills: base.skills.map((group, index) => ({ ...group, items: skillItems[index]!.map((item) => group.items[item]!) })),
     },
   };
 }

@@ -1,3 +1,5 @@
+import "./config/env.js";
+
 import { pathToFileURL } from "node:url";
 
 import { parseCli, helpText } from "./cli.js";

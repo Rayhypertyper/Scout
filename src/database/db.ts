@@ -42,6 +42,7 @@ import { canonicalizeUrl, isAggregatorUrl, isCompanyLandingUrl, isJobrightUrl, n
 import { DATABASE_SCHEMA } from "./schema.js";
 import { ensureDashboardRevisionSchema } from "./dashboardRevisions.js";
 import { CrawlCancelledError } from "../domain/cancellation.js";
+import { alignFieldEvidence } from "../llm/evidence.js";
 
 interface InternshipRow {
   id: string;
@@ -1883,7 +1884,7 @@ export class InternshipDatabase {
     const firstSeenAt = [existing?.first_seen_at, ...duplicateMatches.map((row) => row.first_seen_at), candidate.discoveredAt]
       .filter((value): value is string => Boolean(value))
       .sort()[0] ?? candidate.discoveredAt;
-    const internship = InternshipSchema.parse({
+    const internshipBase = InternshipSchema.parse({
       ...mergedCandidate,
       id,
       sourceUrl: existingPayload?.sourceUrl ?? candidate.sourceUrl,
@@ -1891,6 +1892,14 @@ export class InternshipDatabase {
       lifecycleStatus: "UNCHANGED",
       availabilityStatus: "open",
       discoveredAt: firstSeenAt,
+    });
+    const internship = InternshipSchema.parse({
+      ...internshipBase,
+      provenance: alignFieldEvidence(internshipBase, [
+        ...candidate.provenance,
+        ...(existingPayload?.provenance ?? []),
+        ...duplicatePayloads.flatMap((payload) => payload.provenance),
+      ]),
     });
     const finalHash = internshipContentHash(internship);
     const lifecycleStatus: LifecycleStatus = !existing

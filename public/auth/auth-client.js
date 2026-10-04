@@ -29,6 +29,13 @@ class RoleRadarAuthClient {
     return { ...this.#state };
   }
 
+  async csrfHeaders() {
+    if (!this.#csrfToken) await this.bootstrap();
+    if (this.#state.configured === false) return {};
+    if (!this.#csrfToken) throw new AuthClientError("Your form session expired. Reload the page and try again.", { code: "CSRF_INVALID" });
+    return { "X-CSRF-Token": this.#csrfToken };
+  }
+
   subscribe(listener) {
     this.#listeners.add(listener);
     listener(this.getState());

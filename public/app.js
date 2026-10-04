@@ -1,4 +1,4 @@
-/* global document, Element, URL, URLSearchParams, fetch, AbortController, setTimeout, setInterval, clearTimeout, IntersectionObserver, localStorage, navigator, window, history */
+/* global document, Element, HTMLDialogElement, URL, URLSearchParams, fetch, AbortController, Blob, btoa, structuredClone, setTimeout, setInterval, clearTimeout, IntersectionObserver, localStorage, navigator, window, history */
 
 import { isRecentListing } from "./newRole.js";
 import { hasRequiredListingKeywords } from "./listingKeywords.js";
@@ -316,6 +316,11 @@ const state = {
   pendingApplicationStages: new Set(),
   selectedRoleKey: null,
   roleDetailReturnFocus: null,
+  applicationDraftCache: new Map(),
+  activeApplicationDraft: null,
+  applicationDraftRequestId: 0,
+  activeResumeProfileSession: null,
+  resumeProfileRequestId: 0,
   roleMotionContext: null,
   sourceMarqueeTween: null,
   sourceMarqueeKey: null,
@@ -2275,41 +2280,983 @@ function eligibilityBadgeHtml(role) {
   return `<span class="eligibility-badge eligibility-badge-${status}" data-eligibility-status="${status}"><span class="eligibility-badge-dot" aria-hidden="true"></span><span class="sr-only">Eligibility: </span><span>${label}</span></span>`;
 }
 
-function resumeButton(role) {
-  const url = `/api/resumes/${encodeURIComponent(role.listingType || "internship")}/${encodeURIComponent(role.listingId || role.id)}`;
-  return `<button type="button" class="listing-action-button resume-action" data-resume-url="${escapeHtml(url)}" aria-label="Download tailored resume for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}" title="Download a LaTeX PDF with relevant projects, bullets, and skills prioritized">Download resume</button>`;
+function applicationDraftButtons(role) {
+  const listingType = role.listingType || "internship";
+  const listingId = role.listingId || role.id;
+  const roleLabel = escapeHtml(`${role.title} at ${role.company}`);
+  const identity = `data-listing-type="${escapeHtml(listingType)}" data-listing-id="${escapeHtml(listingId)}" data-listing-title="${escapeHtml(role.title)}" data-listing-company="${escapeHtml(role.company)}"`;
+  return `<button type="button" class="listing-action-button resume-action application-draft-action" data-application-draft="resume" ${identity} aria-label="Download resume for ${roleLabel}" title="See what changed for this role, then download your tailored resume">Download resume</button>
+    <button type="button" class="listing-action-button application-draft-action cover-letter-action" data-application-draft="cover-letter" ${identity} aria-label="Draft cover letter for ${roleLabel}" title="Review and edit a role-specific cover letter">Cover letter</button>`;
 }
 
-async function downloadResume(button) {
-  if (button.disabled) return;
+function applicationDraftCacheKey(listingType, listingId, kind) {
+  return `${listingType}:${listingId}:${kind}`;
+}
+
+function applicationDraftEndpoint(session) {
+  return `/api/application-drafts/${encodeURIComponent(session.listingType)}/${encodeURIComponent(session.listingId)}`;
+}
+
+function applicationDraftLabel(kind) {
+  return kind === "cover-letter" ? "Cover letter" : "Resume";
+}
+
+function draftLines(value) {
+  return String(value ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+function resumeEntryEditor(group, title, entries, prefix, { editable = false, max = 0 } = {}) {
+  return `<section class="application-draft-section" aria-labelledby="${prefix}-${group}-heading">
+    <div class="application-draft-section-heading"><h3 id="${prefix}-${group}-heading">${title}</h3><span>${entries.length} ${entries.length === 1 ? "entry" : "entries"}</span></div>
+    ${entries.map((entry, index) => `<fieldset class="application-draft-entry" data-resume-entry data-entry-group="${group}" data-entry-index="${index}">
+      <legend>${title} ${index + 1}</legend>
+      <div class="application-draft-entry-fields">
+        <label class="application-draft-field"><span>Title</span><input type="text" data-entry-field="title" value="${escapeHtml(entry.title)}" autocomplete="off" /></label>
+        <label class="application-draft-field"><span>Organization or subtitle</span><input type="text" data-entry-field="subtitle" value="${escapeHtml(entry.subtitle)}" autocomplete="off" /></label>
+        <label class="application-draft-field"><span>Date</span><input type="text" data-entry-field="date" value="${escapeHtml(entry.date)}" autocomplete="off" /></label>
+      </div>
+      <label class="application-draft-field application-draft-bullets"><span>Bullets <small>One per line</small></span><textarea data-entry-field="bullets" rows="${Math.max(2, Math.min(5, entry.bullets.length))}">${escapeHtml(entry.bullets.join("\n"))}</textarea></label>
+      ${editable ? `<button class="application-draft-remove" type="button" data-remove-resume-entry="${group}" data-entry-index="${index}">Remove ${title.toLocaleLowerCase()}</button>` : ""}
+    </fieldset>`).join("")}
+    ${editable ? `<button class="application-draft-add" type="button" data-add-resume-entry="${group}" ${entries.length >= max ? "disabled" : ""}>Add ${title.toLocaleLowerCase()}</button>` : ""}
+  </section>`;
+}
+
+function resumeStructureEditor(resume, prefix, { editableCollections = false } = {}) {
+  const skills = Array.isArray(resume.skills) ? resume.skills : [];
+  return `<div class="application-draft-editor" data-resume-editor="${prefix}">
+    <section class="application-draft-section" aria-labelledby="${prefix}-profile-heading">
+      <div class="application-draft-section-heading"><h3 id="${prefix}-profile-heading">Contact</h3></div>
+      <div class="application-draft-entry-fields">
+        <label class="application-draft-field"><span>Name</span><input type="text" data-resume-name value="${escapeHtml(resume.name)}" autocomplete="name" /></label>
+      </div>
+      <label class="application-draft-field application-draft-contact"><span>Contact details <small>One per line</small></span><textarea data-resume-contact rows="${Math.max(2, Math.min(5, resume.contact.length))}">${escapeHtml(resume.contact.join("\n"))}</textarea></label>
+    </section>
+    ${resumeEntryEditor("education", "Education", resume.education, prefix, { editable: editableCollections, max: 4 })}
+    ${resumeEntryEditor("experience", "Experience", resume.experience, prefix, { editable: editableCollections, max: 8 })}
+    ${resumeEntryEditor("projects", "Projects", resume.projects, prefix, { editable: editableCollections, max: 8 })}
+    <section class="application-draft-section" aria-labelledby="${prefix}-awards-heading">
+      <div class="application-draft-section-heading"><h3 id="${prefix}-awards-heading">Awards &amp; leadership</h3></div>
+      <label class="application-draft-field"><span>Awards <small>One per line</small></span><textarea data-resume-awards rows="${Math.max(2, Math.min(5, resume.awards.length))}">${escapeHtml(resume.awards.join("\n"))}</textarea></label>
+    </section>
+    <section class="application-draft-section" aria-labelledby="${prefix}-skills-heading">
+      <div class="application-draft-section-heading"><h3 id="${prefix}-skills-heading">Skills</h3></div>
+      ${skills.map((group, index) => `<fieldset class="application-draft-skill" data-resume-skill data-skill-index="${index}">
+        <legend>Skill group ${index + 1}</legend>
+        <div class="application-draft-entry-fields">
+          <label class="application-draft-field"><span>Group name</span><input type="text" data-skill-label value="${escapeHtml(group.label)}" autocomplete="off" /></label>
+          <label class="application-draft-field"><span>Skills <small>One per line</small></span><textarea data-skill-items rows="${Math.max(2, Math.min(5, group.items.length))}">${escapeHtml(group.items.join("\n"))}</textarea></label>
+        </div>
+        ${editableCollections ? '<button class="application-draft-remove" type="button" data-remove-resume-skill>Remove skill group</button>' : ""}
+      </fieldset>`).join("")}
+      ${editableCollections ? `<button class="application-draft-add" type="button" data-add-resume-skill ${skills.length >= 8 ? "disabled" : ""}>Add skill group</button>` : ""}
+    </section>
+  </div>`;
+}
+
+function retryAiWordingMarkup(session, result) {
+  if (result.source !== "deterministic") return "";
+  if (session.regenerationConfirm) {
+    return `<div class="application-draft-regenerate-confirm" role="group" aria-label="Confirm draft replacement">
+      <p>Trying AI wording again sends your resume details to OpenAI when available and replaces the current edited draft.</p>
+      <button class="dialog-secondary" type="button" data-cancel-ai-wording>Keep my edits</button>
+      <button class="dialog-primary" type="button" data-confirm-ai-wording>Regenerate and replace</button>
+    </div>`;
+  }
+  return `<div class="application-draft-regenerate">
+    <p>This draft uses rule-based matching. Try AI wording again when you want another generation attempt.</p>
+    <button class="dialog-secondary" type="button" data-retry-ai-wording>Try AI wording again</button>
+  </div>`;
+}
+
+function renderResumeChanges(changes) {
+  if (!changes || !Array.isArray(changes.bullets) || !Array.isArray(changes.ordering)) {
+    return '<p class="resume-changes-empty">Change details are unavailable for this draft.</p>';
+  }
+  const groups = new Map();
+  for (const change of changes.bullets) {
+    const key = change.sourceRef.split(".bullets.")[0];
+    if (!groups.has(key)) groups.set(key, { ...change, bullets: [] });
+    groups.get(key).bullets.push(change);
+  }
+  const comparisons = (before, after, { ordered = false, roleKeyword = "", roleRequirement = "" } = {}) => {
+    const text = (value) => ordered
+      ? `<ol>${value.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>`
+      : `<p>${escapeHtml(value)}</p>`;
+    return `<div class="resume-change-comparison">
+      <div class="resume-change-original"><h5>${ordered ? "Original order" : "Original"}</h5>${text(before)}</div>
+      <div class="resume-change-tailored"><h5>${ordered ? "Tailored order" : "Tailored"}</h5>${text(after)}${roleKeyword && roleRequirement ? `<small class="resume-change-context"><strong>Role focus: ${escapeHtml(roleKeyword)}</strong> · ${escapeHtml(roleRequirement)}</small>` : ""}</div>
+    </div>`;
+  };
+  return `<section class="resume-changes" aria-labelledby="resume-changes-heading">
+    <div class="application-draft-section-heading"><h3 id="resume-changes-heading">Rewritten bullets</h3><span>${changes.bullets.length} ${changes.bullets.length === 1 ? "change" : "changes"}</span></div>
+    ${groups.size ? [...groups.values()].map((group) => `<article class="resume-change-entry">
+      <h4>${escapeHtml(group.title)}</h4>
+      <p class="resume-change-context">${group.section === "experience" ? "Experience" : "Project"} · ${escapeHtml(group.subtitle)}</p>
+      ${group.bullets.map((change) => comparisons(change.before, change.after, change)).join("")}
+    </article>`).join("") : '<p class="resume-changes-empty">No bullet wording was changed in this draft.</p>'}
+  </section>
+  ${changes.ordering.length ? `<details class="resume-change-ordering">
+    <summary>Relevance ordering <span>${changes.ordering.length} ${changes.ordering.length === 1 ? "change" : "changes"}</span></summary>
+    <p class="resume-change-context">These items were moved higher to emphasize their relevance to the role.</p>
+    ${changes.ordering.map((change) => `<article class="resume-change-entry"><h4>${escapeHtml(change.label)}</h4>${comparisons(change.before, change.after, { ordered: true })}</article>`).join("")}
+  </details>` : ""}`;
+}
+
+function renderResumeDraftReview(result, session) {
+  const warningMarkup = (Array.isArray(result.warnings) ? result.warnings : [])
+    .filter((warning) => typeof warning === "string" && warning.trim())
+    .map((warning) => `<li>${escapeHtml(warning)}</li>`).join("");
+  const matchedSkills = (Array.isArray(result.matchedSkills) ? result.matchedSkills : [])
+    .filter((skill) => typeof skill === "string" && skill.trim());
+  const sourceLabel = result.source === "llm" ? "AI-assisted wording" : "Fallback draft · rule-based matching";
+  return `<div class="application-draft-source" aria-label="Draft method">${escapeHtml(sourceLabel)}</div>
+    ${matchedSkills.length ? `<p class="application-draft-matches"><strong>Relevant skills found in your resume</strong><span>${escapeHtml(matchedSkills.join(" · "))}</span></p>` : ""}
+    ${renderResumeChanges(result.changes)}
+    ${warningMarkup ? `<details class="resume-draft-notes"><summary>Review notes</summary><ul class="application-draft-warnings" aria-label="Draft notes">${warningMarkup}</ul></details>` : ""}
+    ${retryAiWordingMarkup(session, result)}
+    <p id="application-draft-export-error" class="application-draft-error" role="alert" hidden></p>
+    <p id="application-draft-feedback" class="application-draft-feedback" role="status" aria-live="polite"></p>
+    <footer class="application-draft-actions">
+      <button class="dialog-secondary" type="button" data-close-application-draft>Close</button>
+      <button class="dialog-primary application-draft-export" type="button" data-download-resume>Download tailored resume PDF</button>
+    </footer>`;
+}
+
+function renderCoverLetterDraftEditor(result, session) {
+  const warningMarkup = (Array.isArray(result.warnings) ? result.warnings : [])
+    .filter((warning) => typeof warning === "string" && warning.trim())
+    .map((warning) => `<li>${escapeHtml(warning)}</li>`).join("");
+  const matchedSkills = (Array.isArray(result.matchedSkills) ? result.matchedSkills : [])
+    .filter((skill) => typeof skill === "string" && skill.trim());
+  const sourceLabel = result.source === "llm" ? "AI-assisted wording" : "Fallback draft · rule-based matching";
+  return `<div class="application-draft-source" aria-label="Draft method">${escapeHtml(sourceLabel)}</div>
+    <p class="application-draft-review-note">Your experience details are sent to OpenAI to prepare this draft. Review every name, date, and claim before using it.</p>
+    ${warningMarkup ? `<ul class="application-draft-warnings" aria-label="Draft notes">${warningMarkup}</ul>` : ""}
+    ${matchedSkills.length ? `<p class="application-draft-matches"><strong>Relevant skills found in your resume</strong><span>${escapeHtml(matchedSkills.join(" · "))}</span></p>` : ""}
+    ${retryAiWordingMarkup(session, result)}
+    <label class="application-draft-field application-draft-letter"><span>Cover letter text</span><textarea data-cover-letter-text rows="19" spellcheck="true">${escapeHtml(result.text || "")}</textarea></label>
+    <p id="application-draft-export-error" class="application-draft-error" role="alert" hidden></p>
+    <p id="application-draft-feedback" class="application-draft-feedback" role="status" aria-live="polite"></p>
+    <footer class="application-draft-actions">
+      <button class="dialog-secondary" type="button" data-close-application-draft>Close</button>
+      <div class="application-draft-export-actions">
+        <button class="dialog-secondary" type="button" data-copy-cover-letter>Copy text</button>
+        <button class="dialog-primary" type="button" data-download-cover-letter>Download .txt</button>
+      </div>
+    </footer>`;
+}
+
+function renderApplicationDraft(session) {
+  if (state.activeApplicationDraft !== session) return;
+  const dialog = $("#application-draft-dialog");
+  const content = $("#application-draft-content");
+  if (!dialog || !content) return;
+  dialog.querySelector(".resume-draft-footer")?.remove();
+  const label = applicationDraftLabel(session.kind);
+  $("#application-draft-title").textContent = session.kind === "resume" ? "Resume changes" : `${label} draft`;
+  $("#application-draft-close").setAttribute("aria-label", session.kind === "resume" ? "Close resume changes" : "Close cover letter editor");
+  $("#application-draft-role").textContent = `${session.title} · ${session.company}`;
+  if (session.loading) {
+    $("#application-draft-description").textContent = "Preparing a draft from your resume details and this role.";
+    content.innerHTML = `<p class="application-draft-review-note">Your resume details may be sent to OpenAI to prepare this draft. You can close this window to cancel.</p><div class="application-draft-loading" role="status" aria-live="polite"><span>Preparing your ${escapeHtml(label.toLocaleLowerCase())} draft…</span><i></i><i></i><i></i></div>`;
+    return;
+  }
+  if (session.error) {
+    $("#application-draft-description").textContent = "The draft could not be prepared. You can retry when ready.";
+    const needsResumeProfile = session.kind === "resume" && /resume.{0,50}(profile|upload|missing|not found|not saved)|upload.{0,50}resume|resume is not saved/i.test(session.error);
+    const profileHint = needsResumeProfile
+      ? '<p class="application-draft-review-note">Set up your resume once using the global resume control beside Add source, then retry this role draft.</p>'
+      : "";
+    const previousDraft = session.previousEntry
+      ? '<button class="dialog-secondary" type="button" data-return-previous-draft>Keep current draft</button>'
+      : "";
+    content.innerHTML = `<div class="application-draft-error-state"><p class="application-draft-error" role="alert">${escapeHtml(session.error)}</p>${profileHint}<footer class="application-draft-actions"><button class="dialog-secondary" type="button" data-close-application-draft>Close</button>${previousDraft}<button class="dialog-primary" type="button" data-retry-application-draft>Try again</button></footer></div>`;
+    return;
+  }
+  if (!session.entry) return;
+  $("#application-draft-description").textContent = session.kind === "resume"
+    ? "See how your saved resume was tailored for this role. Review the changes before applying."
+    : "Review and edit every detail before using this draft.";
+  content.innerHTML = session.kind === "resume"
+    ? renderResumeDraftReview(session.entry.result, session)
+    : renderCoverLetterDraftEditor(session.entry.result, session);
+  if (session.kind === "resume") {
+    const footer = document.createElement("div");
+    footer.className = "resume-draft-footer";
+    for (const selector of ["#application-draft-export-error", "#application-draft-feedback", ".application-draft-actions"]) {
+      const element = content.querySelector(selector);
+      if (element) footer.append(element);
+    }
+    content.parentElement.append(footer);
+  }
+}
+
+function draftIsCurrent(session) {
+  return state.activeApplicationDraft === session
+    && session.id === state.applicationDraftRequestId
+    && $("#application-draft-dialog")?.open === true;
+}
+
+async function requestApplicationDraft(session) {
+  const replacedEntry = session.regenerating
+    ? session.entry || state.applicationDraftCache.get(session.cacheKey) || null
+    : null;
+  session.previousEntry = replacedEntry;
+  session.controller?.abort();
+  session.controller = new AbortController();
+  session.requestId = ++state.applicationDraftRequestId;
+  session.id = session.requestId;
+  session.loading = true;
+  session.error = "";
+  session.entry = null;
+  renderApplicationDraft(session);
+  try {
+    const csrfHeaders = await authClient.csrfHeaders();
+    if (!draftIsCurrent(session)) return;
+    const response = await fetch(applicationDraftEndpoint(session), {
+      method: "POST",
+      credentials: "same-origin",
+      signal: session.controller.signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...csrfHeaders },
+      body: JSON.stringify({ kind: session.kind }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Could not prepare this draft. Please try again.");
+    if (!draftIsCurrent(session)) return;
+    if (payload.kind !== session.kind || !payload.role || typeof payload.source !== "string") {
+      throw new Error("The draft response was incomplete. Please try again.");
+    }
+    if (session.kind === "resume" && (!payload.resume || !Array.isArray(payload.resume.education))) {
+      throw new Error("The resume draft could not be read. Please try again.");
+    }
+    if (session.kind === "cover-letter" && typeof payload.text !== "string") {
+      throw new Error("The cover letter draft could not be read. Please try again.");
+    }
+    const entry = {
+      key: session.cacheKey,
+      kind: session.kind,
+      result: payload,
+      resume: session.kind === "resume" ? structuredClone(payload.resume) : null,
+      text: session.kind === "cover-letter" ? payload.text : "",
+      userEdited: false,
+    };
+    state.applicationDraftCache.set(session.cacheKey, entry);
+    session.entry = entry;
+    session.previousEntry = null;
+    session.regenerating = false;
+    session.regenerationConfirm = false;
+    session.title = payload.role.title || session.title;
+    session.company = payload.role.company || session.company;
+    session.loading = false;
+    renderApplicationDraft(session);
+    const draftContent = $("#application-draft-content");
+    if (draftContent) draftContent.scrollTop = 0;
+  } catch (error) {
+    if (!draftIsCurrent(session) || error?.name === "AbortError") return;
+    session.loading = false;
+    session.error = error instanceof Error ? error.message : "Could not prepare this draft. Please try again.";
+    renderApplicationDraft(session);
+  }
+}
+
+function openApplicationDraft(button) {
+  const kind = button.dataset.applicationDraft;
+  if (kind !== "resume" && kind !== "cover-letter") return;
+  const dialog = $("#application-draft-dialog");
+  const listingType = button.dataset.listingType || "internship";
+  const listingId = button.dataset.listingId || "";
+  if (!dialog || !listingId) return;
+  if (dialog.open) closeApplicationDraftDialog({ restoreFocus: false });
+  const cacheKey = applicationDraftCacheKey(listingType, listingId, kind);
+  const session = {
+    id: ++state.applicationDraftRequestId,
+    requestId: state.applicationDraftRequestId,
+    kind,
+    listingType,
+    listingId,
+    title: button.dataset.listingTitle || "Role",
+    company: button.dataset.listingCompany || "Company",
+    cacheKey,
+    trigger: button,
+    controller: new AbortController(),
+    entry: state.applicationDraftCache.get(cacheKey) || null,
+    regenerating: false,
+    regenerationConfirm: false,
+    previousEntry: null,
+    loading: false,
+    error: "",
+  };
+  state.activeApplicationDraft = session;
+  if (!dialog.open) dialog.showModal();
+  if (session.entry) {
+    renderApplicationDraft(session);
+    const content = $("#application-draft-content");
+    if (content) content.scrollTop = 0;
+    setTimeout(() => $("#application-draft-close")?.focus(), 0);
+  } else {
+    session.loading = true;
+    renderApplicationDraft(session);
+    setTimeout(() => $("#application-draft-close")?.focus(), 0);
+    void requestApplicationDraft(session);
+  }
+}
+
+function closeApplicationDraftDialog({ restoreFocus = true } = {}) {
+  const dialog = $("#application-draft-dialog");
+  const session = state.activeApplicationDraft;
+  if (!dialog?.open && !session) return;
+  session?.controller?.abort();
+  state.applicationDraftRequestId += 1;
+  state.activeApplicationDraft = null;
+  if (dialog?.open) dialog.close();
+  if (restoreFocus && session?.trigger?.isConnected) session.trigger.focus();
+}
+
+function collectEditedResume(content, original) {
+  const entries = (group) => [...content.querySelectorAll(`[data-resume-entry][data-entry-group="${group}"]`)].map((entry) => ({
+    title: entry.querySelector('[data-entry-field="title"]')?.value.trim() || "",
+    subtitle: entry.querySelector('[data-entry-field="subtitle"]')?.value.trim() || "",
+    date: entry.querySelector('[data-entry-field="date"]')?.value.trim() || "",
+    bullets: draftLines(entry.querySelector('[data-entry-field="bullets"]')?.value || ""),
+  }));
+  return {
+    ...original,
+    ownerEmail: original.ownerEmail,
+    name: content.querySelector("[data-resume-name]")?.value.trim() || "",
+    contact: draftLines(content.querySelector("[data-resume-contact]")?.value || ""),
+    education: entries("education"),
+    experience: entries("experience"),
+    projects: entries("projects"),
+    awards: draftLines(content.querySelector("[data-resume-awards]")?.value || ""),
+    skills: [...content.querySelectorAll("[data-resume-skill]")].map((group) => ({
+      label: group.querySelector("[data-skill-label]")?.value.trim() || "",
+      items: draftLines(group.querySelector("[data-skill-items]")?.value || ""),
+    })),
+  };
+}
+
+function validateEditableResume(resume) {
+  if (!resume.name.trim()) return "Add a name before saving or downloading this resume.";
+  if (resume.contact.length < 1 || resume.contact.length > 8) return "Add between one and eight contact details.";
+  if (resume.education.length < 1 || resume.education.length > 4) return "Keep between one and four education entries.";
+  if (resume.experience.length > 8 || resume.projects.length > 8) return "Keep each experience and project section to eight entries or fewer.";
+  if (resume.awards.length > 6) return "Keep awards and leadership entries to six or fewer.";
+  if (resume.skills.length > 8) return "Keep skill groups to eight or fewer.";
+  for (const [section, entries] of [["Education", resume.education], ["Experience", resume.experience], ["Projects", resume.projects]]) {
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      if (!entry.title.trim() || !entry.subtitle.trim() || !entry.date.trim()) {
+        return `Complete the title, organization, and date for ${section.toLocaleLowerCase()} entry ${index + 1}.`;
+      }
+      if (entry.bullets.length > 8) return `${section} entry ${index + 1} can have at most eight bullets.`;
+    }
+  }
+  for (let index = 0; index < resume.skills.length; index += 1) {
+    if (!resume.skills[index].label.trim()) return `Add a name for skill group ${index + 1}.`;
+    if (resume.skills[index].items.length > 40) return `Skill group ${index + 1} can have at most 40 items.`;
+  }
+  return "";
+}
+
+function saveApplicationDraftEdits(session, markEdited = false) {
+  if (!draftIsCurrent(session) || !session.entry || session.kind !== "cover-letter") return;
+  session.entry.text = $("[data-cover-letter-text]")?.value ?? session.entry.text;
+  session.entry.result.text = session.entry.text;
+  if (markEdited) session.entry.userEdited = true;
+  state.applicationDraftCache.set(session.cacheKey, session.entry);
+}
+
+function startAiWordingRetry() {
+  const session = state.activeApplicationDraft;
+  if (!session?.entry || session.entry.result.source !== "deterministic") return;
+  saveApplicationDraftEdits(session);
+  if (session.entry.userEdited) {
+    session.regenerationConfirm = true;
+    renderApplicationDraft(session);
+    $(`[data-cancel-ai-wording]`)?.focus();
+    return;
+  }
+  session.regenerating = true;
+  void requestApplicationDraft(session);
+}
+
+function cancelAiWordingRetry() {
+  const session = state.activeApplicationDraft;
+  if (!session) return;
+  session.regenerationConfirm = false;
+  renderApplicationDraft(session);
+  $(`[data-retry-ai-wording]`)?.focus();
+}
+
+function confirmAiWordingRetry() {
+  const session = state.activeApplicationDraft;
+  if (!session?.entry || !session.regenerationConfirm) return;
+  saveApplicationDraftEdits(session);
+  session.regenerationConfirm = false;
+  session.regenerating = true;
+  void requestApplicationDraft(session);
+}
+
+function keepPreviousApplicationDraft() {
+  const session = state.activeApplicationDraft;
+  if (!session?.previousEntry) return;
+  session.entry = session.previousEntry;
+  session.previousEntry = null;
+  session.regenerating = false;
+  session.error = "";
+  state.applicationDraftCache.set(session.cacheKey, session.entry);
+  renderApplicationDraft(session);
+}
+
+function applicationDraftFeedback(message) {
+  const feedback = $("#application-draft-feedback");
+  if (feedback) feedback.textContent = message;
+}
+
+function safeDownloadName(header, fallback) {
+  const encoded = header?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  const basic = header?.match(/filename="?([^";]+)"?/i)?.[1];
+  let candidate = basic || fallback;
+  if (encoded) {
+    try { candidate = decodeURIComponent(encoded); } catch { candidate = fallback; }
+  }
+  return candidate.split(/[\\/]/).pop() || fallback;
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+async function downloadTailoredResume(button) {
+  const session = state.activeApplicationDraft;
+  if (!session || session.kind !== "resume" || !draftIsCurrent(session) || button.disabled) return;
+  const validationError = validateEditableResume(session.entry.resume);
+  if (validationError) {
+    const message = $("#application-draft-export-error");
+    if (message) { message.textContent = validationError; message.hidden = false; }
+    return;
+  }
+  const exportError = $("#application-draft-export-error");
+  if (exportError) { exportError.hidden = true; exportError.textContent = ""; }
   button.disabled = true;
   button.setAttribute("aria-busy", "true");
   button.textContent = "Preparing PDF…";
+  applicationDraftFeedback("Preparing your tailored PDF…");
   try {
-    const response = await fetch(button.dataset.resumeUrl, { method: "POST", credentials: "same-origin" });
+    const csrfHeaders = await authClient.csrfHeaders();
+    if (!draftIsCurrent(session)) return;
+    const response = await fetch(`/api/resumes/${encodeURIComponent(session.listingType)}/${encodeURIComponent(session.listingId)}`, {
+      method: "POST",
+      credentials: "same-origin",
+      signal: session.controller.signal,
+      headers: { Accept: "application/pdf", "Content-Type": "application/json", ...csrfHeaders },
+      body: JSON.stringify({ resume: session.entry.resume }),
+    });
     if (!response.ok) {
       const payload = await response.json().catch(() => ({}));
-      throw new Error(payload.error || "Could not prepare your resume. Please try again.");
+      throw new Error(payload.error || "Could not create the PDF. Please try again.");
     }
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] || "tailored-resume.pdf";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    showToast(Number(response.headers.get("x-resume-matched-skills")) > 0
-      ? "Resume downloaded. Relevant experience and skills are prioritized; review before applying."
-      : "Resume downloaded. No direct skill matches found; review the role before applying.");
+    if (!draftIsCurrent(session)) return;
+    downloadBlob(blob, safeDownloadName(response.headers.get("content-disposition"), "resume.pdf"));
+    applicationDraftFeedback("Tailored resume PDF downloaded. Review the saved file before applying.");
   } catch (error) {
-    showToast(error.message || "Could not download your resume. Please try again.");
+    if (!draftIsCurrent(session) || error?.name === "AbortError") return;
+    if (exportError) {
+      exportError.textContent = error instanceof Error ? error.message : "Could not create the PDF. Please try again.";
+      exportError.hidden = false;
+    }
+    applicationDraftFeedback("");
   } finally {
-    button.disabled = false;
-    button.removeAttribute("aria-busy");
-    button.textContent = "Download resume";
+    if (draftIsCurrent(session)) {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+      button.textContent = "Download tailored resume PDF";
+    }
   }
+}
+
+async function copyCoverLetter(button) {
+  const session = state.activeApplicationDraft;
+  if (!session || session.kind !== "cover-letter" || !draftIsCurrent(session) || button.disabled) return;
+  saveApplicationDraftEdits(session);
+  const text = session.entry.text.trim();
+  if (!text) {
+    applicationDraftFeedback("Add cover letter text before copying.");
+    return;
+  }
+  try {
+    if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+    else {
+      const temporary = document.createElement("textarea");
+      temporary.value = text;
+      temporary.setAttribute("readonly", "");
+      temporary.style.position = "fixed";
+      temporary.style.opacity = "0";
+      document.body.append(temporary);
+      temporary.select();
+      const copied = document.execCommand("copy");
+      temporary.remove();
+      if (!copied) throw new Error("Clipboard access is unavailable. Select and copy the text instead.");
+    }
+    if (draftIsCurrent(session)) applicationDraftFeedback("Cover letter copied.");
+  } catch (error) {
+    if (draftIsCurrent(session)) applicationDraftFeedback(error instanceof Error ? error.message : "Could not copy the cover letter.");
+  }
+}
+
+function downloadCoverLetter() {
+  const session = state.activeApplicationDraft;
+  if (!session || session.kind !== "cover-letter" || !draftIsCurrent(session)) return;
+  saveApplicationDraftEdits(session);
+  const text = session.entry.text.trim();
+  const exportError = $("#application-draft-export-error");
+  if (!text) {
+    if (exportError) {
+      exportError.textContent = "Add cover letter text before downloading.";
+      exportError.hidden = false;
+    }
+    return;
+  }
+  if (exportError) exportError.hidden = true;
+  const filenameCompany = session.company.toLocaleLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "role";
+  downloadBlob(new Blob([text], { type: "text/plain;charset=utf-8" }), `cover-letter-${filenameCompany}.txt`);
+  applicationDraftFeedback("Edited cover letter downloaded as a text file.");
+}
+
+function trapApplicationDraftFocus(event) {
+  if (event.key !== "Tab") return;
+  const dialog = event.currentTarget instanceof HTMLDialogElement
+    ? event.currentTarget
+    : $("#application-draft-dialog");
+  if (!dialog?.open) return;
+  const focusable = [...dialog.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])")]
+    .filter((element) => !element.hidden && element.getClientRects().length > 0);
+  if (!focusable.length) {
+    event.preventDefault();
+    dialog.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
+const RESUME_UPLOAD_MAX_BYTES = 5 * 1024 * 1024;
+
+function setResumeProfileToolbarLabel(hasSavedProfile) {
+  const button = $("#resume-profile-button");
+  const label = $("#resume-profile-button-label");
+  if (!button || !label) return;
+  if (hasSavedProfile) {
+    label.textContent = "Manage resume";
+    button.setAttribute("aria-label", "Manage your resume");
+    button.title = "Manage or replace your saved resume";
+  } else {
+    label.textContent = "Upload resume";
+    button.setAttribute("aria-label", "Upload or manage your resume");
+    button.title = "Upload or manage your resume";
+  }
+}
+
+function resumeProfileIsCurrent(session) {
+  return state.activeResumeProfileSession === session
+    && session.id === state.resumeProfileRequestId
+    && $("#resume-profile-dialog")?.open === true;
+}
+
+function resumeProfileDate(value) {
+  const date = value ? new Date(value) : null;
+  return date && Number.isFinite(date.getTime()) ? date.toLocaleString() : "";
+}
+
+function renderResumeProfile(session) {
+  if (!resumeProfileIsCurrent(session)) return;
+  const content = $("#resume-profile-content");
+  if (!content) return;
+  const record = session.candidate || session.profile;
+  $("#resume-profile-title").textContent = "Your resume";
+  $("#resume-profile-filename").textContent = record?.filename || "No resume saved yet";
+  if (session.loading) {
+    $("#resume-profile-description").textContent = session.stage === "importing"
+      ? "Extracting editable resume details…"
+      : "Loading your saved resume…";
+    content.innerHTML = `<div class="application-draft-loading" role="status" aria-live="polite"><span>${session.stage === "importing" ? "Reading your resume…" : "Loading your resume…"}</span><i></i><i></i><i></i></div>`;
+    return;
+  }
+  if (session.loadError) {
+    $("#resume-profile-description").textContent = "Your saved resume could not be loaded.";
+    content.innerHTML = `<div class="application-draft-error-state"><p class="application-draft-error" role="alert">${escapeHtml(session.loadError)}</p><footer class="application-draft-actions"><button class="dialog-secondary" type="button" data-close-resume-profile>Close</button><button class="dialog-primary" type="button" data-retry-resume-profile>Try again</button></footer></div>`;
+    return;
+  }
+  if (!record) {
+    $("#resume-profile-description").textContent = "Upload a PDF or text resume to use in role-specific drafts.";
+    content.innerHTML = `<div class="resume-profile-empty">
+      <p>Choose a resume file to extract editable details. Files may be up to 5 MiB.</p>
+      <p class="application-draft-review-note">Scout sends the original file to OpenAI to extract your resume details. Review every field before saving; extracted details stay a draft until you save them.</p>
+      ${session.message ? `<p class="${session.messageError ? "application-draft-error" : "application-draft-feedback"}" ${session.messageError ? 'role="alert"' : 'role="status"'}>${escapeHtml(session.message)}</p>` : ""}
+      <footer class="application-draft-actions"><button class="dialog-secondary" type="button" data-close-resume-profile>Close</button><button class="dialog-primary" type="button" data-choose-resume-file>Upload resume</button></footer>
+    </div>`;
+    return;
+  }
+  const candidate = Boolean(session.candidate);
+  const warnings = Array.isArray(record.warnings) ? record.warnings : [];
+  $("#resume-profile-description").textContent = candidate
+    ? "Review the extracted content and save it to make it your active resume."
+    : `Saved resume${resumeProfileDate(session.profile.updatedAt) ? ` · updated ${resumeProfileDate(session.profile.updatedAt)}` : ""}. Edit the details below before saving changes.`;
+  const messageMarkup = session.message
+    ? `<p class="${session.messageError ? "application-draft-error" : "application-draft-feedback"}" ${session.messageError ? 'role="alert"' : 'role="status"'}>${escapeHtml(session.message)}</p>`
+    : "";
+  const warningMarkup = warnings.length
+    ? `<ul class="application-draft-warnings" aria-label="Extraction notes">${warnings.filter((warning) => typeof warning === "string" && warning.trim()).map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>`
+    : "";
+  const extractionNotice = candidate
+    ? '<p class="application-draft-review-note">The original file was sent to OpenAI for extraction. Check names, dates, and all extracted content; this draft is not active until you save it.</p>'
+    : '<p class="application-draft-review-note">Uploading or replacing a resume sends the original file to OpenAI for extraction. Review the extracted fields before saving; your saved details are used to prepare role-specific drafts.</p>';
+  const removeConfirmation = !candidate && session.removeConfirm
+    ? `<div class="resume-profile-remove-confirm" role="group" aria-label="Confirm resume removal"><span>Remove the saved resume from your account?</span><button class="dialog-secondary" type="button" data-cancel-remove-resume>Keep resume</button><button class="dialog-primary" type="button" data-confirm-remove-resume>Remove resume</button></div>`
+    : "";
+  content.innerHTML = `<div class="resume-profile-editor" data-resume-profile-state="${candidate ? "review" : "saved"}">
+    <div class="application-draft-source" aria-label="Resume status">${candidate ? "Extraction ready · review before saving" : "Active resume"}</div>
+    ${extractionNotice}${warningMarkup}${messageMarkup}
+    ${resumeStructureEditor(session.editedResume || record.resume, "profile-resume", { editableCollections: true })}
+    <p id="resume-profile-feedback" class="application-draft-feedback" role="status" aria-live="polite"></p>
+    ${removeConfirmation}
+    <footer class="application-draft-actions">
+      <button class="dialog-secondary" type="button" data-close-resume-profile>Close</button>
+      <div class="application-draft-export-actions">
+        ${candidate ? '<button class="dialog-secondary" type="button" data-discard-resume-candidate>Discard draft</button>' : '<button class="dialog-secondary" type="button" data-show-remove-resume>Remove saved resume</button>'}
+        <button class="dialog-secondary" type="button" data-choose-resume-file>${candidate ? "Choose another file" : "Replace resume"}</button>
+        <button class="dialog-primary" type="button" data-save-resume-profile>${candidate ? "Save as my resume" : "Save changes"}</button>
+      </div>
+    </footer>
+  </div>`;
+}
+
+function openResumeProfile(trigger = null) {
+  const dialog = $("#resume-profile-dialog");
+  if (!dialog) return;
+  let returnFocus = trigger;
+  if ($("#application-draft-dialog")?.open) {
+    returnFocus = state.activeApplicationDraft?.trigger || returnFocus;
+    closeApplicationDraftDialog({ restoreFocus: false });
+  }
+  if (dialog.open) closeResumeProfileDialog({ restoreFocus: false });
+  const session = {
+    id: ++state.resumeProfileRequestId,
+    trigger: returnFocus,
+    controller: new AbortController(),
+    profile: null,
+    candidate: null,
+    stage: "loading",
+    loading: true,
+    saving: false,
+    loadError: "",
+    message: "",
+    messageError: false,
+    removeConfirm: false,
+  };
+  state.activeResumeProfileSession = session;
+  dialog.showModal();
+  renderResumeProfile(session);
+  setTimeout(() => $("#resume-profile-close")?.focus(), 0);
+  void loadResumeProfile(session);
+}
+
+async function loadResumeProfile(session) {
+  session.controller?.abort();
+  session.controller = new AbortController();
+  session.id = ++state.resumeProfileRequestId;
+  session.stage = "loading";
+  session.loading = true;
+  session.loadError = "";
+  renderResumeProfile(session);
+  try {
+    const response = await fetch("/api/resume-profile", {
+      cache: "no-store",
+      credentials: "same-origin",
+      signal: session.controller.signal,
+      headers: { Accept: "application/json" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Could not load your saved resume.");
+    if (!resumeProfileIsCurrent(session)) return;
+    if (payload.profile && (!payload.profile.resume || typeof payload.profile.filename !== "string")) {
+      throw new Error("The saved resume response could not be read. Please try again.");
+    }
+    session.profile = payload.profile || null;
+    setResumeProfileToolbarLabel(Boolean(session.profile));
+    session.candidate = null;
+    session.editedResume = session.profile?.resume || null;
+    session.loading = false;
+    session.stage = "ready";
+    renderResumeProfile(session);
+  } catch (error) {
+    if (!resumeProfileIsCurrent(session) || error?.name === "AbortError") return;
+    session.loading = false;
+    session.loadError = error instanceof Error ? error.message : "Could not load your saved resume.";
+    renderResumeProfile(session);
+  }
+}
+
+function closeResumeProfileDialog({ restoreFocus = true } = {}) {
+  const dialog = $("#resume-profile-dialog");
+  const session = state.activeResumeProfileSession;
+  if (!dialog?.open && !session) return;
+  session?.controller?.abort();
+  state.resumeProfileRequestId += 1;
+  state.activeResumeProfileSession = null;
+  if (dialog?.open) dialog.close();
+  if (restoreFocus && session?.trigger?.isConnected) session.trigger.focus();
+}
+
+function resumeProfileError(session, message) {
+  if (!resumeProfileIsCurrent(session)) return;
+  session.message = message;
+  session.messageError = true;
+  session.loading = false;
+  renderResumeProfile(session);
+}
+
+function validateResumeFile(file) {
+  const filename = file.name || "resume";
+  const extension = filename.toLocaleLowerCase().split(".").at(-1);
+  if (file.size > RESUME_UPLOAD_MAX_BYTES) return "Choose a resume file that is 5 MiB or smaller.";
+  if (extension !== "pdf" && extension !== "txt") return "Choose a PDF or plain text resume.";
+  const allowed = extension === "pdf"
+    ? new Set(["", "application/pdf", "application/x-pdf", "application/octet-stream"])
+    : new Set(["", "text/plain", "application/octet-stream"]);
+  if (!allowed.has((file.type || "").toLocaleLowerCase())) return "The selected file type does not match its extension. Choose a PDF or plain text resume.";
+  return "";
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function importResumeFile(file) {
+  const session = state.activeResumeProfileSession;
+  if (!session || !resumeProfileIsCurrent(session) || !file) return;
+  const validationError = validateResumeFile(file);
+  if (validationError) {
+    resumeProfileError(session, validationError);
+    return;
+  }
+  session.controller?.abort();
+  session.controller = new AbortController();
+  session.id = ++state.resumeProfileRequestId;
+  session.loading = true;
+  session.stage = "importing";
+  session.message = "";
+  session.messageError = false;
+  renderResumeProfile(session);
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!resumeProfileIsCurrent(session)) return;
+    const extension = file.name.toLocaleLowerCase().split(".").at(-1);
+    const contentType = extension === "pdf" ? "application/pdf" : "text/plain";
+    const csrfHeaders = await authClient.csrfHeaders();
+    if (!resumeProfileIsCurrent(session)) return;
+    const response = await fetch("/api/resume-profile/import", {
+      method: "POST",
+      credentials: "same-origin",
+      signal: session.controller.signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...csrfHeaders },
+      body: JSON.stringify({ filename: file.name, contentType, data: bytesToBase64(bytes) }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Could not extract resume details. Please try another file.");
+    if (!resumeProfileIsCurrent(session)) return;
+    if (!payload.resume || !Array.isArray(payload.resume.education) || typeof payload.filename !== "string") {
+      throw new Error("The extracted resume could not be read. Please try another file.");
+    }
+    session.candidate = { resume: payload.resume, filename: payload.filename, warnings: payload.warnings || [] };
+    session.editedResume = payload.resume;
+    session.loading = false;
+    session.stage = "review";
+    session.message = "Extraction is ready. Review the fields, then save to activate this resume.";
+    session.messageError = false;
+    renderResumeProfile(session);
+  } catch (error) {
+    if (!resumeProfileIsCurrent(session) || error?.name === "AbortError") return;
+    session.loading = false;
+    session.stage = "ready";
+    session.message = error instanceof Error ? error.message : "Could not extract resume details. Please try again.";
+    session.messageError = true;
+    renderResumeProfile(session);
+  }
+}
+
+async function saveResumeProfile() {
+  const session = state.activeResumeProfileSession;
+  if (!session || !resumeProfileIsCurrent(session) || session.loading || session.saving) return;
+  const candidate = session.candidate;
+  const record = candidate || session.profile;
+  if (!record) return;
+  const editor = $("[data-resume-editor='profile-resume']");
+  const resume = collectEditedResume(editor, session.editedResume || record.resume);
+  session.editedResume = resume;
+  const validationError = validateEditableResume(resume);
+  if (validationError) {
+    resumeProfileError(session, validationError);
+    return;
+  }
+  const filename = candidate?.filename || session.profile.filename;
+  session.controller?.abort();
+  session.controller = new AbortController();
+  session.id = ++state.resumeProfileRequestId;
+  session.saving = true;
+  const button = $("[data-save-resume-profile]");
+  if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "Saving…"; }
+  const feedback = $("#resume-profile-feedback");
+  if (feedback) feedback.textContent = "Saving your resume…";
+  try {
+    const csrfHeaders = await authClient.csrfHeaders();
+    if (!resumeProfileIsCurrent(session)) return;
+    const response = await fetch("/api/resume-profile", {
+      method: "PUT",
+      credentials: "same-origin",
+      signal: session.controller.signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...csrfHeaders },
+      body: JSON.stringify({ resume, filename }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Could not save your resume. Please try again.");
+    if (!resumeProfileIsCurrent(session)) return;
+    if (!payload.profile?.resume) throw new Error("The saved resume response was incomplete. Please try again.");
+    session.profile = payload.profile;
+    setResumeProfileToolbarLabel(true);
+    session.candidate = null;
+    session.editedResume = payload.profile.resume;
+    session.removeConfirm = false;
+    session.message = candidate ? "Resume saved as your active profile." : "Resume changes saved.";
+    session.messageError = false;
+    session.saving = false;
+    state.applicationDraftCache.clear();
+    renderResumeProfile(session);
+  } catch (error) {
+    if (!resumeProfileIsCurrent(session) || error?.name === "AbortError") return;
+    session.saving = false;
+    session.message = error instanceof Error ? error.message : "Could not save your resume. Please try again.";
+    session.messageError = true;
+    renderResumeProfile(session);
+  }
+}
+
+async function removeResumeProfile() {
+  const session = state.activeResumeProfileSession;
+  if (!session || !resumeProfileIsCurrent(session) || !session.removeConfirm) return;
+  session.controller?.abort();
+  session.controller = new AbortController();
+  session.id = ++state.resumeProfileRequestId;
+  const button = $("[data-confirm-remove-resume]");
+  if (button) { button.disabled = true; button.setAttribute("aria-busy", "true"); button.textContent = "Removing…"; }
+  try {
+    const csrfHeaders = await authClient.csrfHeaders();
+    if (!resumeProfileIsCurrent(session)) return;
+    const response = await fetch("/api/resume-profile", {
+      method: "DELETE",
+      credentials: "same-origin",
+      signal: session.controller.signal,
+      headers: { Accept: "application/json", ...csrfHeaders },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || "Could not remove your saved resume. Please try again.");
+    if (!resumeProfileIsCurrent(session)) return;
+    session.profile = payload.profile || null;
+    setResumeProfileToolbarLabel(Boolean(session.profile));
+    session.candidate = null;
+    session.editedResume = null;
+    session.removeConfirm = false;
+    session.message = "Saved resume removed.";
+    session.messageError = false;
+    state.applicationDraftCache.clear();
+    renderResumeProfile(session);
+  } catch (error) {
+    if (!resumeProfileIsCurrent(session) || error?.name === "AbortError") return;
+    session.removeConfirm = false;
+    session.message = error instanceof Error ? error.message : "Could not remove your saved resume. Please try again.";
+    session.messageError = true;
+    renderResumeProfile(session);
+  }
+}
+
+function editResumeProfileCollection(button) {
+  const session = state.activeResumeProfileSession;
+  if (!session || !resumeProfileIsCurrent(session) || session.loading || !session.candidate && !session.profile) return;
+  const record = session.candidate || session.profile;
+  const editor = $("[data-resume-editor='profile-resume']");
+  const resume = collectEditedResume(editor, session.editedResume || record.resume);
+  const addGroup = button.dataset.addResumeEntry;
+  const removeGroup = button.dataset.removeResumeEntry;
+  if (addGroup) {
+    const max = addGroup === "education" ? 4 : 8;
+    if (!Array.isArray(resume[addGroup]) || resume[addGroup].length >= max) return;
+    resume[addGroup].push({ title: "", subtitle: "", date: "", bullets: [] });
+  } else if (removeGroup) {
+    const index = Number(button.dataset.entryIndex);
+    if (!Array.isArray(resume[removeGroup]) || !Number.isInteger(index)) return;
+    if (removeGroup === "education" && resume.education.length <= 1) {
+      session.editedResume = resume;
+      session.message = "Keep at least one education entry in your resume.";
+      session.messageError = true;
+      renderResumeProfile(session);
+      return;
+    }
+    resume[removeGroup].splice(index, 1);
+  } else if (button.hasAttribute("data-add-resume-skill")) {
+    if (resume.skills.length >= 8) return;
+    resume.skills.push({ label: "", items: [] });
+  } else if (button.hasAttribute("data-remove-resume-skill")) {
+    const skillGroup = button.closest("[data-resume-skill]");
+    const index = Number(skillGroup?.dataset.skillIndex);
+    if (!Number.isInteger(index)) return;
+    resume.skills.splice(index, 1);
+  } else {
+    return;
+  }
+  session.editedResume = resume;
+  session.message = "";
+  session.messageError = false;
+  renderResumeProfile(session);
+  if (addGroup) {
+    const entries = document.querySelectorAll(`[data-resume-entry][data-entry-group="${addGroup}"]`);
+    entries[entries.length - 1]?.querySelector("[data-entry-field='title']")?.focus();
+  } else if (button.hasAttribute("data-add-resume-skill")) {
+    const skills = document.querySelectorAll("[data-resume-skill]");
+    skills[skills.length - 1]?.querySelector("[data-skill-label]")?.focus();
+  } else {
+    const section = $(`#profile-resume-${removeGroup || "skills"}-heading`)?.closest(".application-draft-section");
+    section?.querySelector("[data-resume-entry] [data-entry-field='title'], [data-resume-skill] [data-skill-label], .application-draft-add")?.focus();
+  }
+}
+
+function showResumeProfileRemovalConfirmation() {
+  const session = state.activeResumeProfileSession;
+  if (!session || !resumeProfileIsCurrent(session) || !session.profile || session.candidate) return;
+  session.editedResume = collectEditedResume($("[data-resume-editor='profile-resume']"), session.editedResume || session.profile.resume);
+  session.removeConfirm = true;
+  renderResumeProfile(session);
+  $("[data-cancel-remove-resume]")?.focus();
 }
 
 function featuredHtml(role) {
@@ -2348,7 +3295,7 @@ function featuredHtml(role) {
       <div class="featured-side featured-side--large">
         <div class="listing-actions listing-row-actions listing-row-actions--large" aria-label="Actions for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}">
           ${watchlistButton(role)}
-          ${applyLink}${resumeButton(role)}
+          ${applyLink}${applicationDraftButtons(role)}
           ${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}
         </div>
       </div>
@@ -2372,7 +3319,7 @@ function roleRowHtml(role) {
   const menuId = `row-menu-${String(listingType)}-${String(listingId)}`.replace(/[^a-zA-Z0-9_-]+/g, "-");
   const detailButton = `<button class="listing-card-link" type="button" data-open-role-detail aria-expanded="false" aria-controls="role-detail-panel" aria-label="${escapeHtml(`Inspect ${role.title} at ${role.company}`)}"></button>`;
   const applyLink = role.applicationUrl && applyUrl !== "#" ? `<a class="job-apply-link" href="${escapeHtml(applyUrl)}" target="_blank" rel="noopener noreferrer" aria-label="${applicationLabel}">Apply</a>` : "";
-  const rowActions = `<div class="job-card-actions"><div class="listing-actions listing-row-actions listing-row-actions--large" aria-label="Actions for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}">${watchlistButton(role)}${applyLink}${resumeButton(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}</div></div>`;
+  const rowActions = `<div class="job-card-actions"><div class="listing-actions listing-row-actions listing-row-actions--large" aria-label="Actions for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}">${watchlistButton(role)}${applyLink}${applicationDraftButtons(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}</div></div>`;
   const menu = `<div class="row-menu job-card-menu"><button class="row-menu-trigger job-more" type="button" aria-label="More actions for ${escapeHtml(role.title)}" aria-haspopup="dialog" aria-expanded="false" aria-controls="${escapeHtml(menuId)}" data-menu-trigger>${moreActionsIconHtml()}</button><div class="row-menu-popover" id="${escapeHtml(menuId)}" role="dialog" aria-label="Actions for ${escapeHtml(role.title)} at ${escapeHtml(role.company)}" hidden><button class="ghost-action" type="button" data-open-role-detail aria-expanded="false" aria-controls="role-detail-panel">Inspect details</button>${watchlistButton(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true })}</div></div>`;
   return `<article class="job-card listing-clickable${isNew ? " job-card-new" : ""}" data-listing-key="${escapeHtml(roleKey(role))}" role="listitem">
     ${detailButton}
@@ -3328,7 +4275,7 @@ function openRoleDetail(row, trigger = null) {
     <div class="role-detail-meta"><span>${escapeHtml(formatLocation(role))}</span><span>${escapeHtml(formatMode(role))}</span>${schedule ? `<span>${escapeHtml(schedule)}</span>` : ""}<span>Posted ${escapeHtml(formatPosted(role.postingDate || role.firstSeenAt || role.discoveredAt))}</span></div>
     ${sponsorshipOfferHtml(role)}
     ${roleSignal ? `<div class="role-detail-match"><strong>${escapeHtml(roleSignal.value)} ${escapeHtml(roleSignal.label)}</strong><span>${escapeHtml(roleReason)}</span></div>` : ""}
-    <div class="role-detail-actions">${applyLink}${resumeButton(role)}${watchlistButton(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}</div>`;
+    <div class="role-detail-actions">${applyLink}${applicationDraftButtons(role)}${watchlistButton(role)}${listingActionButtons(role, listingType, listingId, role.company, role.title, { compact: true, wrapped: false })}</div>`;
   bindCompanyLogos(summary);
   details.dataset.detailKey = key;
   details.open = true;
@@ -4888,6 +5835,40 @@ function bindEvents() {
   $("#quick-terminate-button")?.addEventListener("click", () => void terminateCurrentRun());
   $("#source-marquee-toggle")?.addEventListener("click", toggleSourceMarquee);
   $("#close-role-detail")?.addEventListener("click", () => closeRoleDetail());
+  $("#application-draft-close")?.addEventListener("click", () => closeApplicationDraftDialog());
+  $("#application-draft-dialog")?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeApplicationDraftDialog();
+  });
+  $("#application-draft-dialog")?.addEventListener("click", (event) => {
+    if (event.target === $("#application-draft-dialog")) closeApplicationDraftDialog();
+  });
+  $("#application-draft-dialog")?.addEventListener("keydown", trapApplicationDraftFocus);
+  $("#application-draft-content")?.addEventListener("input", () => {
+    const session = state.activeApplicationDraft;
+    if (session?.entry) saveApplicationDraftEdits(session, true);
+  });
+  $("#resume-profile-close")?.addEventListener("click", () => closeResumeProfileDialog());
+  $("#resume-profile-dialog")?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeResumeProfileDialog();
+  });
+  $("#resume-profile-dialog")?.addEventListener("click", (event) => {
+    if (event.target === $("#resume-profile-dialog")) closeResumeProfileDialog();
+  });
+  $("#resume-profile-dialog")?.addEventListener("keydown", trapApplicationDraftFocus);
+  $("#resume-profile-content")?.addEventListener("input", () => {
+    const session = state.activeResumeProfileSession;
+    const record = session?.candidate || session?.profile;
+    const editor = $("[data-resume-editor='profile-resume']");
+    if (session && record && editor) session.editedResume = collectEditedResume(editor, session.editedResume || record.resume);
+  });
+  $("#resume-profile-file")?.addEventListener("change", (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (file) void importResumeFile(file);
+    input.value = "";
+  });
   $("#theme-toggle")?.addEventListener("click", () => {
     const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
     updateDashboardSettings({ theme: next });
@@ -5147,6 +6128,73 @@ function bindEvents() {
     const target = event.target;
     if (!(target instanceof Element)) return;
     if (!target.closest(".filter-menu, .row-menu, .notification-menu, .user-menu")) closeAllMenus();
+    const openProfileButton = target.closest("button[data-open-resume-profile]");
+    if (openProfileButton) {
+      event.preventDefault();
+      openResumeProfile(openProfileButton);
+      return;
+    }
+    const openDraftButton = target.closest("button[data-application-draft]");
+    if (openDraftButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      openApplicationDraft(openDraftButton);
+      return;
+    }
+    if (target.closest("button[data-close-application-draft]")) {
+      closeApplicationDraftDialog();
+      return;
+    }
+    if (target.closest("button[data-retry-application-draft]")) {
+      const session = state.activeApplicationDraft;
+      if (session) void requestApplicationDraft(session);
+      return;
+    }
+    if (target.closest("button[data-retry-ai-wording]")) { startAiWordingRetry(); return; }
+    if (target.closest("button[data-cancel-ai-wording]")) { cancelAiWordingRetry(); return; }
+    if (target.closest("button[data-confirm-ai-wording]")) { confirmAiWordingRetry(); return; }
+    if (target.closest("button[data-return-previous-draft]")) { keepPreviousApplicationDraft(); return; }
+    const resumePdfButton = target.closest("button[data-download-resume]");
+    if (resumePdfButton) { void downloadTailoredResume(resumePdfButton); return; }
+    const coverCopyButton = target.closest("button[data-copy-cover-letter]");
+    if (coverCopyButton) { void copyCoverLetter(coverCopyButton); return; }
+    const coverDownloadButton = target.closest("button[data-download-cover-letter]");
+    if (coverDownloadButton) { downloadCoverLetter(); return; }
+    if (target.closest("button[data-close-resume-profile]")) {
+      closeResumeProfileDialog();
+      return;
+    }
+    if (target.closest("button[data-retry-resume-profile]")) {
+      const session = state.activeResumeProfileSession;
+      if (session) void loadResumeProfile(session);
+      return;
+    }
+    if (target.closest("button[data-choose-resume-file]")) {
+      const input = $("#resume-profile-file");
+      if (input) { input.value = ""; input.click(); }
+      return;
+    }
+    if (target.closest("button[data-save-resume-profile]")) { void saveResumeProfile(); return; }
+    if (target.closest("button[data-show-remove-resume]")) { showResumeProfileRemovalConfirmation(); return; }
+    if (target.closest("button[data-cancel-remove-resume]")) {
+      const session = state.activeResumeProfileSession;
+      if (session) { session.removeConfirm = false; renderResumeProfile(session); $(`[data-show-remove-resume]`)?.focus(); }
+      return;
+    }
+    if (target.closest("button[data-confirm-remove-resume]")) { void removeResumeProfile(); return; }
+    if (target.closest("button[data-discard-resume-candidate]")) {
+      const session = state.activeResumeProfileSession;
+      if (session) {
+        session.candidate = null;
+        session.editedResume = session.profile?.resume || null;
+        session.message = "Extracted draft discarded.";
+        session.messageError = false;
+        renderResumeProfile(session);
+      }
+      return;
+    }
+    const resumeCollectionButton = target.closest("button[data-add-resume-entry], button[data-remove-resume-entry], button[data-add-resume-skill], button[data-remove-resume-skill]");
+    if (resumeCollectionButton) { editResumeProfileCollection(resumeCollectionButton); return; }
     const matchDirection = target.closest("button[data-match-direction]");
     if (matchDirection) {
       const carousel = matchDirection.closest("[data-match-carousel]");
@@ -5190,8 +6238,6 @@ function bindEvents() {
       clearLocalSettingsData(settingsAction.dataset.settingsAction);
       return;
     }
-    const resumeDownload = target.closest("button[data-resume-url]");
-    if (resumeDownload) { event.preventDefault(); void downloadResume(resumeDownload); return; }
     const actionButton = target.closest("button[data-listing-action]");
     if (actionButton) { void saveListingAction(actionButton); return; }
     const roleDetailTrigger = target.closest("button[data-open-role-detail]");

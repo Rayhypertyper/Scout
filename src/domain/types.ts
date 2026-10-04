@@ -1,4 +1,4 @@
-import type { Category, Internship, LifecycleStatus, ScoutSettings } from "./schemas.js";
+import type { Category, FieldEvidence, Internship, LifecycleStatus, ScoutSettings } from "./schemas.js";
 import type { ProfilerSnapshot } from "../observability/profiler.js";
 
 export interface LinkCandidate {
@@ -57,6 +57,11 @@ export interface RawJob {
   salary?: string | undefined;
   postingDate?: string | undefined;
   deadline?: string | undefined;
+  internshipTerm?: string | undefined;
+  internshipYear?: string | undefined;
+  duration?: string | undefined;
+  /** Exact source evidence for facts added by a fallback extractor. */
+  provenance?: FieldEvidence[] | undefined;
   sourceProvider: string;
 }
 

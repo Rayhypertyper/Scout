@@ -1,3 +1,5 @@
+import "./env.js";
+
 import { resolve } from "node:path";
 
 import { ScoutSettingsSchema, type ScoutSettings } from "../domain/schemas.js";

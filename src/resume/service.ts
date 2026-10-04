@@ -45,9 +45,22 @@ export async function compileLatex(source: string): Promise<Buffer> {
     if (directory) await rm(directory, { recursive: true, force: true });
   }
 }
+
+function filenameStem(parts: string[]): string {
+  return parts.join("-").normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 150);
+}
+
+export async function compileResumePdf(
+  resume: Resume,
+  role?: Pick<ResumeRole, "company" | "title">,
+): Promise<{ pdf: Buffer; filename: string }> {
+  const pdf = await compileLatex(renderLatex(resume));
+  const stem = filenameStem([resume.name, ...(role ? [role.company, role.title] : [])]);
+  return { pdf, filename: `${stem || "resume"}.pdf` };
+}
+
 export async function generateResume(base: Resume, role: ResumeRole): Promise<{ pdf: Buffer; filename: string; matches: number }> {
   const tailored = tailorResume(base, role);
-  const pdf = await compileLatex(renderLatex(tailored.resume));
-  const stem = `${base.name}-${role.company}-${role.title}`.normalize("NFKD").replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 150);
-  return { pdf, filename: `${stem || "tailored-resume"}.pdf`, matches: tailored.matchedSkills.length };
+  const result = await compileResumePdf(tailored.resume, role);
+  return { ...result, matches: tailored.matchedSkills.length };
 }

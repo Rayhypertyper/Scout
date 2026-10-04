@@ -1,3 +1,5 @@
+import "./config/env.js";
+
 import { runScout } from "./scout.js";
 import type { ScoutRunOptions } from "./domain/types.js";
 import { ActiveCrawlRunError } from "./database/db.js";

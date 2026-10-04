@@ -15,9 +15,10 @@ function auth(user: AuthUser | null) {
 const user = { id: "owner-id", email: owner, emailVerified: true, createdAt: "2026-01-01" };
 afterEach(() => { vi.unstubAllEnvs(); setAuthGatewayFactoryForTests(null); });
 describe("resume privacy", () => {
-  it("permits direct localhost only when auth is absent", async () => {
+  it("requires callers to explicitly enable the private local identity bypass", async () => {
     vi.stubEnv("SUPABASE_URL", ""); vi.stubEnv("AUTH_SITE_URL", ""); vi.stubEnv("NODE_ENV", "test");
-    await expect(authorizeResume(request(), response, owner)).resolves.toBeUndefined();
+    await expect(authorizeResume(request(), response, owner)).rejects.toThrow();
+    await expect(authorizeResume(request(), response, owner, { allowLocalBypass: true })).resolves.toBeUndefined();
     await expect(authorizeResume(request("example.com"), response, owner)).rejects.toThrow();
     await expect(authorizeResume(request("localhost", "192.0.2.1"), response, owner)).rejects.toThrow();
     await expect(authorizeResume(request("localhost", "127.0.0.1", { "x-forwarded-for": "192.0.2.1" }), response, owner)).rejects.toThrow();
@@ -26,9 +27,11 @@ describe("resume privacy", () => {
     vi.stubEnv("NODE_ENV", "production"); vi.stubEnv("SUPABASE_URL", ""); vi.stubEnv("AUTH_SITE_URL", "");
     await expect(authorizeResume(request(), response, owner)).rejects.toThrow();
   });
-  it("permits direct localhost even when auth is configured", async () => {
+  it("permits an explicitly selected local identity when auth is configured, but checks signed-in owners", async () => {
     auth(null);
-    await expect(authorizeResume(request(), response, owner)).resolves.toBeUndefined();
+    await expect(authorizeResume(request(), response, owner, { allowLocalBypass: true })).resolves.toBeUndefined();
+    auth({ ...user, email: "other@example.com" });
+    await expect(authorizeResume(request(), response, owner)).rejects.toMatchObject({ status: 403 });
   });
   it("permits verified owner and rejects another user or anonymous remote access", async () => {
     const remote = request("example.com", "192.0.2.1");

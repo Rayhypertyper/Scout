@@ -154,6 +154,22 @@ export const QualificationDetailsSchema = z.object({
 });
 export type QualificationDetails = z.infer<typeof QualificationDetailsSchema>;
 
+/** Exact source support for a value added by an external extraction provider. */
+export const FieldEvidenceSchema = z.object({
+  field: z.string().min(1),
+  value: z.string().min(1),
+  provider: z.enum(["gemini", "openai"]),
+  model: z.string().min(1),
+  pageUrl: z.url(),
+  contentHash: z.string().regex(/^[a-f0-9]{64}$/i),
+  quote: z.string().min(1),
+  start: z.number().int().nonnegative(),
+  end: z.number().int().positive(),
+}).refine(({ start, end, quote }) => end > start && end - start === quote.length, {
+  message: "Evidence offsets must span the exact quoted text.",
+});
+export type FieldEvidence = z.infer<typeof FieldEvidenceSchema>;
+
 export const InternshipSchema = z.object({
   id: z.string().min(1),
   jobId: z.string().nullable(),
@@ -206,6 +222,9 @@ export const InternshipSchema = z.object({
   salary: z.string().nullable(),
   postingDate: z.string().nullable(),
   deadline: z.string().nullable(),
+
+  /** Optional for source compatibility; defaults allow older persisted rows to load. */
+  provenance: z.array(FieldEvidenceSchema).default([]),
 
   categories: z.array(CategorySchema).min(1),
   relevanceScore: z.number().int().min(0).max(100),

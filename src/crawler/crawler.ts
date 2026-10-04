@@ -28,6 +28,7 @@ import type {
 } from "../domain/types.js";
 import { InternshipSchema, type ScoutSettings } from "../domain/schemas.js";
 import { discoverPublicBoardLinks, extractJobs } from "../extractors/index.js";
+import { OpenAIJobFallback } from "../llm/openaiJobFallback.js";
 import type { Logger } from "../utils/logger.js";
 import { canonicalizeUrl, hostLabel, isAggregatorUrl, isAtsUrl, isGithubUrl, isJobrightJobUrl, isJobrightUrl, redactSensitiveUrl, safeCanonicalizeUrl, sameSite } from "../utils/url.js";
 import { BrowserManager, PageFetchError } from "./browser.js";
@@ -49,7 +50,7 @@ import { Profiler } from "../observability/profiler.js";
 import { isUsenoInternshipMasterlistUrl, isUsenoSummer2027Url, type UsenoMasterlistListing } from "../extractors/useno.js";
 import { parseLocations } from "../parsing/locations.js";
 import { collectUsenoInternshipMasterlist, collectUsenoSummer2027 } from "./useno.js";
-import { cancellationError, currentSourceAbortSignal, isSourceStalledError, runWithSourceAbortSignal, SourceStalledError, throwIfAborted } from "../domain/cancellation.js";
+import { cancellationError, composeAbortSignals, currentSourceAbortSignal, isSourceStalledError, runWithSourceAbortSignal, SourceStalledError, throwIfAborted } from "../domain/cancellation.js";
 import {
   GrindJobBoardClient,
   grindJobToAnalyzedJob,
@@ -387,11 +388,15 @@ export class InternshipCrawler {
   private readonly adapterRouter: SourceAdapterRouter;
   private readonly profiler: Profiler;
   private readonly grindJobBoardClient: GrindJobBoardClient;
+  private readonly openaiJobFallback: Pick<OpenAIJobFallback, "recover">;
 
   public constructor(
     private readonly settings: ScoutSettings,
     private readonly logger: Logger,
-    dependencies: { grindJobBoardClient?: GrindJobBoardClient } = {},
+    dependencies: {
+      grindJobBoardClient?: GrindJobBoardClient;
+      openaiJobFallback?: Pick<OpenAIJobFallback, "recover">;
+    } = {},
     private readonly cancellationSignal?: AbortSignal,
   ) {
     this.profiler = new Profiler();
@@ -405,6 +410,8 @@ export class InternshipCrawler {
       return this.robots.check(url);
     });
     this.adapterRouter = new SourceAdapterRouter(settings, logger, this.http);
+    this.openaiJobFallback = dependencies.openaiJobFallback
+      ?? new OpenAIJobFallback({ outputDirectory: settings.outputDirectory });
     this.grindJobBoardClient = dependencies.grindJobBoardClient ?? new GrindJobBoardClient({
       cachePath: join(settings.outputDirectory, "source-cache", "grind-job-board.json"),
       concurrency: Math.min(8, settings.httpConcurrency),
@@ -1041,7 +1048,7 @@ export class InternshipCrawler {
             return;
           }
 
-          const rawJobs = extractJobs(snapshot);
+          const rawJobs = await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
           potentialPostingsInspected += rawJobs.length;
           rawListingsObserved += rawJobs.length;
           const rawJobBudget = Math.max(0, MAX_ACCEPTED_JOBS_PER_SOURCE - (rawListingsObserved - rawJobs.length));
@@ -1381,6 +1388,34 @@ export class InternshipCrawler {
     return result.retrievalMethod?.split(/\s+/u).slice(0, 2).join(" ") || "HTTP adapter";
   }
 
+  private async extractJobsWithFallback(
+    snapshot: PageSnapshot,
+    sourceUrl: string,
+    persistence?: CrawlPersistence,
+  ): Promise<RawJob[]> {
+    const signal = composeAbortSignals(currentSourceAbortSignal(), persistence?.signal, this.cancellationSignal);
+    throwIfAborted(signal);
+    const deterministicJobs = extractJobs(snapshot);
+    if (snapshot.status < 200 || snapshot.status >= 400) return deterministicJobs;
+    if (classifyPageContent(snapshot.text)) return deterministicJobs;
+    if (/\b(?:verify (?:that )?you are human|complete (?:the )?captcha challenge|solve (?:the )?captcha challenge|captcha challenge required|sign in to view this (?:job|page))\b|(?:^|\n)\s*access denied\b/i.test(snapshot.text)) {
+      return deterministicJobs;
+    }
+    if (detectClosedPage(snapshot.text, snapshot.status, snapshot.url, false, snapshot.html)) return deterministicJobs;
+    try {
+      const recovered = await this.openaiJobFallback.recover(snapshot, deterministicJobs, sourceUrl, signal);
+      throwIfAborted(signal);
+      return recovered;
+    } catch (error) {
+      // Provider, validation, or audit failures must leave the deterministic
+      // parser's result usable. Cancellation is still authoritative.
+      throwIfAborted(signal);
+      const errorKind = error instanceof Error ? error.name : "UnknownError";
+      this.logger.warn("LLM", `OpenAI fallback failed for ${redactSensitiveUrl(snapshot.url)} (${errorKind}).`);
+      return deterministicJobs;
+    }
+  }
+
   private async analyzeJobWithProfile(
     raw: RawJob,
     sourceUrl: string,
@@ -1639,7 +1674,7 @@ export class InternshipCrawler {
           closedPages.push({ url: item.url, reason: closure, statusCode: snapshot.status });
           return;
         }
-        const rawJobs = extractJobs(snapshot);
+        const rawJobs = await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
         potentialPostingsInspected += rawJobs.length;
         rawListingsObserved += rawJobs.length;
         const rawJobBudget = Math.max(0, rawListingLimit - (rawListingsObserved - rawJobs.length));
@@ -2094,7 +2129,7 @@ export class InternshipCrawler {
     for (const [index, snapshot] of collected.snapshots.entries()) {
       this.throwIfCancelled(persistence);
       try {
-        const rawJobs = extractJobs(snapshot);
+        const rawJobs = await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
         potentialPostingsInspected += rawJobs.length;
         for (const rawJob of rawJobs) {
           const knownJobrightDestination = this.cachedJobrightDestination(
@@ -2236,6 +2271,7 @@ export class InternshipCrawler {
       }
       const failures: FetchFailure[] = [...listing.failures];
       const jobs: AnalyzedJob[] = [];
+      const closedSnapshotObservations: ClosedPage[] = [];
       const sightings: LightweightSighting[] = [];
       let potentialPostingsInspected = 0;
       let duplicateListingsSkipped = 0;
@@ -2308,10 +2344,16 @@ export class InternshipCrawler {
       }
       const details = await this.staticAdapters.fetchDetails(sourceUrl, selected);
       const allSnapshots = details.snapshots;
-      potentialPostingsInspected += allSnapshots.reduce((total, snapshot) => total + extractJobs(snapshot).length, 0);
       for (const snapshot of allSnapshots) {
         try {
-          const rawJobs = extractJobs(snapshot);
+          const closure = detectClosedPage(snapshot.text, snapshot.status, snapshot.url, false, snapshot.html);
+          if (closure) {
+            closedSnapshotObservations.push({ url: snapshot.url, reason: closure, statusCode: snapshot.status });
+            continue;
+          }
+          if (snapshot.status < 200 || snapshot.status >= 400) continue;
+          const rawJobs = await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
+          potentialPostingsInspected += rawJobs.length;
           for (const rawJob of rawJobs) {
             const knownJobrightDestination = this.cachedJobrightDestination(
               sourceUrl,
@@ -2350,11 +2392,11 @@ export class InternshipCrawler {
       // one permanent error per stale detail URL.
       const closedDetailFailures = details.failures.filter(isClosedDetailFailure);
       failures.push(...details.failures.filter((failure) => !isClosedDetailFailure(failure)));
-      const closedPages: ClosedPage[] = closedDetailFailures.map((failure) => ({
+      const closedPages: ClosedPage[] = [...closedDetailFailures.map((failure) => ({
         url: failure.url,
         reason: failure.statusCode === 404 ? "HTTP 404" : failure.message,
         statusCode: failure.statusCode,
-      }));
+      })), ...closedSnapshotObservations];
       for (const failure of details.failures) {
         const candidate = selected.find(({ url }) => url === failure.url);
         if (candidate && isRetryableFailure(failure)) {
@@ -2447,7 +2489,7 @@ export class InternshipCrawler {
         try {
           const snapshot = await this.browser.fetchPage(sourceUrl, robotsDelayMs, sourceUrl);
           const jobs: AnalyzedJob[] = [];
-          const rawJobs = extractJobs(snapshot);
+          const rawJobs = await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
           const preloadedJobrightDestinations = persistence?.getJobrightDestinations?.(sourceUrl) ?? null;
           const knownJobrightDestinations = new Map<string, string | null>();
           const jobrightCacheOnly = Boolean(persistence?.getJobrightDestinations);

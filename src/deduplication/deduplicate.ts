@@ -4,6 +4,7 @@ import { internshipContentHash } from "../classification/analyzeJob.js";
 import { normalizeCompanyIdentity, normalizeIdentity, normalizeRoleIdentity, uniqueStrings } from "../utils/text.js";
 import { canonicalizeUrl, extractJobId, isAggregatorUrl, isAtsUrl, isCompanyLandingUrl, normalizedJobUrl, organizationTokenFromUrl } from "../utils/url.js";
 import { parseLocation } from "../parsing/locations.js";
+import { alignFieldEvidence } from "../llm/evidence.js";
 
 /**
  * Minimal listing data available immediately after parsing a source listing.
@@ -429,7 +430,7 @@ export function mergeInternships(primary: Internship, secondary: Internship): In
     : !Number.isFinite(secondaryVerifiedAt)
       || (Number.isFinite(primaryVerifiedAt) && primaryVerifiedAt >= secondaryVerifiedAt)
       || (!Number.isFinite(primaryVerifiedAt) && !Number.isFinite(secondaryVerifiedAt));
-  return {
+  const merged: Internship = {
     ...primary,
     company: isAggregatorUrl(primary.postingUrl) && !isAggregatorUrl(secondary.postingUrl) ? secondary.company : primary.company,
     jobId: primary.jobId ?? secondary.jobId,
@@ -458,6 +459,10 @@ export function mergeInternships(primary: Internship, secondary: Internship): In
     relevanceReason: primary.relevanceScore >= secondary.relevanceScore ? primary.relevanceReason : secondary.relevanceReason,
     discoveredAt: primary.discoveredAt < secondary.discoveredAt ? primary.discoveredAt : secondary.discoveredAt,
     lastVerifiedAt: primary.lastVerifiedAt > secondary.lastVerifiedAt ? primary.lastVerifiedAt : secondary.lastVerifiedAt,
+  };
+  return {
+    ...merged,
+    provenance: alignFieldEvidence(merged, [...primary.provenance, ...secondary.provenance]),
   };
 }
 

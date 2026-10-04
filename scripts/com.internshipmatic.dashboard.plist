@@ -7,7 +7,7 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/usr/local/bin/node</string>
-		<string>--env-file=/Users/rayxu/Documents/Internshipmatic/.env</string>
+		<string>--env-file-if-exists=/Users/rayxu/Documents/Internshipmatic/.env</string>
 		<string>/Users/rayxu/Documents/Internshipmatic/dist/src/dashboard.js</string>
 		<string>--database</string>
 		<string>/Users/rayxu/Documents/Internshipmatic/output/live/internships.db</string>

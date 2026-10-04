@@ -2,12 +2,20 @@ import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { resolveSettings } from "../src/config/settings.js";
 import { InternshipDatabase } from "../src/database/db.js";
 import type { CrawlResult, ScoutRunOptions } from "../src/domain/types.js";
+import type { Resume } from "../src/resume/tailor.js";
 import { analyzed, makeInternship } from "./helpers.js";
+import { openAIEnvelope } from "./helpers/openaiResponse.js";
+
+const { resolveResume } = vi.hoisted(() => ({ resolveResume: vi.fn() }));
+vi.mock("../src/resume/profile.js", () => ({
+  resolveResumeForRequest: resolveResume,
+  handleResumeProfileRequest: vi.fn(async () => false),
+}));
 
 interface CapturedResponse {
   statusCode: number;
@@ -51,16 +59,33 @@ function request(
   };
 }
 
-import { generateResume } from "../src/resume/service.js";
+const generatedPdf = Buffer.from("%PDF-1.7\nexample");
+const baseResume: Resume = {
+  ownerEmail: "owner@example.com",
+  name: "Example Candidate",
+  contact: ["candidate@example.com"],
+  education: [{ title: "University", subtitle: "Computer Science", date: "2025–2029", bullets: [] }],
+  experience: [{ title: "Intern", subtitle: "Acme", date: "Summer 2025", bullets: ["Built a TypeScript API."] }],
+  projects: [],
+  awards: [],
+  skills: [{ label: "Languages", items: ["TypeScript"] }],
+};
+import { compileResumePdf, generateResume } from "../src/resume/service.js";
 vi.mock("../src/resume/service.js", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/resume/service.js")>();
-  return { ...original, readBaseResume: vi.fn(async () => ({ ownerEmail: "owner@example.com" })),
-    generateResume: vi.fn(async () => ({ pdf: Buffer.from("%PDF-1.7\nexample"), filename: "Example-Resume.pdf", matches: 2 })) };
+  return {
+    ...original,
+    readBaseResume: vi.fn(async () => baseResume),
+    compileResumePdf: vi.fn(async () => ({ pdf: generatedPdf, filename: "Edited-Resume.pdf" })),
+    generateResume: vi.fn(async () => ({ pdf: generatedPdf, filename: "Example-Resume.pdf", matches: 2 })),
+  };
 });
 describe("resume download API", () => {
   let requestHandler: typeof import("../src/dashboard.js").requestHandler;
   let databasePath = "";
   let directory = "";
+
+  afterEach(() => vi.unstubAllGlobals());
 
   beforeAll(async () => {
     directory = mkdtempSync(join(tmpdir(), "internshipmatic-dashboard-deadline-"));
@@ -71,6 +96,7 @@ describe("resume download API", () => {
     process.env.DASHBOARD_SKIP_LIVE_BOARD = "1";
     process.env.DASHBOARD_SKIP_STARTUP_SCAN = "1";
     process.env.SCOUT_OUTPUT_DIR = join(directory, "output");
+    resolveResume.mockResolvedValue(baseResume);
     ({ requestHandler } = await import("../src/dashboard.js"));
 
     databasePath = join(directory, "deadline.db");
@@ -132,6 +158,64 @@ describe("resume download API", () => {
     expect(result.headers["Content-Disposition"]).toContain("Example-Resume.pdf");
     expect(result.body.toString()).toMatch(/^%PDF/);
     expect(vi.mocked(generateResume).mock.lastCall?.[1].description).toContain("TypeScript");
+  });
+
+  it("exports an edited resume without invoking another draft or mutating the source", async () => {
+    const original = structuredClone(baseResume);
+    const edited: Resume = {
+      ...baseResume,
+      projects: [{ title: "New draft title", subtitle: "Personal project", date: "2026", bullets: ["Edited wording."] }],
+    };
+    vi.mocked(compileResumePdf).mockClear();
+    vi.mocked(generateResume).mockClear();
+    const result = response();
+    await requestHandler(request("/api/resumes/internship/closing-soon", { "content-type": "application/json" }, "POST", { resume: edited }) as never, result as never, databasePath);
+    expect(result.statusCode).toBe(200);
+    expect(result.headers["Cache-Control"]).toBe("private, no-store");
+    expect(result.headers["Content-Disposition"]).toContain("Edited-Resume.pdf");
+    expect(vi.mocked(compileResumePdf).mock.lastCall?.[0]).toEqual(edited);
+    expect(vi.mocked(compileResumePdf).mock.lastCall?.[1]?.title).toBe("Software Engineering Intern");
+    expect(vi.mocked(compileResumePdf).mock.lastCall?.[1]?.company).toBe("Northstar Labs");
+    expect(generateResume).not.toHaveBeenCalled();
+    expect(baseResume).toEqual(original);
+  });
+
+  it("reports unavailable AI rather than returning a reordered-only resume", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "");
+    const result = response();
+    await requestHandler(request("/api/application-drafts/internship/closing-soon", { "content-type": "application/json" }, "POST", { kind: "resume" }) as never, result as never, databasePath);
+    expect(result.statusCode).toBe(503);
+    expect(result.headers["Cache-Control"]).toBe("private, no-store");
+    const payload = JSON.parse(result.body.toString("utf8")) as Record<string, unknown>;
+    expect(payload.error).toContain("Set OPENAI_API_KEY");
+    expect(payload).not.toHaveProperty("resume");
+    expect(payload).not.toHaveProperty("source");
+  });
+
+  it("returns a retryable error when all AI corrections invent facts, with no fallback resume", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-only-key");
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(openAIEnvelope({
+      bullets: [{ sourceRef: "experience.0.bullets.0", text: "Built 10 TypeScript APIs.", sourceRefs: ["experience.0.bullets.0"] }],
+    })), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = response();
+    await requestHandler(request("/api/application-drafts/internship/closing-soon", { "content-type": "application/json" }, "POST", { kind: "resume" }) as never, result as never, databasePath);
+    expect(result.statusCode).toBe(422);
+    expect(result.headers["Cache-Control"]).toBe("private, no-store");
+    const payload = JSON.parse(result.body.toString("utf8")) as Record<string, unknown>;
+    expect(payload.error).toContain("after 3 attempts");
+    expect(payload).not.toHaveProperty("resume");
+    expect(payload).not.toHaveProperty("source");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects malformed edited resumes with private no-store errors", async () => {
+    vi.mocked(compileResumePdf).mockClear();
+    const result = response();
+    await requestHandler(request("/api/resumes/internship/closing-soon", { "content-type": "application/json" }, "POST", { resume: { ...baseResume, name: "" } }) as never, result as never, databasePath);
+    expect(result.statusCode).toBe(400);
+    expect(result.headers["Cache-Control"]).toBe("private, no-store");
+    expect(vi.mocked(compileResumePdf)).not.toHaveBeenCalled();
   });
   it.each([
     ["/api/resumes/internship/closing-soon", "GET", {}, 405],
