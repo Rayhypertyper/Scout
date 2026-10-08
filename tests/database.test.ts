@@ -19,7 +19,7 @@ import { internshipQuality } from "../src/deduplication/deduplicate.js";
 import type { Internship } from "../src/domain/schemas.js";
 import type { CrawlResult, ScoutRunOptions } from "../src/domain/types.js";
 import { extractQualificationDetails } from "../src/parsing/qualifications.js";
-import { analyzed, makeInternship } from "./helpers.js";
+import { analyzed, makeCmpaInternship, makeInternship } from "./helpers.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -556,6 +556,29 @@ describe("SQLite lifecycle", () => {
     const closed = database.persistRun(fourthRun, closedCrawl, 2);
     expect(closed.counts.REMOVED_OR_CLOSED).toBe(1);
     expect(closed.internships[0]?.availabilityStatus).toBe("closed");
+    database.close();
+  });
+
+  it("refreshes stored CMPA alias keys and consolidates different Dreamwork IDs on recrawl", () => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-db-cmpa-"));
+    temporaryDirectories.push(directory);
+    const settings = resolveSettings({ databasePath: join(directory, "test.db"), outputDirectory: join(directory, "output") });
+    const options: ScoutRunOptions = { sources: ["https://example.com/careers"], settings, filters: { categories: [], newOnly: false, minScore: 60 } };
+    const first = makeCmpaInternship();
+    const second = makeCmpaInternship({ id: "cmpa-copy", company: "Cmpa/Acpm", jobId: "7e531699-916d-480c-b208-b824dab0c658", sources: ["https://tracker.example/internships"] });
+    const initial = new InternshipDatabase(settings.databasePath);
+    initial.persistRun(initial.startRun(options), crawl(first), 2);
+    initial.close();
+
+    const legacy = new DatabaseSync(settings.databasePath);
+    legacy.prepare("UPDATE internships SET normalized_company = 'carrieres cmpa acpm' WHERE id = @id").run({ id: first.id });
+    legacy.close();
+
+    const database = new InternshipDatabase(settings.databasePath);
+    const result = database.persistRun(database.startRun(options), crawl(second), 2);
+    expect(result.internships).toHaveLength(1);
+    expect(result.internships[0]?.id).toBe(first.id);
+    expect(result.internships[0]?.sources).toEqual(expect.arrayContaining([...first.sources, ...second.sources]));
     database.close();
   });
 

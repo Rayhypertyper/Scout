@@ -863,6 +863,7 @@ export class OpenAIJobFallback {
   private readonly auditWriter: (jsonLine: string, markdown: string) => Promise<void>;
   private requestCount = 0;
   private auditQueue: Promise<void> = Promise.resolve();
+  private budgetAuditWritten = false;
 
   public constructor(options: OpenAIFallbackOptions) {
     this.config = runtimeConfig(options.env ?? process.env);
@@ -873,6 +874,13 @@ export class OpenAIJobFallback {
 
   public async recover(snapshot: PageSnapshot, deterministicJobs: RawJob[], sourceUrl: string, signal?: AbortSignal): Promise<RawJob[]> {
     if (!this.config.enabled || signal?.aborted) return deterministicJobs;
+    // Thousands of later pages still use deterministic extraction. Once the
+    // optional request budget is spent, avoid analyzing/serializing them just
+    // to append another full request_limit record (formerly gigabytes/run).
+    if (this.requestCount >= this.config.maxRequests) {
+      await this.recordBudgetExhausted(snapshot, sourceUrl);
+      return deterministicJobs;
+    }
     const sourceText = snapshot.text;
     const contentHash = sha256(sourceText);
     const pageUrl = this.safeUrl(snapshot.url || snapshot.requestedUrl);
@@ -913,7 +921,7 @@ export class OpenAIJobFallback {
     try {
       release = await this.semaphore.acquire(signal);
       if (this.requestCount >= this.config.maxRequests) {
-        await completeAudit("request_limit", [], `The configured total request limit of ${this.config.maxRequests} has been reached.`);
+        await this.recordBudgetExhausted(snapshot, sourceUrl);
         return deterministicJobs;
       }
       this.requestCount += 1;
@@ -1025,6 +1033,20 @@ export class OpenAIJobFallback {
     } finally {
       release?.();
     }
+  }
+
+  private async recordBudgetExhausted(snapshot: PageSnapshot, sourceUrl: string): Promise<void> {
+    if (this.budgetAuditWritten) return;
+    this.budgetAuditWritten = true;
+    const record: AuditRecord = {
+      schemaVersion: 1, at: new Date().toISOString(), provider: "openai", model: this.config.model,
+      sourceUrl: this.safeUrl(sourceUrl), pageUrl: this.safeUrl(snapshot.url), contentHash: sha256(snapshot.text),
+      status: "request_limit", fieldsMissed: [], missEvidence: [], confirmedMisses: [], deterministicBefore: [], recovered: [],
+      note: `The configured total request limit of ${this.config.maxRequests} has been reached. Further pages use deterministic extraction; this budget event is recorded once per crawl.`,
+    };
+    const pending = this.auditQueue.then(() => this.auditWriter(JSON.stringify(record), markdownFor(record)));
+    this.auditQueue = pending.catch(() => undefined);
+    await pending.catch(() => undefined);
   }
 
   private safeUrl(value: string): string {

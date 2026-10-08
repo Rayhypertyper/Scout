@@ -1,9 +1,11 @@
+import { load } from "cheerio";
+
 import type { LinkCandidate, PageSnapshot } from "../../domain/types.js";
 import { canonicalizeUrl } from "../../utils/url.js";
 import type { Logger } from "../../utils/logger.js";
-import type { HttpClient, HttpResponseSnapshot } from "../http.js";
+import { HttpRequestError, type HttpClient, type HttpResponseSnapshot } from "../http.js";
 import { adapterFailure, type SourceAdapter, type SourceAdapterResult } from "./types.js";
-import { isEarlyCareerRadarSource } from "../publicSources.js";
+import { isEarlyCareerRadarNotFoundPage, isEarlyCareerRadarSource } from "../publicSources.js";
 import { currentSourceAbortSignal } from "../../domain/cancellation.js";
 
 /**
@@ -13,11 +15,11 @@ import { currentSourceAbortSignal } from "../../domain/cancellation.js";
  * for generic crawlers, so this adapter intentionally uses the page-native
  * server-rendered payload instead.
  */
-export const EARLY_CAREER_RADAR_LISTING_URL = "https://earlycareerradar.com/summer-internships";
+export const EARLY_CAREER_RADAR_LISTING_URL = "https://earlycareerradar.com/summer-internships?locations=all";
 
 // Bound malformed or unexpectedly broad feeds before creating a synthetic
 // listing snapshot or admitting detail work to the central crawler.
-export const EARLY_CAREER_RADAR_MAX_FEED_JOBS = 5_000;
+export const EARLY_CAREER_RADAR_MAX_FEED_JOBS = 10_000;
 
 /** First-party data fallback used only when the listing markup changes. */
 export const EARLY_CAREER_RADAR_API_URL = "https://earlycareerradar.com/api/jobs";
@@ -131,10 +133,18 @@ export interface EarlyCareerRadarJob {
   title: string;
   location: string;
   hub: string;
+  /** Exact first-party destination supplied by the source record. */
+  applyUrl?: string;
+  description?: string;
+  postedAt?: string;
+  deadlineAt?: string;
   studentYears?: string[];
-  closed: boolean;
-  applied: boolean;
-  dismissed: boolean;
+  /** Preserve missing-vs-false status so absent data is never claimed open. */
+  closed?: boolean;
+  applied?: boolean;
+  dismissed?: boolean;
+  /** Full source record retained for downstream extraction and audit evidence. */
+  rawRecord: Record<string, unknown>;
 }
 
 export interface EarlyCareerRadarFilters {
@@ -167,16 +177,29 @@ function apiJob(value: unknown): EarlyCareerRadarJob | null {
   const id = stringValue(value.id);
   if (!id) return null;
   const studentYears = stringArray(value.studentYears);
+  const exactString = (key: string): string | undefined => {
+    const field = value[key];
+    return typeof field === "string" && field.trim() ? field : undefined;
+  };
+  const applyUrl = exactString("applyUrl");
+  const description = exactString("description");
+  const postedAt = exactString("postedAt");
+  const deadlineAt = exactString("deadlineAt");
   return {
     id,
     company: stringValue(value.company) ?? "Unknown company",
     title: stringValue(value.title) ?? "Internship opening",
     location: locationValue(value.location),
     hub: stringValue(value.hub) ?? "",
+    ...(applyUrl ? { applyUrl } : {}),
+    ...(description ? { description } : {}),
+    ...(postedAt ? { postedAt } : {}),
+    ...(deadlineAt ? { deadlineAt } : {}),
     ...(studentYears ? { studentYears } : {}),
-    closed: value.closed === true,
-    applied: value.applied === true,
-    dismissed: value.dismissed === true,
+    ...(typeof value.closed === "boolean" ? { closed: value.closed } : {}),
+    ...(typeof value.applied === "boolean" ? { applied: value.applied } : {}),
+    ...(typeof value.dismissed === "boolean" ? { dismissed: value.dismissed } : {}),
+    rawRecord: { ...value },
   };
 }
 
@@ -431,12 +454,42 @@ function feedResult(
       ? [{ ...adapterFailure(sourceUrl, response.url, new Error(limitNote), response.status), errorType: "source_limit" }]
       : [],
     strategy: "static_html",
+    inventoryComplete: !limited,
+    inventoryCount: selectedJobs.length,
+    maxRawListings: EARLY_CAREER_RADAR_MAX_FEED_JOBS,
   };
 }
 
 interface EarlyCareerRadarFeed {
   response: HttpResponseSnapshot;
   jobs: EarlyCareerRadarJob[];
+}
+
+function throwIfNotFound(response: HttpResponseSnapshot): void {
+  let text = "";
+  if (/html/i.test(response.contentType) || /<(?:html|body)\b/i.test(response.body)) {
+    const document = load(response.body);
+    document("script, style, noscript, template").remove();
+    text = document("body").text();
+  }
+  if (isEarlyCareerRadarNotFoundPage(response.url, response.status, text)) {
+    throw new HttpRequestError("Early Career Radar page not found; skipped without retry.", 404, Math.max(0, response.attempts - 1), "not_found");
+  }
+}
+
+function skippedNotFoundResult(url: string, error: HttpRequestError): SourceAdapterResult {
+  return {
+    snapshots: [],
+    retrievalMethod: "Early Career Radar first-party HTTP",
+    retrievalUrls: [url],
+    attempts: error.attempts + 1,
+    httpStatus: 404,
+    notes: ["Early Career Radar returned a 404/not-found page; skipped without retry or alternate retrieval."],
+    failures: [],
+    strategy: "static_html",
+    browserRequired: false,
+    inventoryComplete: false,
+  };
 }
 
 /**
@@ -472,12 +525,15 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
     }
     const request = this.http.get(sourceUrl, {
       cache: false,
+      timeoutMs: 30_000,
       headers: { accept: "text/html,application/xhtml+xml" },
+      allowedRedirectOrigins: ["https://earlycareerradar.com"],
       // The page owner explicitly authorized this source route. Keep the
       // exception scoped to this adapter; ordinary sources still enforce
       // robots.txt in the transport and crawler layers.
       respectRobots: false,
     }).then((response) => {
+      throwIfNotFound(response);
       if (response.status < 200 || response.status >= 300) {
         throw new Error(`Early Career Radar listing returned HTTP ${response.status}`);
       }
@@ -505,9 +561,12 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
     }
     const request = this.http.get(EARLY_CAREER_RADAR_API_URL, {
       cache: false,
+      timeoutMs: 30_000,
       headers: { accept: "application/json" },
+      allowedRedirectOrigins: ["https://earlycareerradar.com"],
       respectRobots: false,
     }).then((response) => {
+      throwIfNotFound(response);
       if (response.status < 200 || response.status >= 300) {
         throw new Error(`Early Career Radar API fallback returned HTTP ${response.status}`);
       }
@@ -542,6 +601,9 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
       this.logger.debug("ADAPTER", `Early Career Radar embedded HTML: ${feed.jobs.length} source jobs parsed`);
       return result;
     } catch (error) {
+      if (error instanceof HttpRequestError && error.statusCode === 404) {
+        return skippedNotFoundResult(sourceUrl, error);
+      }
       listingError = error;
     }
 
@@ -561,6 +623,9 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
       this.logger.debug("ADAPTER", `Early Career Radar API fallback: ${feed.jobs.length} source jobs parsed`);
       return result;
     } catch (apiError) {
+      if (apiError instanceof HttpRequestError && apiError.statusCode === 404) {
+        return skippedNotFoundResult(EARLY_CAREER_RADAR_API_URL, apiError);
+      }
       const detail = [listingError, apiError]
         .filter((value): value is Error => value instanceof Error)
         .map((value) => value.message)

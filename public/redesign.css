@@ -2607,6 +2607,11 @@ select {
   padding: 18px;
 }
 
+.analytics-sources-panel {
+  border: 0;
+  flex-shrink: 0;
+}
+
 .analytics-panel-heading h2 {
   font-size: 14px;
   font-weight: 600;
@@ -2629,15 +2634,8 @@ select {
 
 .analytics-kpi-grid .crawl-stat-row {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   min-width: 0;
-}
-
-.analytics-kpi-grid .crawl-stat-row-top {
-  grid-template-columns: minmax(0, var(--stat-col-1, 1fr)) minmax(0, var(--stat-col-2, 1fr)) minmax(0, var(--stat-col-3, 1fr));
-}
-
-.analytics-kpi-grid .crawl-stat-row-bottom {
-  grid-template-columns: minmax(0, var(--stat-col-1, 1fr)) minmax(0, var(--stat-col-2, 1fr)) minmax(0, var(--stat-col-3, 1fr));
 }
 
 .analytics-kpi-grid .crawl-stat {
@@ -2696,8 +2694,13 @@ select {
 }
 
 .analytics-kpi-grid .crawl-stat-label {
-  color: color-mix(in srgb, currentColor 68%, transparent);
-  font-size: 9px;
+  color: currentColor;
+  display: block;
+  font-size: 11px;
+  line-height: 1.4;
+  margin-top: 8px;
+  min-height: 0;
+  text-align: left;
 }
 
 .analytics-grid {
@@ -3706,6 +3709,12 @@ select {
     display: none;
   }
 
+  .listing-row-actions--large:has(.resume-action) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    padding-right: 0;
+    width: 100%;
+  }
+
   .role-detail-panel {
     width: 100%;
   }
@@ -4553,6 +4562,25 @@ select {
   min-width: 0;
   flex: 1 1 0;
   overflow-wrap: anywhere;
+}
+.listing-row-actions--large:has(.resume-action) {
+  align-self: stretch;
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  height: auto;
+  min-height: 0;
+}
+.listing-row-actions--large:has(.resume-action) > :is(.watchlist-toggle, .job-apply-link, .listing-action-button, .resume-action) {
+  height: auto;
+  min-height: 44px;
+  min-width: 0;
+  width: auto;
+  flex: initial;
+  overflow-wrap: normal;
+}
+.listing-row-actions--large:has(.resume-action) > .resume-action {
+  flex-grow: 0;
 }
 .resume-action[aria-busy="true"] {
   cursor: progress;

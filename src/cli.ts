@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 
 import { CategorySchema, type Category, type ScoutSettings } from "./domain/schemas.js";
 import { MIN_LISTING_SCORE } from "./config/thresholds.js";
+import { scoutEditionFromEnvironment } from "./config/edition.js";
 
 export interface ParsedCli {
   sources: string[];
@@ -57,8 +58,11 @@ export function parseCli(argv: string[]): ParsedCli {
     },
   });
   const categories = (values.category ?? []).flatMap((value) => value.split(",")).filter(Boolean).map((value) => CategorySchema.parse(value));
-  const minScore = integerFlag("min-score", values["min-score"], 0, 100) ?? MIN_LISTING_SCORE;
+  const edition = scoutEditionFromEnvironment();
+  const minScore = integerFlag("min-score", values["min-score"], 0, 100)
+    ?? (edition === "personal" ? MIN_LISTING_SCORE : 0);
   const settings: Partial<ScoutSettings> = {
+    edition,
     verbose: values.verbose,
     headless: !values.headed,
     minRelevanceScore: minScore,

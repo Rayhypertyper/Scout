@@ -1,8 +1,10 @@
 import { load } from "cheerio";
 
+import { ZSHAH_JOBS_URL } from "../config/zshahSource.js";
 import type { LinkCandidate, PageSnapshot, RawJob } from "../domain/types.js";
 import { decodeHtmlEntities, oneLine, uniqueStrings } from "../utils/text.js";
-import { extractJobId, safeCanonicalizeUrl } from "../utils/url.js";
+import { canonicalizeUrl, extractJobId, safeCanonicalizeUrl } from "../utils/url.js";
+import { extractZshahDashboardInventory } from "./zshah.js";
 import {
   cleanContentText,
   companyFromEvidence,
@@ -344,11 +346,15 @@ function applyBoltJob(snapshot: PageSnapshot): RawJob | null {
   const company = firstText($, [".job-company-name", "[data-testid='company-name']"]);
   const description = cleanContentText($, [".job-description", "main", "article"]);
   if (!title || !company || description.length < 80) return null;
-  const location = firstText($, [".job-company-location", ".job-facts-row:contains('Location') .job-facts-value"]);
-  const applicationUrl = safeCanonicalizeUrl(
-    $("a.job-seo-applylink").first().attr("href") ?? findApplyUrl($, snapshot.url) ?? snapshot.url,
+  const location = firstText($, [".job-company-location", ".job-facts-row:contains('Location') .job-facts-value"])
+    .replace(/^SF$/i, "San Francisco, CA").replace(/^NYC$/i, "New York, NY");
+  const extractedApplicationUrl = safeCanonicalizeUrl(
+    $("a.job-direct-applylink, a.job-seo-applylink").first().attr("href") ?? findApplyUrl($, snapshot.url) ?? snapshot.url,
     snapshot.url,
   ) ?? snapshot.url;
+  const application = new URL(extractedApplicationUrl);
+  const applicationUrl = application.origin === new URL(snapshot.url).origin && !/^\/job\//i.test(application.pathname)
+    ? snapshot.url : extractedApplicationUrl;
   const postingDate = firstText($, [
     ".job-facts-row:contains('Posted') .job-facts-value",
     "[data-testid='job-posted']",
@@ -398,6 +404,9 @@ function wellfoundJob(snapshot: PageSnapshot): RawJob | null {
 }
 
 export function extractPublicBoardJobs(snapshot: PageSnapshot): RawJob[] {
+  if (canonicalizeUrl(snapshot.url) === canonicalizeUrl(ZSHAH_JOBS_URL)) {
+    return extractZshahDashboardInventory(snapshot).jobs;
+  }
   const host = new URL(snapshot.url).hostname.replace(/^www\./i, "");
   if (host === "raw.githubusercontent.com") {
     const markdown = snapshot.text.trim() || load(snapshot.html).root().text().trim();

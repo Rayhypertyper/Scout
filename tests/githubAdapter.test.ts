@@ -18,6 +18,41 @@ afterEach(() => {
 });
 
 describe("GitHub source adapter", () => {
+  it("reads an explicitly configured Markdown file without crawling sibling lists or digests", async () => {
+    const get = vi.fn(async (url: string) => ({
+      requestedUrl: url, url, status: 200, attempts: 1, fromCache: false,
+      contentType: "application/json", headers: {},
+      body: url.endsWith("/repo") ? JSON.stringify({ default_branch: "main" })
+        : JSON.stringify({ encoding: "base64", content: Buffer.from("# Current internships").toString("base64") }),
+    }));
+    const adapter = new GitHubSourceAdapter(new Logger("error"), { get } as unknown as HttpClient);
+    const result = await adapter.collect("https://github.com/test/repo/blob/main/listings/software.md");
+    expect(result.snapshots).toHaveLength(1);
+    expect(result.retrievalUrls).toEqual(["https://raw.githubusercontent.com/test/repo/main/listings/software.md"]);
+    expect(get.mock.calls.map(([url]) => url)).toEqual([
+      "https://api.github.com/repos/test/repo",
+      "https://api.github.com/repos/test/repo/contents/listings/software.md?ref=main",
+    ]);
+  });
+
+  it("skips digest and archive directories while retaining current listing directories", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-github-inventory-"));
+    temporaryDirectories.push(directory);
+    const get = vi.fn(async (url: string) => ({
+      requestedUrl: url, url, status: 200, attempts: 1, fromCache: false, contentType: "application/json", headers: {},
+      body: url.endsWith("/repo") ? JSON.stringify({ default_branch: "main" })
+        : /\/contents\/?\?ref=/.test(url) ? JSON.stringify([
+          { name: "README.md", path: "README.md", type: "file" },
+          ...["digests", "archive", "archived", "listings"].map((path) => ({ name: path, path, type: "dir" })),
+        ]) : url.includes("/contents/listings?") ? JSON.stringify([{ name: "intern.md", path: "listings/intern.md", type: "file" }])
+          : JSON.stringify({ encoding: "base64", content: Buffer.from("# Current internships").toString("base64") }),
+    }));
+    const adapter = new GitHubSourceAdapter(new Logger("error"), { get } as unknown as HttpClient);
+    const result = await adapter.collect("https://github.com/test/repo");
+    expect(result.snapshots).toHaveLength(2);
+    expect(get.mock.calls.map(([url]) => url).some((url) => /digests|archive/.test(url))).toBe(false);
+    expect(result.retrievalUrls.some((url) => url.includes("listings/intern.md"))).toBe(true);
+  });
   it("strips the branch segment when a blob route supplies an explicit ref", () => {
     expect(repositoryParts("https://github.com/test/repo/blob/main/README.md?ref=dev")).toEqual({
       owner: "test",

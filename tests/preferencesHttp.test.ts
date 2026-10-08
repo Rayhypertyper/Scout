@@ -194,6 +194,16 @@ describe("preference HTTP boundaries", () => {
     expect((payload(crossOrigin.response).error as Record<string, unknown>).code).toBe("ORIGIN_MISMATCH");
   });
 
+  it("serves the public jobs entry without contacting an idle auth provider", async () => {
+    setAuthGatewayFactoryForTests(() => { throw new Error("A public page must not initialize authentication"); });
+    const path = databasePath();
+    const all = await dispatch("GET", "/jobs?view=all&tab=canada", path, { cookie: "expired-session=1" });
+    expect(all.handled).toBe(false);
+    expect(all.response.statusCode).toBe(0);
+    const head = await dispatch("HEAD", "/jobs?view=all", path);
+    expect(head.handled).toBe(false);
+  });
+
   it("routes incomplete and completed users with all internships as the default view", async () => {
     const path = databasePath();
     const postLoginIncomplete = await dispatch("GET", "/post-login", path);

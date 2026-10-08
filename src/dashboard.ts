@@ -1,5 +1,8 @@
 import "./config/env.js";
 
+import { accountActionScope, accountActionReadTable, accountActionUserId, accountActionCacheKey, ensureAccountActionSchema } from "./database/accountActions.js";
+import { dashboardAccountAccess } from "./dashboard/privateAccess.js";
+
 import { createApplicationDraft } from "./resume/drafts.js";
 import { generateResume, compileResumePdf, ResumeError } from "./resume/service.js";
 import { resumeSchema } from "./resume/tailor.js";
@@ -17,7 +20,8 @@ import { fileURLToPath } from "node:url";
 
 import { canonicalizeUrl, isAggregatorUrl, isJobrightUrl } from "./utils/url.js";
 import { directApplicationOverride } from "./config/directApplicationOverrides.js";
-import { MIN_LISTING_SCORE } from "./config/thresholds.js";
+import { isRetiredInternListSource, RETIRED_INTERN_LIST_MESSAGE } from "./config/retiredSources.js";
+import { internListSourceUrl } from "./config/internListSource.js";
 import { isAllowedPostingLocation } from "./parsing/locations.js";
 import {
   STATIC_CONFIGURED_SOURCES,
@@ -48,6 +52,7 @@ import {
   requestRunTermination,
 } from "./database/runControl.js";
 import { InternshipDatabase } from "./database/db.js";
+import { internshipQuality, ListingIdentityIndex } from "./deduplication/deduplicate.js";
 import { readDashboardRevisionCounters, ensureDashboardRevisionSchema, type DashboardRevisionCounters } from "./database/dashboardRevisions.js";
 import {
   applicationStageFromLegacyStatus,
@@ -58,6 +63,8 @@ import {
 import { InternshipSchema, type Internship, type ScoutSettings } from "./domain/schemas.js";
 import type { ScoutRunOptions } from "./domain/types.js";
 import { resolveSettings } from "./config/settings.js";
+import { resolveScoutEditionConfig, scoutEditionFromEnvironment } from "./config/edition.js";
+import { canUseEditionSwitcher, parseEditionSwitcherValue } from "./config/editionSwitcher.js";
 import { runScout, type ScoutExecution } from "./scout.js";
 import {
   GRIND_JOB_BOARD_SOURCE_URL,
@@ -80,7 +87,7 @@ import {
   type VerifiedLinkedInUrlsReadOptions,
 } from "./output/linkEligibility.js";
 import { normalizeCompanyIdentity } from "./utils/text.js";
-import { ROLE_TABS, buildRoleTabKeys, canadianLocationForRole, roleMatchesTab, type RoleTab } from "./dashboardTabs.js";
+import { ROLE_TABS, canadianLocationForRole, roleMatchesTab, type RoleTab } from "./dashboardTabs.js";
 import { isWithinNewRoleBannerWindow, newRoleBannerCacheKey, newRoleBannerCutoffIso, readNewListingKeys } from "./dashboardNew.js";
 import {
   compareByDashboardSeason,
@@ -102,7 +109,7 @@ import {
   handlePreferenceRequest,
   loadAuthenticatedMatchPreferences,
 } from "./preferences/http.js";
-import { evaluateInternshipMatch } from "./preferences/matching.js";
+import { compileMatcher } from "./preferences/matching.js";
 import { ensurePreferenceSchema } from "./preferences/store.js";
 import type { InternshipPreferences } from "./preferences/schema.js";
 import {
@@ -167,6 +174,14 @@ interface FailureRow {
   status_code: number | null;
   message: string;
   count: number;
+}
+
+interface FailureDetailRow extends Omit<FailureRow, "count"> {
+  id: number;
+  run_id: number;
+  url: string;
+  retry_count: number;
+  occurred_at: string;
 }
 
 interface SourceRow {
@@ -341,7 +356,6 @@ interface ActiveScan {
 
 interface QueuedSourceScan {
   databasePath: string;
-  settings: ScoutSettings;
   sources: string[];
 }
 
@@ -421,6 +435,8 @@ let scanState: DashboardScanState = {
   currentSources: [],
 };
 
+let dashboardEdition = scoutEditionFromEnvironment();
+
 export function setDashboardScoutRunnerForTests(runner: DashboardScoutRunner | null): void {
   dashboardScoutRunnerForTests = runner;
 }
@@ -444,25 +460,11 @@ export function resetDashboardScanStateForTests(): void {
   };
 }
 
-type DashboardPayload = Record<string, unknown>;
-
 class DashboardValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "DashboardValidationError";
   }
-}
-
-interface DashboardDataCache {
-  payload: DashboardPayload;
-  body: string;
-  postingAgeWindow: string;
-}
-
-interface DashboardDataRefresh {
-  cacheVersion: number;
-  forceGrindRefresh: boolean;
-  promise: Promise<DashboardPayload>;
 }
 
 type FastStatusFilter = "open" | "closed" | "new" | "updated" | "all";
@@ -559,6 +561,15 @@ interface FastRoleCard {
   missCount: number;
   isNew: boolean;
   matchScore?: number;
+  matchMatched?: boolean;
+  matchStatus?: string;
+  matchScoreVersion?: string;
+  matchExplanation?: {
+    hardExclusions: string[];
+    preferenceMismatches: string[];
+    uncertainty: string[];
+    insufficientFit: string[];
+  };
   matchReasons?: string[];
   matchUnknownCount?: number;
   /** Versioned personal-compatibility facts; omitted from public all-role cards. */
@@ -596,6 +607,7 @@ interface DashboardSourceHealth {
   sources: Array<SourceRow & { isConfigured: boolean }>;
   sourceResults: CompactSourceResult[];
   failures: FailureRow[];
+  failures24h: FailureDetailRow[];
   errors24h: number;
 }
 
@@ -623,6 +635,7 @@ interface FastDashboardIndex {
   sources: DashboardSourceHealth["sources"];
   sourceResults: CompactSourceResult[];
   failures: FailureRow[];
+  failures24h: FailureDetailRow[];
   errors24h: number;
   appliedRoleCount: number;
 }
@@ -641,6 +654,7 @@ interface FastDashboardIndexBase {
   sources: DashboardSourceHealth["sources"];
   sourceResults: CompactSourceResult[];
   failures: FailureRow[];
+  failures24h: FailureDetailRow[];
   errors24h: number;
   appliedRoleCount: number;
 }
@@ -667,6 +681,23 @@ interface FastRolesQuery {
   relativeBase: number;
 }
 
+interface FastMatchingDiagnostics {
+  evaluated: number;
+  userMatched: number;
+  userFiltered: number;
+  hardExcluded: number;
+  insufficientFit: number;
+  uncertain: number;
+}
+
+interface FastFilteredPage {
+  items: FastRoleCard[];
+  total: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+  matchingDiagnostics?: FastMatchingDiagnostics;
+}
+
 interface FastDashboardIndexReadOptions {
   startBackgroundBoardRefresh?: boolean;
   verification?: VerificationSnapshotReadOptions;
@@ -681,7 +712,23 @@ interface FastDashboardIndexCache {
   projectedIndex: FastDashboardIndex | null;
 }
 
-let fastDashboardIndexCache: FastDashboardIndexCache | null = null;
+const fastDashboardIndexCaches = new Map<string, FastDashboardIndexCache>();
+const fastDashboardIndexCache = {
+  get current(): FastDashboardIndexCache | null {
+    return fastDashboardIndexCaches.get(accountActionCacheKey()) ?? null;
+  },
+  set current(value: FastDashboardIndexCache | null) {
+    const scope = accountActionCacheKey();
+    if (value === null) { fastDashboardIndexCaches.delete(scope); return; }
+    fastDashboardIndexCaches.delete(scope);
+    fastDashboardIndexCaches.set(scope, value);
+    while (fastDashboardIndexCaches.size > 8) {
+      const oldest = fastDashboardIndexCaches.keys().next().value;
+      if (oldest === undefined) break;
+      fastDashboardIndexCaches.delete(oldest);
+    }
+  },
+};
 let fastDashboardCacheGeneration = 0;
 interface FastDashboardActionProjection {
   actionRows: FastActionContextRow[];
@@ -1139,7 +1186,7 @@ export function closeFastRevisionTrackersForTests(): void {
 
 export function clearFastDashboardCacheForTests(): void {
   fastDashboardCacheGeneration += 1;
-  fastDashboardIndexCache = null;
+  fastDashboardIndexCaches.clear();
   fastDashboardIndexInflight.clear();
   fastDashboardActionProjectionCache.clear();
   fastFilteredPageCache.clear();
@@ -1279,9 +1326,6 @@ export function clearVerificationSnapshotCacheForTests(): void {
   verificationSnapshotCache = null;
 }
 
-let dashboardDataCache: DashboardDataCache | null = null;
-let dashboardDataRefresh: DashboardDataRefresh | null = null;
-let dashboardDataCacheVersion = 0;
 let backgroundGrindRefresh: Promise<GrindJobBoardSnapshot> | null = null;
 
 function liveBoardReadsAllowed(): boolean {
@@ -1380,12 +1424,15 @@ function jsonResponseBody(
   body: string,
   options: JsonResponseOptions = {},
 ): void {
-  const headers: Record<string, string> = {
+  const headers: Record<string, string | string[]> = {
+    ...accountActionScope.getStore()?.responseState?.headers,
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": options.cacheControl ?? "no-store",
   };
   if (options.etag) headers.ETag = weakEtag(options.etag);
-  if (options.request) headers.Vary = "Accept-Encoding";
+  if (options.request) headers.Vary = "Accept-Encoding, Cookie";
+  const cookies = accountActionScope.getStore()?.responseState?.cookies;
+  if (cookies?.length) headers["Set-Cookie"] = cookies;
   let bodyBuffer = Buffer.from(body, "utf8");
   if (etagMatches(options.request, options.etag)) {
     // A 304 has no payload; omit payload framing and content coding rather
@@ -1417,23 +1464,70 @@ function jsonResponse(
   jsonResponseBody(response, status, JSON.stringify(payload), options);
 }
 
-function cacheDashboardData(payload: DashboardPayload): DashboardPayload {
-  dashboardDataCache = {
-    payload,
-    body: JSON.stringify(payload),
-    postingAgeWindow: dashboardPostingAgeKey(),
-  };
-  return payload;
-}
-
 function invalidateDashboardDataCache(): void {
-  dashboardDataCache = null;
-  dashboardDataCacheVersion += 1;
   // Listing actions are durable writes too. Drop the compact index and its
   // filtered pages immediately so the next role/status request cannot reuse a
   // pre-action count or visible role while the revision tracker catches up.
-  fastDashboardIndexCache = null;
+  fastDashboardIndexCaches.clear();
   fastFilteredPageCache.clear();
+}
+
+const BROWSER_PRIVATE_ROLE_FIELDS = new Set([
+  "provenance",
+  "sourceUrl",
+  "listingSource",
+  "sources",
+  "relevanceReason",
+  "statusRunId",
+  "missCount",
+  "sourceResults",
+  "failures",
+  "failures24h",
+  "errors24h",
+  "latestRun",
+  "latestCompletedRun",
+  "runs",
+  "scan",
+  "currentSources",
+  "relevanceDiagnostics",
+  "pageUrl",
+  "sourceId",
+  "sourceName",
+]);
+
+function publicBrowserRecord(value: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(value)
+    .filter(([key]) => !BROWSER_PRIVATE_ROLE_FIELDS.has(key))
+    .map(([key, child]) => [key, publicBrowserValue(child)]));
+}
+
+function publicBrowserValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(publicBrowserValue);
+  if (value === null || typeof value !== "object") return value;
+  return publicBrowserRecord(value);
+}
+
+export function roleForBrowserClientForTests(role: object): Record<string, unknown> {
+  if (dashboardEdition === "personal") return { ...role };
+  return publicBrowserRecord(role);
+}
+
+export function getDashboardEditionForTests(): "personal" | "public" {
+  return dashboardEdition;
+}
+
+export function getDashboardEditionSettingsForTests(): { edition: "personal" | "public"; minRelevanceScore: number } {
+  return { edition: dashboardEdition, minRelevanceScore: dashboardSettings.minRelevanceScore };
+}
+
+function setDashboardEdition(edition: "personal" | "public"): void {
+  dashboardEdition = resolveScoutEditionConfig(edition).edition;
+  dashboardSettings = resolveSettings({ databasePath, outputDirectory, edition: dashboardEdition });
+  invalidateDashboardDataCache();
+}
+
+export function setDashboardEditionForTests(edition: "personal" | "public"): void {
+  setDashboardEdition(edition);
 }
 
 export function clearDashboardDataCacheForTests(): void {
@@ -1465,32 +1559,6 @@ function startBackgroundGrindRefresh(): void {
     .finally(() => {
       backgroundGrindRefresh = null;
     });
-}
-
-function startDashboardDataRefresh(databasePath: string, forceGrindRefresh = false): Promise<DashboardPayload> {
-  if (dashboardDataRefresh !== null) {
-    const isCurrentVersion = dashboardDataRefresh.cacheVersion === dashboardDataCacheVersion;
-    if (isCurrentVersion && (!forceGrindRefresh || dashboardDataRefresh.forceGrindRefresh)) return dashboardDataRefresh.promise;
-    return dashboardDataRefresh.promise.then(() => startDashboardDataRefresh(databasePath, forceGrindRefresh));
-  }
-
-  const refreshVersion = dashboardDataCacheVersion;
-  const refreshPromise = readDashboardData(databasePath, forceGrindRefresh)
-    .then((payload) => {
-      if (refreshVersion === dashboardDataCacheVersion) cacheDashboardData(payload);
-      return payload;
-    })
-    .finally(() => {
-      if (dashboardDataRefresh?.promise === refreshPromise) dashboardDataRefresh = null;
-    });
-  dashboardDataRefresh = { cacheVersion: refreshVersion, forceGrindRefresh, promise: refreshPromise };
-  return refreshPromise;
-}
-
-function startBackgroundDashboardDataRefresh(databasePath: string): void {
-  void startDashboardDataRefresh(databasePath).catch((error: unknown) => {
-    console.error(`[DASHBOARD DATA REFRESH FAILED] ${error instanceof Error ? error.message : String(error)}`);
-  });
 }
 
 function dashboardVerificationPath(): string {
@@ -1594,6 +1662,7 @@ async function serveStatic(request: IncomingMessage, response: ServerResponse, p
       body = Buffer.from(
         body.toString("utf8")
           .replaceAll('href="/styles.css"', `href="/styles.css?v=${cssVersion}"`)
+          .replaceAll('href="/app.js"', `href="/app.js?v=${appVersion}"`)
           .replaceAll('src="/app.js"', `src="/app.js?v=${appVersion}"`),
         "utf8",
       );
@@ -1746,17 +1815,18 @@ function dashboardSourceRunId(
   return latestCompletedRun?.id ?? null;
 }
 
-function readDashboardErrorCount(database: DatabaseSync): number {
+function readDashboardFailures24h(database: DatabaseSync): FailureDetailRow[] {
   try {
     const cutoff = new Date(Date.now() - 24 * 60 * 60_000).toISOString();
-    const row = database.prepare(`
-      SELECT COUNT(*) AS count
-      FROM failed_pages
-      WHERE occurred_at >= @cutoff
-    `).get({ cutoff }) as unknown as { count: number | bigint } | undefined;
-    return asFiniteNumber(row?.count);
+    return database.prepare(`
+      SELECT f.id, f.run_id, COALESCE(s.url, '(unknown)') AS source_url,
+             f.url, f.error_type, f.status_code, f.message, f.retry_count, f.occurred_at
+      FROM failed_pages f LEFT JOIN sources s ON s.id = f.source_id
+      WHERE f.occurred_at >= @cutoff
+      ORDER BY f.occurred_at DESC, f.id DESC
+    `).all({ cutoff }) as unknown as FailureDetailRow[];
   } catch {
-    return 0;
+    return [];
   }
 }
 
@@ -1819,7 +1889,8 @@ function readDashboardSourceHealth(
       SELECT url, last_crawled_at, last_status${configuredColumn} FROM sources ORDER BY url
     `).all() as unknown as SourceRow[];
     for (const source of storedSources) {
-      if (sourcesByUrl.has(source.url) || source.is_configured === 1) sourcesByUrl.set(source.url, source);
+      if (internListSourceUrl(source.url) !== source.url) continue;
+      if (!isRetiredInternListSource(source.url) && (sourcesByUrl.has(source.url) || source.is_configured === 1)) sourcesByUrl.set(source.url, source);
     }
   } catch {
     // Keep the configured catalog even when the sources table is missing.
@@ -1847,7 +1918,8 @@ function readDashboardSourceHealth(
       failures = [];
     }
   }
-  return { sources, sourceResults, failures, errors24h: readDashboardErrorCount(database) };
+  const failures24h = readDashboardFailures24h(database);
+  return { sources, sourceResults, failures, failures24h, errors24h: failures24h.length };
 }
 
 function liveSourceState(
@@ -1924,6 +1996,7 @@ async function addConfiguredSource(
     const url = optionalHttpUrl(body.url, "url");
     if (!url) throw new DashboardValidationError("url is required");
     const parsed = new URL(url);
+    if (isRetiredInternListSource(url)) throw new DashboardValidationError(RETIRED_INTERN_LIST_MESSAGE);
     if (parsed.username || parsed.password) {
       throw new DashboardValidationError("url must not contain embedded credentials");
     }
@@ -1942,7 +2015,6 @@ async function addConfiguredSource(
     if (activeScanIsLive()) {
       queuedSourceScan = {
         databasePath,
-        settings: dashboardSettings,
         sources: [...new Set([...(queuedSourceScan?.sources ?? []), url])],
       };
       queued = true;
@@ -1999,7 +2071,7 @@ function readClosedCount(database: DatabaseSync): number {
 function readHiddenCount(database: DatabaseSync): number {
   const row = database.prepare(`
     SELECT COUNT(*) AS count
-    FROM listing_actions
+    FROM ${accountActionReadTable()}
     WHERE action = 'cant_fit'
   `).get() as unknown as { count: number | bigint };
   return Number(row.count);
@@ -2008,18 +2080,6 @@ function readHiddenCount(database: DatabaseSync): number {
 function hasDatabaseColumn(database: DatabaseSync, table: string, column: string): boolean {
   const columns = database.prepare(`PRAGMA table_info(${table})`).all() as unknown as Array<{ name: string }>;
   return columns.some((item) => item.name === column);
-}
-
-function toListingActionRecord(row: ListingActionRow): ListingActionRecord {
-  return {
-    listingKey: row.listing_key,
-    listingType: row.listing_type,
-    listingId: row.listing_id,
-    action: row.action,
-    company: row.company,
-    title: row.title,
-    createdAt: row.created_at,
-  };
 }
 
 function toApplicationItem(
@@ -2105,7 +2165,7 @@ async function serveApplications(
                  a.application_stage,
                  a.application_url, a.posting_url, a.job_id, a.location,
                  i.payload_json
-          FROM listing_actions a
+          FROM ${accountActionReadTable()} a
           LEFT JOIN internships i
             ON a.listing_type = 'internship' AND i.id = a.listing_id
           WHERE a.action = 'applied'
@@ -2121,7 +2181,7 @@ async function serveApplications(
                  a.normalized_company, a.title, a.created_at,
                  'pending' AS application_status, 'applied' AS application_stage, a.application_url,
                  a.posting_url, a.job_id, a.location, i.payload_json
-          FROM listing_actions a
+          FROM ${accountActionReadTable()} a
           LEFT JOIN internships i
             ON a.listing_type = 'internship' AND i.id = a.listing_id
           WHERE a.action = 'applied'
@@ -2174,21 +2234,21 @@ async function updateApplicationStage(
       database.exec("PRAGMA busy_timeout = 30000");
       database.exec("BEGIN IMMEDIATE");
       try {
-        ensureListingActionSchema(database);
+        ensureAccountActionSchema(database);
         const result = database.prepare(`
-          UPDATE listing_actions
+          UPDATE user_listing_actions
           SET application_stage = @stage,
               application_status = CASE
                 WHEN @stage = 'offer' THEN 'accepted'
                 WHEN @stage = 'rejected' THEN 'rejected'
                 ELSE 'pending'
               END
-          WHERE listing_key = @listingKey AND action = 'applied'
-        `).run({ listingKey, stage });
+          WHERE user_id = @userId AND listing_key = @listingKey AND action = 'applied'
+        `).run({ listingKey, stage, userId: accountActionUserId()! });
         if (Number(result.changes) === 0) throw new DashboardValidationError("Applied application not found");
         const countRows = database.prepare(`
           SELECT application_stage, COUNT(*) AS count
-          FROM listing_actions
+          FROM ${accountActionReadTable()}
           WHERE action = 'applied'
           GROUP BY application_stage
         `).all() as unknown as Array<{ application_stage: string; count: number | bigint }>;
@@ -2237,12 +2297,12 @@ function readDashboardActionMatcher(database: DatabaseSync) {
     // Rebuild from both the persisted aliases and the action context. The
     // context rebuild covers legacy rows and actions whose original listing
     // was merged or removed from the internships table.
-    return compileListingActionMatcher(readListingActionIdentities(database));
+    return compileListingActionMatcher(readListingActionIdentities(database, accountActionUserId()));
   } catch {
     try {
       // Keep old databases readable while their identity projection is being
       // created or when only the narrow projection is available.
-      return compileListingActionMatcher(readPersistedListingActionIdentities(database));
+      return compileListingActionMatcher(readPersistedListingActionIdentities(database, accountActionUserId()));
     } catch {
       return compileListingActionMatcher([]);
     }
@@ -2301,7 +2361,6 @@ function dashboardRolePassesHardFilters(
   verifiedLinkedInUrls: Set<string> | null,
   includeHistoricalPosting = false,
 ): boolean {
-  if (role.relevanceScore < MIN_LISTING_SCORE) return false;
   // A Jobright detail page is discovery metadata, never a user-facing
   // destination. Legacy rows are normalized before this check; keep the
   // guard here as a final serialization invariant.
@@ -2356,168 +2415,32 @@ function mergeLiveBoardInternships(
   storedInternships: DashboardInternship[],
   liveBoardInternships: DashboardInternship[],
 ): DashboardInternship[] {
-  const merged = [...storedInternships];
-  const byLink = new Map<string, DashboardInternship>();
-  for (const role of merged) {
-    for (const link of roleLinkKeys(role)) byLink.set(link, role);
-  }
-  for (const liveRole of liveBoardInternships) {
-    const existing = roleLinkKeys(liveRole).map((link) => byLink.get(link)).find(Boolean);
-    if (existing) {
-      existing.sources = [...new Set([...existing.sources, ...liveRole.sources])];
-      continue;
+  const roles = [...storedInternships, ...liveBoardInternships];
+  const index = new ListingIdentityIndex<DashboardInternship>();
+  const canonicalByRole = new Map<DashboardInternship, DashboardInternship>();
+  // Choose an open employer/ATS posting before a source copy, while retaining
+  // the feed's original order and the selected role's durable action key.
+  for (const role of roles.toSorted((left, right) =>
+    Number(right.availabilityStatus === "open") - Number(left.availabilityStatus === "open")
+    || internshipQuality(right) - internshipQuality(left))) {
+    const existing = index.find(role);
+    if (existing !== undefined) {
+      existing.sources = [...new Set([...existing.sources, ...role.sources])];
+      canonicalByRole.set(role, existing);
+    } else {
+      index.add(role, role);
+      canonicalByRole.set(role, role);
     }
-    merged.push(liveRole);
-    for (const link of roleLinkKeys(liveRole)) byLink.set(link, liveRole);
+  }
+  const merged: DashboardInternship[] = [];
+  const seen = new Set<DashboardInternship>();
+  for (const role of roles) {
+    const canonical = canonicalByRole.get(role)!;
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    merged.push(canonical);
   }
   return merged;
-}
-
-async function readDashboardData(databasePath: string, forceGrindRefresh = false): Promise<Record<string, unknown>> {
-  if (!existsSync(databasePath)) throw new Error(`Database not found: ${databasePath}`);
-  if (!forceGrindRefresh) startBackgroundGrindRefresh();
-  const rawGrindJobBoard = forceGrindRefresh
-    ? await readBoardSnapshot(true)
-    : grindJobBoardClient.getCachedSnapshot();
-  const verification = await readVerificationSnapshot();
-  const generatedAt = new Date().toISOString();
-  const database = new DatabaseSync(databasePath, { readOnly: true });
-  try {
-    const jobrightDestinations = readJobrightDestinationMap(database);
-    const listingActionRows = database.prepare(`
-      SELECT listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at
-      FROM listing_actions
-      ORDER BY created_at DESC, listing_key
-    `).all() as unknown as ListingActionRow[];
-    const listingActions = listingActionRows.map(toListingActionRecord);
-    const actionMatcher = readDashboardActionMatcher(database);
-    const closedCount = readClosedCount(database);
-    const hiddenCount = readHiddenCount(database);
-    const hiddenListingKeys = new Set(listingActions.map((action) => action.listingKey));
-    const appliedRoleCount = listingActionRows.filter((row) => row.action === "applied").length;
-    const heartbeatColumn = hasDatabaseColumn(database, "crawl_runs", "heartbeat_at")
-      ? "heartbeat_at"
-      : "NULL AS heartbeat_at";
-    const cancelRequestedColumn = runCancelRequestedColumn(database);
-    const runs = database.prepare(`
-      SELECT id, started_at, finished_at, status, sources_requested, sources_settled, sources_completed,
-             pages_visited, potential_postings_inspected, internships_discovered,
-             new_count, updated_count, unchanged_count, closed_count, error_message, ${cancelRequestedColumn},
-             ${heartbeatColumn}
-      FROM crawl_runs ORDER BY id DESC LIMIT 12
-    `).all() as unknown as RunRow[];
-    const latestRun = asRun(runs[0]);
-    const latestCompletedRun = asRun(database.prepare(`
-      SELECT id, started_at, finished_at, status, sources_requested, sources_settled, sources_completed,
-             pages_visited, potential_postings_inspected, internships_discovered,
-             new_count, updated_count, unchanged_count, closed_count, error_message, ${cancelRequestedColumn},
-             ${heartbeatColumn}
-      FROM crawl_runs
-      WHERE status = 'COMPLETED'
-      ORDER BY id DESC LIMIT 1
-    `).get() as unknown as RunRow | undefined);
-    const newListingKeys = new Set(readNewListingKeys(database));
-    const verifiedLinkedInUrls = verification.urls;
-    const configuredSourceUrls = new Set(readConfiguredSourceUrls(database));
-    const hiddenBoardLinks = new Set(rawGrindJobBoard.jobs
-      .filter((job) => hiddenListingKeys.has(listingActionKey("grind", job.id)))
-      .flatMap((job) => [canonicalizeUrl(job.link)]));
-    const actionContextRows = readFastActionContextRows(database);
-    const hiddenDestinationLinks = new Set([
-      ...hiddenBoardLinks,
-      ...actionContextRows.flatMap((row) => fastActionLinks(row)),
-      ...readFastHiddenInternshipLinks(database, actionContextRows),
-    ]);
-
-    const internshipRows = database.prepare(`
-      SELECT payload_json, lifecycle_status, availability_status, first_seen_at,
-             last_seen_at, last_verified_at, status_run_id, miss_count
-      FROM internships
-      ORDER BY CASE availability_status WHEN 'open' THEN 0 ELSE 1 END,
-               CAST(json_extract(payload_json, '$.relevanceScore') AS INTEGER) DESC,
-               company COLLATE NOCASE, title COLLATE NOCASE
-    `).all() as unknown as InternshipRow[];
-    const storedInternships = internshipRows.flatMap((row) => {
-      try {
-        const payload = InternshipSchema.parse(JSON.parse(row.payload_json));
-        const candidate: DashboardInternship = {
-          ...payload,
-          sources: visibleProvenanceSources(payload.sources),
-          lifecycleStatus: row.lifecycle_status,
-          availabilityStatus: row.availability_status,
-          firstSeenAt: row.first_seen_at,
-          lastSeenAt: row.last_seen_at,
-          statusRunId: row.status_run_id,
-          missCount: row.miss_count,
-        };
-        const resolved = dashboardRoleWithOriginalLinks(candidate, jobrightDestinations);
-        return resolved ? [resolved] : [];
-      } catch {
-        return [];
-      }
-    }).filter((role) => dashboardRolePassesHardFilters(
-      role,
-      dashboardRoleIsHandled(role, hiddenListingKeys, actionMatcher, hiddenDestinationLinks),
-      verifiedLinkedInUrls,
-    ));
-    const liveBoardInternships = rawGrindJobBoard.jobs
-      .map((job) => toLiveBoardInternship(job, latestCompletedRun, rawGrindJobBoard.lastSuccessfulSyncAt ?? generatedAt))
-      .filter((role) => dashboardRolePassesHardFilters(
-        role,
-        dashboardRoleIsHandled(role, hiddenListingKeys, actionMatcher, hiddenDestinationLinks),
-        verifiedLinkedInUrls,
-      ));
-    for (const role of liveBoardInternships) {
-      if (role.lifecycleStatus === "NEW") {
-        newListingKeys.add(listingActionKey("grind", role.listingId ?? role.id));
-      }
-    }
-    const internships = mergeLiveBoardInternships(storedInternships, liveBoardInternships);
-    const roleTabKeys = buildRoleTabKeys(
-      internships,
-      (role) => listingActionKey(role.listingType ?? "internship", role.listingId ?? role.id),
-    );
-    const { sources, sourceResults, failures, errors24h } = readDashboardSourceHealth(database, latestRun, latestCompletedRun, 100);
-
-    const count = (predicate: (row: { availability_status: string; lifecycle_status: string }, internship: DashboardInternship) => boolean): number => (
-      internships.reduce((total, internship) => total + (predicate({
-        availability_status: internship.availabilityStatus,
-        lifecycle_status: internship.lifecycleStatus,
-      }, internship) ? 1 : 0), 0)
-    );
-
-    return {
-      generatedAt,
-      scheduler: { enabled: true, intervalMinutes: 90, activeWindow: "24 hours (while host is awake)", service: "supervised scout scheduler" },
-      stats: {
-        total: internships.length,
-        open: count(({ availability_status }) => availability_status === "open"),
-        closed: closedCount,
-        hidden: hiddenCount,
-        unknown: count(({ availability_status }) => availability_status === "unknown"),
-        new: count(({ availability_status }, internship) => newListingKeys.has(listingActionKey(internship.listingType ?? "internship", internship.listingId ?? internship.id)) && availability_status === "open"),
-        updated: count(({ lifecycle_status, availability_status }, internship) => !newListingKeys.has(listingActionKey(internship.listingType ?? "internship", internship.listingId ?? internship.id)) && lifecycle_status === "UPDATED" && availability_status === "open"),
-        unchanged: count(({ lifecycle_status, availability_status }, internship) => !newListingKeys.has(listingActionKey(internship.listingType ?? "internship", internship.listingId ?? internship.id)) && lifecycle_status === "UNCHANGED" && availability_status === "open"),
-      },
-      latestRun,
-      latestCompletedRun,
-      newListingKeys: [...newListingKeys],
-      runs,
-      deadlineNotifications: buildClosingSoonNotifications(internships),
-      internships,
-      roleTabKeys,
-      configuredSourceCount: configuredSourceUrls.size,
-      sources,
-      sourceResults,
-      failures,
-      errors24h,
-      scan: scanPayload(latestRun, database),
-      listingActions,
-      appliedRoleCount,
-    };
-  } finally {
-    database.close();
-  }
 }
 
 function asFiniteNumber(value: number | bigint | null | undefined): number {
@@ -2538,15 +2461,20 @@ function runHeartbeatColumn(database: DatabaseSync): string {
 }
 
 const RECENT_DASHBOARD_RUN_LIMIT = 5;
+const DASHBOARD_RUN_HISTORY_LIMIT = 40;
 
-type RecentDashboardRun = Pick<RunRow, "id" | "started_at" | "finished_at" | "status" | "internships_discovered">;
+type RecentDashboardRun = Omit<Pick<RunRow, "id" | "started_at" | "finished_at" | "status" | "internships_discovered">, "status"> & {
+  status: RunRow["status"] | "TERMINATED";
+};
 
 function compactRecentDashboardRuns(runs: RunRow[], limit = RECENT_DASHBOARD_RUN_LIMIT): RecentDashboardRun[] {
   return runs.slice(0, limit).map((run) => ({
     id: run.id,
     started_at: run.started_at,
     finished_at: run.finished_at,
-    status: run.status,
+    status: run.status === "FAILED" && /terminated by user/i.test(run.error_message || "")
+      ? "TERMINATED"
+      : run.status,
     internships_discovered: run.internships_discovered,
   }));
 }
@@ -2607,8 +2535,9 @@ function readDatabaseDataVersion(database: DatabaseSync): number | null {
 }
 
 function readFastDatabaseRevisionTracker(databasePath: string): FastDatabaseRevisionTracker | null {
+  const trackerKey = `${databasePath}:${accountActionCacheKey()}`;
   const fileIdentity = fastDatabaseFileIdentity(databasePath);
-  const existing = fastDatabaseRevisionTrackers.get(databasePath);
+  const existing = fastDatabaseRevisionTrackers.get(trackerKey);
   if (existing?.fileIdentity === fileIdentity) return existing;
   if (existing) {
     try {
@@ -2616,7 +2545,7 @@ function readFastDatabaseRevisionTracker(databasePath: string): FastDatabaseRevi
     } catch {
       // The old file may already have been replaced or closed by the runtime.
     }
-    fastDatabaseRevisionTrackers.delete(databasePath);
+    fastDatabaseRevisionTrackers.delete(trackerKey);
   }
   try {
     const tracker: FastDatabaseRevisionTracker = {
@@ -2625,7 +2554,13 @@ function readFastDatabaseRevisionTracker(databasePath: string): FastDatabaseRevi
       snapshot: null,
     };
     tracker.database.exec("PRAGMA busy_timeout = 5000");
-    fastDatabaseRevisionTrackers.set(databasePath, tracker);
+    fastDatabaseRevisionTrackers.set(trackerKey, tracker);
+    while (fastDatabaseRevisionTrackers.size > 16) {
+      const oldest = fastDatabaseRevisionTrackers.keys().next().value;
+      if (oldest === undefined) break;
+      fastDatabaseRevisionTrackers.get(oldest)?.database.close();
+      fastDatabaseRevisionTrackers.delete(oldest);
+    }
     return tracker;
   } catch {
     return null;
@@ -2684,7 +2619,7 @@ function readFastDatabaseRevisionSnapshot(
                MAX(created_at) AS action_created,
                SUM(CASE WHEN action = 'cant_fit' THEN 1 ELSE 0 END) AS hidden_count,
                COUNT(CASE WHEN action = 'applied' THEN 1 END) AS applied_roles
-        FROM listing_actions
+        FROM ${accountActionReadTable()}
       `).get() as unknown as FastActionRevisionMeta;
 
       const actionMeta = revisions !== null
@@ -2742,14 +2677,14 @@ function readFastDatabaseRevisionSnapshot(
           const actionRevisionRows = database.prepare(`
             SELECT listing_key, listing_type, listing_id, action, company, normalized_company, title,
                    application_status, application_stage, application_url, posting_url, job_id, location, created_at
-            FROM listing_actions ORDER BY listing_key
+            FROM ${accountActionReadTable()} ORDER BY listing_key
           `).all() as unknown as Array<Record<string, unknown>>;
           let identityRevisionRows: Array<Record<string, unknown>> = [];
           try {
             fastDatabaseRevisionScanTestHook?.("identities");
             identityRevisionRows = database.prepare(`
               SELECT listing_key, identity_key, direct_job_ids_json
-              FROM listing_action_identities ORDER BY listing_key, identity_key
+              FROM ${accountActionReadTable(true)} ORDER BY listing_key, identity_key
             `).all();
           } catch {
             // The identity table is optional on the oldest dashboard databases.
@@ -2875,11 +2810,13 @@ function readFastVersionMetadata(
     }));
   const staleSafetyKey = sha256(JSON.stringify({
     databaseFileIdentity: revisionSnapshot.fileIdentity,
+    account: accountActionCacheKey(),
     actionRevision,
     board: { jobsRevision: boardJobsRevision, lastSuccessfulSyncAt: boardLastSuccessfulSyncAt },
     verification: { path: verification.path, revision: verification.revision },
   }));
   const contentKey = sha256(JSON.stringify({
+    account: accountActionCacheKey(),
     roles: { roleRevision, newListingRevision },
     latestCompletedRunRevision,
     actions: actionRevision,
@@ -2890,6 +2827,7 @@ function readFastVersionMetadata(
     // Include the coherent SQLite revision itself as a final invalidation
     // boundary. This covers a committed payload/provenance change even when
     // an older database writer forgot to update content_hash.
+    account: accountActionCacheKey(),
     databaseDataVersion: revisionSnapshot.dataVersion,
     // Relative labels such as "yesterday" change meaning at local midnight
     // even when the database and board are untouched.
@@ -2977,6 +2915,17 @@ function fastRoleSearchText(role: DashboardInternship): string {
     role.listingSource ?? "",
     role.sourceUrl,
     ...role.sources,
+  ].join(" ").toLocaleLowerCase();
+}
+
+function fastRolePublicSearchText(role: DashboardInternship): string {
+  return [
+    role.company,
+    role.title,
+    ...role.location,
+    ...role.technologies,
+    ...role.categories,
+    role.description,
   ].join(" ").toLocaleLowerCase();
 }
 
@@ -3122,7 +3071,7 @@ function canServeStaleFastDashboardIndex(
   options: FastDashboardIndexReadOptions,
 ): FastDashboardIndex | null {
   if (options.allowStaleDuringCatalogRefresh !== true || !versionMetadata.usesDashboardRevisionCounters) return null;
-  const cached = fastDashboardIndexCache;
+  const cached = fastDashboardIndexCache.current;
   if (!cached?.projectedIndex || cached.base.versionMetadata.staleSafetyKey !== versionMetadata.staleSafetyKey) return null;
   const oldMetadata = cached.base.versionMetadata;
   const oldBucket = cached.projectionKey?.split("|").slice(1).join("|") ?? null;
@@ -3154,7 +3103,7 @@ function projectTimedFastDashboardIndex(
     versionMetadata.contentKey,
     fastTimedProjectionBucket(relativeBase),
   ].join("|");
-  const cached = fastDashboardIndexCache;
+  const cached = fastDashboardIndexCache.current;
   if (cached?.key === cacheKey
     && cached.base === baseIndex
     && cached.projectionKey === projectionKey
@@ -3249,6 +3198,7 @@ function projectTimedFastDashboardIndex(
     sources: baseIndex.sources,
     sourceResults: baseIndex.sourceResults,
     failures: baseIndex.failures,
+    failures24h: baseIndex.failures24h,
     errors24h: baseIndex.errors24h,
     appliedRoleCount: baseIndex.appliedRoleCount,
   };
@@ -3264,9 +3214,9 @@ function projectTimedFastDashboardIndex(
       relativeBase,
     ),
   };
-  if (fastDashboardIndexCache?.key === cacheKey && fastDashboardIndexCache.base === baseIndex) {
-    fastDashboardIndexCache.projectionKey = projectionKey;
-    fastDashboardIndexCache.projectedIndex = projectedIndex;
+  if (fastDashboardIndexCache.current?.key === cacheKey && fastDashboardIndexCache.current.base === baseIndex) {
+    fastDashboardIndexCache.current.projectionKey = projectionKey;
+    fastDashboardIndexCache.current.projectedIndex = projectedIndex;
   }
   return projectedIndex;
 }
@@ -3439,6 +3389,7 @@ function fastStatusMatches(entry: FastRoleEntry, status: FastStatusFilter): bool
 function fastFilterCacheKey(index: FastDashboardIndex, query: FastRolesQuery): string {
   return [
     index.versionMetadata.contentKey,
+    dashboardEdition,
     query.view,
     query.tab,
     query.status,
@@ -3468,7 +3419,7 @@ function fastFilterAndPage(
   index: FastDashboardIndex,
   query: FastRolesQuery,
   preferences: InternshipPreferences | null = null,
-): { items: FastRoleCard[]; total: number; hasMore: boolean; nextOffset: number | null } {
+): FastFilteredPage {
   const cacheKey = query.view === "all" ? fastFilterCacheKey(index, query) : null;
   if (cacheKey) {
     const cached = fastFilteredPageCache.get(cacheKey);
@@ -3496,25 +3447,23 @@ function fastFilterAndPage(
       if (requestedLocation === null) return true;
       return entry.role.location.some((value) => value.toLocaleLowerCase().includes(requestedLocation));
     })
-    .filter((entry) => !query.search || entry.searchText.includes(query.search));
+    .filter((entry) => !query.search || (dashboardEdition === "personal"
+      ? entry.searchText
+      : fastRolePublicSearchText(entry.role)).includes(query.search));
 
   if (query.view === "matches") {
     if (!preferences) throw new Error("Completed preferences are required for the matches view.");
-    const matching = filtered
-      .map((entry) => {
-        const match = evaluateInternshipMatch(preferences, entry.role);
-        return { entry, match };
-      })
-      .filter(({ match }) => match.eligibility.status !== "not_eligible")
+    const matcher = compileMatcher(preferences);
+    const evaluations = matcher.evaluateMany(filtered.map((entry) => entry.role));
+    const evaluated = filtered.flatMap((entry, index) => {
+      const match = evaluations[index];
+      return match ? [{ entry, match }] : [];
+    });
+    const matching = evaluated
+      .filter(({ match }) => match.matched)
       .toSorted((left, right) => {
-        // The posted-date choice is a real ordering mode for every tab,
-        // including Matches. Keep match score as the deterministic tie-break
-        // so the default newest-first feed does not silently remain ranked by
-        // preferences.
-        if (query.sort === "posted") {
-          return compareFastEntries(left.entry, right.entry, query)
-            || right.match.score - left.match.score;
-        }
+        // The Matches view ranks preference fit first. The selected sort is a
+        // stable tie-breaker so a strong match is never buried by recency.
         return right.match.score - left.match.score
           || compareFastEntries(left.entry, right.entry, query);
       });
@@ -3524,6 +3473,10 @@ function fastFilterAndPage(
       items: page.map(({ entry, match }) => ({
         ...entry.card,
         matchScore: match.score,
+        matchMatched: match.matched,
+        matchStatus: match.status,
+        matchScoreVersion: match.version,
+        matchExplanation: match.explanation,
         matchReasons: match.reasons,
         matchUnknownCount: match.unknown.length,
         eligibility: match.eligibility,
@@ -3535,6 +3488,16 @@ function fastFilterAndPage(
       total: matching.length,
       hasMore: nextOffset !== null,
       nextOffset,
+      matchingDiagnostics: {
+        evaluated: matcher.diagnostics.evaluated,
+        // Match evaluations retain positive preference-fit signals for
+        // uncertain-term roles, which the Matches view can still surface.
+        userMatched: matching.length,
+        userFiltered: matcher.diagnostics.evaluated - matching.length,
+        hardExcluded: evaluated.filter(({ match }) => match.status === "excluded").length,
+        insufficientFit: evaluated.filter(({ match }) => match.status === "insufficient_fit").length,
+        uncertain: evaluated.filter(({ match }) => match.status === "recommended_with_uncertainty").length,
+      },
     };
   }
 
@@ -3795,11 +3758,11 @@ async function readFastDashboardIndexAttempt(
     const runs = readDashboardRuns(database);
     const latestRun = asRun(runs[0]);
     const cacheKey = `${databasePath}:${versionMetadata.contentKey}`;
-    if (fastDashboardIndexCache?.key === cacheKey) {
+    if (fastDashboardIndexCache.current?.key === cacheKey) {
       if (!fastDatabaseRevisionIsCurrent(databasePath, versionMetadata.databaseDataVersion, database)) {
         throw new FastSnapshotChangedError();
       }
-      const index = projectTimedFastDashboardIndex(cacheKey, fastDashboardIndexCache.base, versionMetadata, relativeBase);
+      const index = projectTimedFastDashboardIndex(cacheKey, fastDashboardIndexCache.current.base, versionMetadata, relativeBase);
       const currentIndex = {
         ...index,
         latestRun,
@@ -3814,7 +3777,7 @@ async function readFastDashboardIndexAttempt(
       return currentIndex;
     }
     const staleIndex = canServeStaleFastDashboardIndex(versionMetadata, relativeBase, options);
-    const activeBuild = fastDashboardIndexInflight.get(databasePath);
+    const activeBuild = fastDashboardIndexInflight.get(`${databasePath}:${accountActionCacheKey()}`);
     if (activeBuild) {
       if (activeBuild.key !== cacheKey) {
         if (staleIndex) {
@@ -3855,16 +3818,16 @@ async function readFastDashboardIndexAttempt(
     // its tracked promise closes the handle after final validation and handoff.
     databaseOwnedByBuild = staleIndex !== null;
     const buildPromise = (async (): Promise<FastDashboardIndexBase> => {
-      const legacySnapshot = !versionMetadata.usesDashboardRevisionCounters;
-      let legacyTransactionStarted = false;
+      let transactionStarted = false;
       let baseIndex: FastDashboardIndexBase;
       try {
-        // Legacy stores without complete trigger coverage need one consistent
-        // read snapshot across batches. Durable counters make a long snapshot
-        // unnecessary on current stores and avoid pinning crawler writes.
-        if (legacySnapshot) {
-          database.exec("BEGIN");
-          legacyTransactionStarted = true;
+        // A WAL read snapshot keeps batches coherent while ready listings are
+        // committed continuously. Readers do not block the crawler's writer.
+        database.exec("BEGIN");
+        transactionStarted = true;
+        readDashboardRuns(database, 1); // Establish the SQLite snapshot before the first yield.
+        if (!fastDatabaseRevisionIsCurrent(databasePath, versionMetadata.databaseDataVersion, database)) {
+          throw new FastSnapshotChangedError();
         }
         baseIndex = await buildFastDashboardIndexBase(
           database,
@@ -3876,12 +3839,12 @@ async function readFastDashboardIndexAttempt(
           runs,
           relativeBase,
         );
-        if (legacyTransactionStarted) {
+        if (transactionStarted) {
           database.exec("COMMIT");
-          legacyTransactionStarted = false;
+          transactionStarted = false;
         }
       } catch (error) {
-        if (legacyTransactionStarted) {
+        if (transactionStarted) {
           try {
             database.exec("ROLLBACK");
           } catch {
@@ -3893,7 +3856,12 @@ async function readFastDashboardIndexAttempt(
       const latestVerification = await readVerificationSnapshot(options.verification);
       const latestBoard = grindJobBoardClient.getCachedSnapshot();
       const latestMetadata = readFastVersionMetadata(database, latestBoard, latestVerification, databasePath, relativeBase);
-      if (latestMetadata.contentKey !== versionMetadata.contentKey
+      const catalogChanged = latestMetadata.contentKey !== versionMetadata.contentKey;
+      const canPublishCrawlSnapshot = catalogChanged
+        && options.allowStaleDuringCatalogRefresh === true
+        && versionMetadata.usesDashboardRevisionCounters
+        && latestMetadata.staleSafetyKey === versionMetadata.staleSafetyKey;
+      if ((catalogChanged && !canPublishCrawlSnapshot)
         || latestMetadata.databaseFileIdentity !== versionMetadata.databaseFileIdentity
         || (!versionMetadata.usesDashboardRevisionCounters
           && (versionMetadata.databaseDataVersion === null
@@ -3910,29 +3878,35 @@ async function readFastDashboardIndexAttempt(
         throw new FastSnapshotChangedError();
       }
       if (cacheGeneration !== fastDashboardCacheGeneration) throw new FastSnapshotChangedError();
-      const readyBase: FastDashboardIndexBase = {
-        ...baseIndex,
-        versionMetadata: latestMetadata,
-        latestRun: latestRunSnapshot,
-        runs: latestRuns,
-        ...liveState,
-      };
+      // Keep a progressing crawl's catalog paired with its own revision. The
+      // next poll can advance it again; continuous writes must not discard
+      // every completed build and leave users on the pre-crawl catalog.
+      const readyBase: FastDashboardIndexBase = canPublishCrawlSnapshot
+        ? { ...baseIndex, versionMetadata: { ...versionMetadata, isStaleProjection: true } }
+        : {
+          ...baseIndex,
+          versionMetadata: latestMetadata,
+          latestRun: latestRunSnapshot,
+          runs: latestRuns,
+          ...liveState,
+        };
       fastFilteredPageCache.clear();
-      fastDashboardIndexCache = {
+      fastDashboardIndexCache.current = {
         key: cacheKey,
         base: readyBase,
         projectionKey: null,
         projectedIndex: null,
       };
+      projectTimedFastDashboardIndex(cacheKey, readyBase, readyBase.versionMetadata, relativeBase);
       return readyBase;
     })();
     const trackedBuild = buildPromise.finally(() => {
-      if (fastDashboardIndexInflight.get(databasePath)?.promise === trackedBuild) {
-        fastDashboardIndexInflight.delete(databasePath);
+      if (fastDashboardIndexInflight.get(`${databasePath}:${accountActionCacheKey()}`)?.promise === trackedBuild) {
+        fastDashboardIndexInflight.delete(`${databasePath}:${accountActionCacheKey()}`);
       }
       if (databaseOwnedByBuild) database.close();
     });
-    fastDashboardIndexInflight.set(databasePath, { key: cacheKey, promise: trackedBuild });
+    fastDashboardIndexInflight.set(`${databasePath}:${accountActionCacheKey()}`, { key: cacheKey, promise: trackedBuild });
     if (staleIndex) {
       // Attach a handler now because this build can outlive its initiating HTTP
       // request. A later read will retry against the newest durable revision.
@@ -3960,7 +3934,7 @@ async function cachedFastDashboardIndexForDatabase(
   databasePath: string,
   options: FastDashboardIndexReadOptions,
 ): Promise<FastDashboardIndex | null> {
-  const cached = fastDashboardIndexCache;
+  const cached = fastDashboardIndexCache.current;
   if (!cached || !cached.projectedIndex || !cached.key.startsWith(`${databasePath}:`)) return null;
   if (options.allowStaleDuringCatalogRefresh !== true) return null;
   const relativeBase = options.relativeBase ?? Date.now();
@@ -4009,6 +3983,9 @@ async function readFastDashboardIndex(
 const FAST_DASHBOARD_PREWARM_TIMEOUT_MS = 15_000;
 
 async function prewarmFastDashboardIndex(databasePath: string, logLabel = "PREWARM"): Promise<boolean> {
+  if (accountActionUserId() === undefined) {
+    return accountActionScope.run({ userId: null }, () => prewarmFastDashboardIndex(databasePath, logLabel));
+  }
   if (process.env.DASHBOARD_SKIP_FAST_PREWARM === "1") return false;
   const timeoutMs = fastPrewarmTimeoutOverrideForTests ?? FAST_DASHBOARD_PREWARM_TIMEOUT_MS;
   const startedAt = Date.now();
@@ -4131,7 +4108,7 @@ function readFastActionContextRows(database: DatabaseSync): FastActionContextRow
     return database.prepare(`
       SELECT listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at,
              application_url, posting_url, job_id, location
-      FROM listing_actions
+      FROM ${accountActionReadTable()}
     `).all() as unknown as FastActionContextRow[];
   } catch {
     // The action schema is created lazily for old databases. A detail read
@@ -4148,14 +4125,14 @@ async function readFastActionContextRowsCooperatively(database: DatabaseSync): P
     const firstPage = database.prepare(`
       SELECT rowid AS row_id, listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at,
              application_url, posting_url, job_id, location
-      FROM listing_actions
+      FROM ${accountActionReadTable()}
       ORDER BY rowid
       LIMIT @limit
     `);
     const nextPage = database.prepare(`
       SELECT rowid AS row_id, listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at,
              application_url, posting_url, job_id, location
-      FROM listing_actions
+      FROM ${accountActionReadTable()}
       WHERE rowid > @after
       ORDER BY rowid
       LIMIT @limit
@@ -4231,7 +4208,7 @@ async function readFastDashboardActionProjection(
     const actionRows = await readFastActionContextRowsCooperatively(database);
     dashboardPerfLog("roles.build.actionRows", actionRowsStarted, { rows: actionRows.length });
     const matcherStarted = dashboardPerfStart();
-    const actionMatcher = await readListingActionMatcherCooperatively(database, FAST_ACTION_CONTEXT_BATCH_SIZE);
+    const actionMatcher = await readListingActionMatcherCooperatively(database, FAST_ACTION_CONTEXT_BATCH_SIZE, accountActionUserId());
     dashboardPerfLog("roles.build.actionMatcher", matcherStarted, { rows: actionRows.length });
     const hiddenListingKeys = new Set(actionRows.map((row) => row.listing_key));
     const hiddenLinksStarted = dashboardPerfStart();
@@ -4300,7 +4277,7 @@ function readFastDetailActionRevision(
   try {
     identityRows = database.prepare(`
       SELECT listing_key, identity_key, direct_job_ids_json
-      FROM listing_action_identities ORDER BY listing_key, identity_key
+      FROM ${accountActionReadTable(true)} ORDER BY listing_key, identity_key
     `).all();
   } catch {
     // Legacy databases may not have the persisted identity projection.
@@ -4457,7 +4434,9 @@ async function readFastRoleDetailAttempt(
     }
     const version = sha256(JSON.stringify({
       databaseDataVersion: runRevision.dataVersion,
+      account: accountActionCacheKey(),
       role: roleVersion,
+      edition: dashboardEdition,
       latestRun,
       scanState,
       actions: actionVersion,
@@ -4496,6 +4475,7 @@ async function readFastRoleDetail(
 }
 
 interface ClosingSoonNotificationCache {
+  edition: "personal" | "public";
   contentKey: string;
   roles: DeadlineNotificationRole[];
   notifications: ClosingSoonNotification[];
@@ -4514,28 +4494,37 @@ const closingSoonNotificationInflight = new Map<string, {
 }>();
 const FAST_CHANGES_NOTIFICATION_BATCH_SIZE = 64;
 
+function closingSoonNotificationCacheKey(
+  databasePath: string,
+  edition: "personal" | "public",
+): string {
+  return `${databasePath}\u0000${edition}`;
+}
+
 async function readStoredClosingSoonNotifications(
   database: DatabaseSync,
   databasePath: string,
+  edition: "personal" | "public",
   contentKey: string,
   versionMetadata: FastVersionMetadata,
   now = Date.now(),
   requestKey = contentKey,
 ): Promise<ClosingSoonNotificationRead> {
-  const cached = closingSoonNotificationCache.get(databasePath);
-  if (cached?.contentKey === contentKey) {
+  const cacheKey = closingSoonNotificationCacheKey(databasePath, edition);
+  const cached = closingSoonNotificationCache.get(cacheKey);
+  if (cached?.edition === edition && cached.contentKey === contentKey) {
     if (now < cached.nextRefreshAt) return { notifications: cached.notifications, pendingCache: null };
     const notifications = buildClosingSoonNotifications(cached.roles, now);
     const nextRefreshAt = nextClosingSoonRefreshAt(cached.roles, now) ?? Number.POSITIVE_INFINITY;
-    closingSoonNotificationCache.set(databasePath, { ...cached, notifications, nextRefreshAt });
+    closingSoonNotificationCache.set(cacheKey, { ...cached, notifications, nextRefreshAt });
     return { notifications, pendingCache: null };
   }
 
-  const activeBuild = closingSoonNotificationInflight.get(databasePath);
+  const activeBuild = closingSoonNotificationInflight.get(cacheKey);
   if (activeBuild) {
     if (activeBuild.contentKey === requestKey) return activeBuild.promise;
     await activeBuild.promise.catch(() => undefined);
-    return readStoredClosingSoonNotifications(database, databasePath, contentKey, versionMetadata, now, requestKey);
+    return readStoredClosingSoonNotifications(database, databasePath, edition, contentKey, versionMetadata, now, requestKey);
   }
 
   const buildPromise = (async (): Promise<ClosingSoonNotificationRead> => {
@@ -4625,15 +4614,15 @@ async function readStoredClosingSoonNotifications(
     const nextRefreshAt = nextClosingSoonRefreshAt(roles, now) ?? Number.POSITIVE_INFINITY;
     return {
       notifications,
-      pendingCache: { contentKey, roles, notifications, nextRefreshAt },
+      pendingCache: { edition, contentKey, roles, notifications, nextRefreshAt },
     };
   })();
-  closingSoonNotificationInflight.set(databasePath, { contentKey: requestKey, promise: buildPromise });
+  closingSoonNotificationInflight.set(cacheKey, { contentKey: requestKey, promise: buildPromise });
   try {
     return await buildPromise;
   } finally {
-    if (closingSoonNotificationInflight.get(databasePath)?.promise === buildPromise) {
-      closingSoonNotificationInflight.delete(databasePath);
+    if (closingSoonNotificationInflight.get(cacheKey)?.promise === buildPromise) {
+      closingSoonNotificationInflight.delete(cacheKey);
     }
   }
 }
@@ -4650,6 +4639,7 @@ type FastChangesRead = {
 
 async function readFastChangesAttempt(databasePath: string): Promise<FastChangesRead> {
   const attemptStarted = dashboardPerfStart();
+  const edition = dashboardEdition;
   if (!existsSync(databasePath)) throw new Error(`Database not found: ${databasePath}`);
   const cacheGeneration = fastDashboardCacheGeneration;
   const verification = await readVerificationSnapshot();
@@ -4661,6 +4651,7 @@ async function readFastChangesAttempt(databasePath: string): Promise<FastChanges
     const notificationRead = await readStoredClosingSoonNotifications(
       database,
       databasePath,
+      edition,
       initialMetadata.contentKey,
       initialMetadata,
       Date.now(),
@@ -4690,10 +4681,11 @@ async function readFastChangesAttempt(databasePath: string): Promise<FastChanges
     }
     dashboardPerfLog("changes.dynamicHydration", attemptStarted);
     if (notificationRead.pendingCache && cacheGeneration === fastDashboardCacheGeneration) {
-      closingSoonNotificationCache.set(databasePath, notificationRead.pendingCache);
+      const cacheKey = closingSoonNotificationCacheKey(databasePath, edition);
+      closingSoonNotificationCache.set(cacheKey, notificationRead.pendingCache);
       if (closingSoonNotificationCache.size > 16) {
         const oldestKey = closingSoonNotificationCache.keys().next().value;
-        if (oldestKey !== undefined && oldestKey !== databasePath) closingSoonNotificationCache.delete(oldestKey);
+        if (oldestKey !== undefined && oldestKey !== cacheKey) closingSoonNotificationCache.delete(oldestKey);
       }
     }
     return {
@@ -4735,13 +4727,21 @@ function fastRolesEtag(index: FastDashboardIndex, query: FastRolesQuery): string
   // values can move to a new posting day at midnight.
   const { relativeBase, ...stableQuery } = query;
   const dayKey = dashboardLocalDayKey(relativeBase);
-  return `"${sha256(JSON.stringify({ version: index.versionMetadata.version, query: stableQuery, relativeDay: dayKey }))}"`;
+  return `"${sha256(JSON.stringify({
+    version: index.versionMetadata.version,
+    edition: dashboardEdition,
+    query: stableQuery,
+    relativeDay: dayKey,
+    failureIds24h: dashboardEdition === "personal" ? index.failures24h.map((failure) => failure.id) : [],
+  }))}"`;
 }
 
 function fastChangesEtag(changes: FastChangesRead): string {
   return `"${sha256(JSON.stringify({
     version: changes.metadata.version,
-    errors24h: changes.errors24h,
+    edition: dashboardEdition,
+    errors24h: dashboardEdition === "personal" ? changes.errors24h : null,
+    failureIds24h: dashboardEdition === "personal" ? changes.failures24h.map((failure) => failure.id) : [],
     deadlineNotifications: changes.deadlineNotifications.map((notification) => [notification.id, notification.deadlineAt]),
   }))}"`;
 }
@@ -4799,9 +4799,11 @@ async function serveFastRoles(
       page = fastFilterAndPage(index, query, matchAccess?.preferences ?? null);
     }
     const etag = fastRolesEtag(index, query);
+    const privateDashboardView = dashboardEdition === "personal";
     const payload = {
       contract: "dashboard.roles.v1",
       version: index.versionMetadata.version,
+      contentVersion: index.versionMetadata.contentKey,
       generatedAt: index.generatedAt,
       view: query.view,
       filters: {
@@ -4828,17 +4830,23 @@ async function serveFastRoles(
       stats: index.stats,
       counts: index.tabCounts,
       appliedRoleCount: index.appliedRoleCount,
-      configuredSourceCount: index.sources.filter((source) => source.isConfigured).length,
-      scan: index.scan,
-      status: index.scan,
-      latestRun: index.latestRun,
-      latestCompletedRun: index.latestCompletedRun,
-      runs: compactRecentDashboardRuns(index.runs),
       deadlineNotifications: index.deadlineNotifications,
-      sources: index.sources,
-      sourceResults: index.sourceResults,
-      failures: index.failures,
-      errors24h: index.errors24h,
+      capabilities: {
+        crawlerAdministration: resolveScoutEditionConfig(dashboardEdition).features.crawlerAdministration,
+      },
+      ...(privateDashboardView ? {
+        scan: index.scan,
+        status: index.scan,
+        latestRun: index.latestRun,
+        latestCompletedRun: index.latestCompletedRun,
+        runs: compactRecentDashboardRuns(index.runs),
+        configuredSourceCount: index.sources.filter((source) => source.isConfigured).length,
+        sources: index.sources,
+        sourceResults: index.sourceResults,
+        failures: index.failures,
+        failures24h: index.failures24h,
+        errors24h: index.errors24h,
+      } : {}),
       pagination: {
         limit: query.limit,
         offset: query.offset,
@@ -4846,7 +4854,8 @@ async function serveFastRoles(
         hasMore: page.hasMore,
         nextOffset: page.nextOffset,
       },
-      items: page.items,
+      items: page.items.map(roleForBrowserClientForTests),
+      ...(page.matchingDiagnostics ? { matchingDiagnostics: page.matchingDiagnostics } : {}),
       ...(matchAccess ? {
         preferences: {
           remote: matchAccess.preferences.remote,
@@ -4900,7 +4909,10 @@ async function serveFastRoleDetail(
       contract: "dashboard.role.v1",
       version: detail.version,
       generatedAt: detail.generatedAt,
-      role,
+      role: roleForBrowserClientForTests(role),
+      capabilities: {
+        crawlerAdministration: resolveScoutEditionConfig(dashboardEdition).features.crawlerAdministration,
+      },
     }, {
       request,
       etag,
@@ -4920,26 +4932,34 @@ async function serveFastChanges(
   try {
     const changes = await readFastChanges(databasePath);
     const etag = fastChangesEtag(changes);
+    const privateDashboardView = dashboardEdition === "personal";
     jsonResponse(response, 200, {
       contract: "dashboard.changes.v1",
       version: changes.metadata.version,
+      contentVersion: changes.metadata.contentKey,
       changed: !etagMatches(request, etag),
-      status: changes.scan,
-      scan: changes.scan,
-      latestRun: changes.latestRun,
-      latestCompletedRun: changes.latestCompletedRun,
-      runs: changes.runs,
       deadlineNotifications: changes.deadlineNotifications,
       appliedRoleCount: changes.metadata.appliedRoleCount,
       hiddenCount: changes.metadata.hiddenCount,
       stats: {
         hidden: changes.metadata.hiddenCount,
       },
-      board: changes.board,
-      sources: changes.sources,
-      sourceResults: changes.sourceResults,
-      failures: changes.failures,
-      errors24h: changes.errors24h,
+      capabilities: {
+        crawlerAdministration: resolveScoutEditionConfig(dashboardEdition).features.crawlerAdministration,
+      },
+      ...(privateDashboardView ? {
+        status: changes.scan,
+        scan: changes.scan,
+        latestRun: changes.latestRun,
+        latestCompletedRun: changes.latestCompletedRun,
+        runs: changes.runs,
+        board: changes.board,
+        sources: changes.sources,
+        sourceResults: changes.sourceResults,
+        failures: changes.failures,
+        failures24h: changes.failures24h,
+        errors24h: changes.errors24h,
+      } : {}),
     }, {
       request,
       etag,
@@ -4947,6 +4967,43 @@ async function serveFastChanges(
     });
   } catch (error) {
     jsonResponse(response, 503, { error: error instanceof Error ? error.message : String(error) }, { request });
+  }
+}
+
+async function serveFastRunHistory(
+  request: IncomingMessage,
+  response: ServerResponse,
+  databasePath: string,
+  requestUrl: URL,
+): Promise<void> {
+  let database: DatabaseSync | null = null;
+  try {
+    const requestedLimit = requestUrl.searchParams.has("limit")
+      ? Number(requestUrl.searchParams.get("limit"))
+      : DASHBOARD_RUN_HISTORY_LIMIT;
+    if (!Number.isSafeInteger(requestedLimit) || requestedLimit < 1) {
+      throw new DashboardValidationError("limit must be a positive integer");
+    }
+    const limit = Math.min(requestedLimit, DASHBOARD_RUN_HISTORY_LIMIT);
+    if (!existsSync(databasePath)) throw new Error(`Database not found: ${databasePath}`);
+    database = new DatabaseSync(databasePath, { readOnly: true });
+    const rows = readDashboardRuns(database, limit + 1);
+    const payload = {
+      contract: "dashboard.runs.v1",
+      runs: compactRecentDashboardRuns(rows.slice(0, limit), limit),
+      hasMore: rows.length > limit,
+    };
+    const etag = `"${sha256(JSON.stringify(payload))}"`;
+    jsonResponse(response, 200, payload, {
+      request,
+      etag,
+      cacheControl: "private, no-cache, must-revalidate",
+    });
+  } catch (error) {
+    const status = error instanceof DashboardValidationError ? 400 : 503;
+    jsonResponse(response, status, { error: error instanceof Error ? error.message : String(error) }, { request });
+  } finally {
+    database?.close();
   }
 }
 
@@ -5105,7 +5162,7 @@ async function recordListingAction(
         // Keep schema creation/migration under the same write reservation as
         // the action.  A dashboard request can race a scout constructor or
         // another action request on a legacy database.
-        ensureListingActionSchema(database);
+        ensureAccountActionSchema(database);
         let internship: Internship | null = null;
         if (listingType === "internship") {
           const row = database.prepare("SELECT payload_json FROM internships WHERE id = @id").get({ id: listingId }) as unknown as { payload_json: string } | undefined;
@@ -5119,34 +5176,33 @@ async function recordListingAction(
         }
         const resolvedActionContext = mergeListingActionContext(actionContext, internship);
         database.prepare(`
-          INSERT INTO listing_actions (
-            listing_key, listing_type, listing_id, action, company, normalized_company, title,
+          INSERT INTO user_listing_actions (
+            user_id, listing_key, listing_type, listing_id, action, company, normalized_company, title,
             application_url, posting_url, job_id, location, created_at
           ) VALUES (
-            @listingKey, @listingType, @listingId, @action, @company, @normalizedCompany, @title,
+            @userId, @listingKey, @listingType, @listingId, @action, @company, @normalizedCompany, @title,
             @applicationUrl, @postingUrl, @jobId, @location, @createdAt
           )
-          -- Deployed legacy databases may key this table by
-          -- (user_id, listing_key), so the upsert must accept either schema.
-          ON CONFLICT DO UPDATE SET
+          ON CONFLICT (user_id, listing_key) DO UPDATE SET
             action = excluded.action,
             company = excluded.company,
             normalized_company = excluded.normalized_company,
             title = excluded.title,
-            application_url = COALESCE(excluded.application_url, listing_actions.application_url),
-            posting_url = COALESCE(excluded.posting_url, listing_actions.posting_url),
-            job_id = COALESCE(excluded.job_id, listing_actions.job_id),
-            location = COALESCE(excluded.location, listing_actions.location),
+            application_url = COALESCE(excluded.application_url, user_listing_actions.application_url),
+            posting_url = COALESCE(excluded.posting_url, user_listing_actions.posting_url),
+            job_id = COALESCE(excluded.job_id, user_listing_actions.job_id),
+            location = COALESCE(excluded.location, user_listing_actions.location),
             application_status = CASE
-              WHEN excluded.action = 'applied' AND listing_actions.action <> 'applied' THEN 'pending'
-              ELSE listing_actions.application_status
+              WHEN excluded.action = 'applied' AND user_listing_actions.action <> 'applied' THEN 'pending'
+              ELSE user_listing_actions.application_status
             END,
             application_stage = CASE
-              WHEN excluded.action = 'applied' AND listing_actions.action <> 'applied' THEN 'applied'
-              ELSE listing_actions.application_stage
+              WHEN excluded.action = 'applied' AND user_listing_actions.action <> 'applied' THEN 'applied'
+              ELSE user_listing_actions.application_stage
             END,
             created_at = excluded.created_at
         `).run({
+          userId: accountActionUserId()!,
           listingKey,
           listingType,
           listingId,
@@ -5160,10 +5216,10 @@ async function recordListingAction(
           location: resolvedActionContext.location ?? null,
           createdAt,
         });
-        replaceListingActionIdentities(database, listingKey, listingType, listingId, company, title, internship, resolvedActionContext);
+        replaceListingActionIdentities(database, listingKey, listingType, listingId, company, title, internship, resolvedActionContext, accountActionUserId()!);
         const countRow = database.prepare(`
           SELECT COUNT(*) AS count
-          FROM listing_actions
+          FROM ${accountActionReadTable()}
           WHERE action = 'applied'
         `).get() as unknown as { count: number | bigint };
         const listingAction: ListingActionRecord = {
@@ -5215,14 +5271,15 @@ function undoListingAction(
       database.exec("PRAGMA busy_timeout = 30000");
       database.exec("BEGIN IMMEDIATE");
       try {
-        ensureListingActionSchema(database);
+        ensureAccountActionSchema(database);
         const result = database.prepare(`
-          DELETE FROM listing_actions WHERE listing_key = @listingKey
-        `).run({ listingKey });
-        database.prepare("DELETE FROM listing_action_identities WHERE listing_key = @listingKey").run({ listingKey });
+          DELETE FROM user_listing_actions WHERE user_id = @userId AND listing_key = @listingKey
+        `).run({ listingKey, userId: accountActionUserId()! });
+        database.prepare("DELETE FROM user_listing_action_identities WHERE user_id = @userId AND listing_key = @listingKey")
+          .run({ listingKey, userId: accountActionUserId()! });
         const countRow = database.prepare(`
           SELECT COUNT(*) AS count
-          FROM listing_actions
+          FROM ${accountActionReadTable()}
           WHERE action = 'applied'
         `).get() as unknown as { count: number | bigint };
         const payload = {
@@ -5359,7 +5416,9 @@ function startConfiguredSourceScan(
     if (queued) {
       setImmediate(() => {
         try {
-          startConfiguredSourceScan(queued.databasePath, queued.settings, "refresh", queued.sources);
+          // Resolve the current profile only when queued work launches. The
+          // active scan keeps its original immutable settings snapshot.
+          startConfiguredSourceScan(queued.databasePath, dashboardSettings, "refresh", queued.sources);
         } catch (error) {
           scanState = {
             ...scanState,
@@ -5403,7 +5462,75 @@ export function startDashboardStartupScanForTests(databasePath: string, settings
   return startDashboardStartupScan(databasePath, settings);
 }
 
+async function serveDevelopmentEditionSwitcher(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<void> {
+  if (!canUseEditionSwitcher(request)) {
+    jsonResponse(response, 404, { error: "Not found" }, { request, cacheControl: "no-store" });
+    return;
+  }
+  if (request.method === "GET" || request.method === "HEAD") {
+    jsonResponse(response, 200, { enabled: true, edition: dashboardEdition }, { request, cacheControl: "no-store" });
+    return;
+  }
+  if (request.method !== "POST") {
+    jsonResponse(response, 405, { error: "Use GET or POST for the local edition switcher" }, { request, cacheControl: "no-store" });
+    return;
+  }
+  try {
+    const rawBody = await readRequestBody(request);
+    const body = JSON.parse(rawBody) as unknown;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      throw new DashboardValidationError("Send an edition object.");
+    }
+    let edition: "personal" | "public";
+    try {
+      edition = parseEditionSwitcherValue((body as Record<string, unknown>).edition);
+    } catch (error) {
+      throw new DashboardValidationError(error instanceof Error ? error.message : String(error));
+    }
+    setDashboardEdition(edition);
+    jsonResponse(response, 200, { ok: true, enabled: true, edition }, { request, cacheControl: "no-store" });
+  } catch (error) {
+    const status = error instanceof DashboardValidationError || error instanceof SyntaxError ? 400 : 503;
+    jsonResponse(response, status, { error: error instanceof Error ? error.message : String(error) }, {
+      request,
+      cacheControl: "no-store",
+    });
+  }
+}
+
 export async function requestHandler(request: IncomingMessage, response: ServerResponse, databasePath: string): Promise<void> {
+  const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+  if (pathname === "/api/dev/edition") {
+    await serveDevelopmentEditionSwitcher(request, response);
+    return;
+  }
+  if (dashboardEdition === "public"
+    && ["/api/sources", "/api/refresh", "/api/scan", "/api/terminate", "/api/runs"].includes(pathname)) {
+    jsonResponse(response, 404, { error: "Not found" }, { request, cacheControl: "no-store" });
+    return;
+  }
+  if (pathname === "/api/data") {
+    jsonResponse(response, 410, { error: "The full dashboard snapshot has been retired. Use /api/roles and /api/changes." },
+      { request, cacheControl: "private, no-store" });
+    return;
+  }
+  const privateRoute = pathname === "/api/applications" || pathname === "/api/applications/status" || pathname === "/api/actions";
+  const accountRead = privateRoute || pathname === "/api/roles" || pathname.startsWith("/api/roles/")
+    || pathname === "/api/status" || pathname === "/api/changes" || pathname === "/api/runs";
+  if (!accountRead) {
+    await accountActionScope.run({ userId: null }, () => dispatchDashboardRequest(request, response, databasePath));
+    return;
+  }
+  const access = await dashboardAccountAccess(request, response, privateRoute);
+  if (!access) return;
+  await accountActionScope.run({ userId: access.userId, ...(access.context ? { responseState: access.context.responseState } : {}) },
+    () => dispatchDashboardRequest(request, response, databasePath));
+}
+
+async function dispatchDashboardRequest(request: IncomingMessage, response: ServerResponse, databasePath: string): Promise<void> {
   const requestStarted = dashboardPerfStart();
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
   const pathname = requestUrl.pathname;
@@ -5422,6 +5549,14 @@ export async function requestHandler(request: IncomingMessage, response: ServerR
       return;
     }
     await serveFastChanges(request, response, databasePath);
+    return;
+  }
+  if (pathname === "/api/runs") {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      jsonResponse(response, 405, { error: "Only GET is supported for crawl run history" }, { request });
+      return;
+    }
+    await serveFastRunHistory(request, response, databasePath, requestUrl);
     return;
   }
   if (pathname === "/api/roles") {
@@ -5583,24 +5718,6 @@ export async function requestHandler(request: IncomingMessage, response: ServerR
     invalidateDashboardDataCache();
     return;
   }
-  if (pathname === "/api/data") {
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      jsonResponse(response, 405, { error: "Only GET is supported for /api/data" }, { request });
-      return;
-    }
-    try {
-      if (dashboardDataCache !== null && dashboardDataCache.postingAgeWindow === dashboardPostingAgeKey()) {
-        startBackgroundDashboardDataRefresh(databasePath);
-        jsonResponseBody(response, 200, dashboardDataCache.body, { request });
-        return;
-      }
-      const payload = await startDashboardDataRefresh(databasePath);
-      jsonResponse(response, 200, payload, { request });
-    } catch (error) {
-      jsonResponse(response, 503, { error: error instanceof Error ? error.message : String(error) }, { request });
-    }
-    return;
-  }
   if (pathname === "/api/terminate") {
     if (request.method !== "POST") {
       jsonResponse(response, 405, { error: "Use POST to terminate the current crawl" }, { request });
@@ -5673,7 +5790,7 @@ const port = Number.parseInt(cliValue("--port", process.env.DASHBOARD_PORT ?? "4
 const host = cliValue("--host", process.env.DASHBOARD_HOST ?? "127.0.0.1");
 const databasePath = resolve(cliValue("--database", process.env.SCOUT_DATABASE_PATH ?? DEFAULT_DATABASE));
 const outputDirectory = resolve(cliValue("--output-dir", process.env.SCOUT_OUTPUT_DIR ?? dirname(databasePath)));
-const dashboardSettings = resolveSettings({ databasePath, outputDirectory });
+let dashboardSettings = resolveSettings({ databasePath, outputDirectory, edition: dashboardEdition });
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error("--port must be between 1 and 65535");
 

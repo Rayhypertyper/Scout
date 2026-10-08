@@ -61,6 +61,63 @@ function modelResume(): Omit<ResumeProfileCandidate, "ownerEmail"> {
   return candidate as Omit<ResumeProfileCandidate, "ownerEmail">;
 }
 
+interface ResumeFact {
+  value: string;
+  quote: string;
+}
+
+function fact(value: string, quote = value): ResumeFact {
+  return { value, quote };
+}
+
+function modelEvidenceResume(
+  candidate = modelResume(),
+  quoteFor: (path: string, value: string) => string = (_path, value) => value,
+): { model: Record<string, unknown>; source: string } {
+  const quotes: string[] = [];
+  const evidence = (path: string, value: string): ResumeFact => {
+    const quote = quoteFor(path, value);
+    quotes.push(quote);
+    return fact(value, quote);
+  };
+  const model = {
+    name: evidence("name", candidate.name),
+    contact: candidate.contact.map((item, index) => evidence(`contact ${index + 1}`, item)),
+    education: candidate.education.map((entry, index) => ({
+      title: evidence(`education ${index + 1} title`, entry.title),
+      subtitle: evidence(`education ${index + 1} subtitle`, entry.subtitle),
+      date: evidence(`education ${index + 1} date`, entry.date),
+      bullets: entry.bullets.map((item, bulletIndex) => evidence(`education ${index + 1} bullet ${bulletIndex + 1}`, item)),
+    })),
+    experience: candidate.experience.map((entry, index) => ({
+      title: evidence(`experience ${index + 1} title`, entry.title),
+      subtitle: evidence(`experience ${index + 1} subtitle`, entry.subtitle),
+      date: evidence(`experience ${index + 1} date`, entry.date),
+      bullets: entry.bullets.map((item, bulletIndex) => evidence(`experience ${index + 1} bullet ${bulletIndex + 1}`, item)),
+    })),
+    projects: candidate.projects.map((entry, index) => ({
+      title: evidence(`project ${index + 1} title`, entry.title),
+      subtitle: evidence(`project ${index + 1} subtitle`, entry.subtitle),
+      date: evidence(`project ${index + 1} date`, entry.date),
+      bullets: entry.bullets.map((item, bulletIndex) => evidence(`project ${index + 1} bullet ${bulletIndex + 1}`, item)),
+    })),
+    awards: candidate.awards.map((item, index) => evidence(`award ${index + 1}`, item)),
+    skills: candidate.skills.map((group, index) => ({
+      label: evidence(`skill group ${index + 1} label`, group.label),
+      items: group.items.map((item, itemIndex) => evidence(`skill group ${index + 1} item ${itemIndex + 1}`, item)),
+    })),
+  };
+  return { model, source: quotes.join("\n") };
+}
+
+function textUpload(filename: string, source: string) {
+  return {
+    filename,
+    contentType: "text/plain",
+    data: Buffer.from(source).toString("base64"),
+  };
+}
+
 interface CapturedResponse {
   statusCode: number;
   headers: Record<string, string | string[]>;
@@ -140,7 +197,7 @@ afterEach(() => {
 describe("resume profile import and storage", () => {
   it("extracts reviewable text candidates, removes unsupported values, and leaves the profile inactive", async () => {
     const { directory, databasePath } = tempDatabase();
-    generate.mockResolvedValue(modelResume());
+    generate.mockResolvedValue(modelEvidenceResume().model);
     try {
       const imported = await importResumeCandidate({
         filename: "../../Morgan.txt",
@@ -153,9 +210,15 @@ describe("resume profile import and storage", () => {
       expect(imported.warnings.join(" ")).toContain("full text");
       expect(imported.warnings.join(" ")).toContain("Experience 1 bullet 2");
       expect(readResumeProfile(databasePath, "student-a")).toBeNull();
-      const requestPayload = generate.mock.calls[0]?.[0] as { schema: { properties?: Record<string, unknown> }; parts: Array<{ text?: string }> } | undefined;
+      const requestPayload = generate.mock.calls[0]?.[0] as {
+        systemInstruction: string;
+        schema: { properties?: Record<string, unknown> };
+        parts: Array<{ text?: string }>;
+      } | undefined;
       expect(requestPayload?.parts[0]?.text).toContain("untrusted source text");
-      expect(requestPayload?.schema.properties?.name).toEqual({ type: "string" });
+      expect(requestPayload?.systemInstruction).toContain("quote");
+      expect(requestPayload?.schema.properties?.name).toMatchObject({ type: "object" });
+      expect(imported.resume).not.toHaveProperty("evidence");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
@@ -169,10 +232,314 @@ describe("resume profile import and storage", () => {
       contentType: "application/pdf",
       data: pdf.toString("base64"),
     }, "student@example.com");
-    const payload = generate.mock.calls[0]?.[0] as { parts: Array<{ type: string; filename?: string; file_data?: string }> } | undefined;
+    const payload = generate.mock.calls[0]?.[0] as {
+      parts: Array<{ type: string; filename?: string; file_data?: string }>;
+      schema: { properties?: Record<string, unknown> };
+    } | undefined;
     expect(payload?.parts[1]).toEqual({ type: "input_file", filename: "Morgan.pdf", file_data: `data:application/pdf;base64,${pdf.toString("base64")}` });
+    expect(payload?.schema.properties?.name).toEqual({ type: "string" });
     expect(imported.warnings.join(" ")).toContain("full uploaded PDF is sent");
     expect(imported.warnings.join(" ")).toContain("not saved");
+  });
+
+  it("keeps extracted value and quote text within local resume field limits", async () => {
+    const oversizedValue = "A".repeat(2_001);
+    const model = modelEvidenceResume().model;
+    model.name = fact(oversizedValue, oversizedValue);
+    generate.mockResolvedValue(model);
+
+    await expect(importResumeCandidate(textUpload("long.txt", oversizedValue), "candidate@example.invalid"))
+      .rejects.toMatchObject({ status: 422 });
+  });
+
+  it("bounds exact source quote text in the local importer", async () => {
+    const oversizedQuote = `Name: Morgan Lee\n${"x".repeat(4_000)}`;
+    const model = modelEvidenceResume().model;
+    model.name = fact("Morgan Lee", oversizedQuote);
+    generate.mockResolvedValue(model);
+
+    await expect(importResumeCandidate(textUpload("long-quote.txt", oversizedQuote), "candidate@example.invalid"))
+      .rejects.toMatchObject({ status: 422 });
+  });
+
+  it("accepts exact wrapped quotes for normalized title, date, and bullet variants", async () => {
+    const source = [
+      "Riley Chen",
+      "riley@example.com",
+      "University of Waterloo",
+      "Computer Science",
+      "2024 - 2028",
+      "Software Developer\nNokia",
+      "Nokia",
+      "May 2025 - Aug 2025",
+      "Built develop-\nment tools",
+      "Improved open-\nsource libraries",
+      "Dean's List",
+      "Languages TypeScript C++",
+      "Skills:\nPython",
+    ].join("\n");
+    const candidate: Omit<ResumeProfileCandidate, "ownerEmail"> = {
+      name: "Riley Chen",
+      contact: ["riley@example.com"],
+      education: [{ title: "University of Waterloo", subtitle: "Computer Science", date: "2024–2028", bullets: [] }],
+      experience: [{
+        title: "Software Developer, Nokia",
+        subtitle: "Nokia",
+        date: "May 2025 – Aug 2025",
+        bullets: ["Built development tools", "Improved open-source libraries"],
+      }],
+      projects: [],
+      awards: ["Dean's List"],
+      skills: [{ label: "Languages", items: ["TypeScript", "C++", "Python"] }],
+    };
+    const evidence = modelEvidenceResume(candidate);
+    const evidenceModel = evidence.model as {
+      education: Array<{ date: ResumeFact }>;
+      experience: Array<{ title: ResumeFact; date: ResumeFact; bullets: ResumeFact[] }>;
+    };
+    evidenceModel.education[0]!.date = fact("2024–2028", "2024 - 2028");
+    evidenceModel.experience[0]!.title = fact("Software Developer, Nokia", "Software Developer\nNokia");
+    evidenceModel.experience[0]!.date = fact("May 2025 – Aug 2025", "May 2025 - Aug 2025");
+    evidenceModel.experience[0]!.bullets = [
+      fact("Built development tools", "Built develop-\nment tools"),
+      fact("Improved open-source libraries", "Improved open-\nsource libraries"),
+    ];
+    const evidenceSkills = evidence.model.skills as Array<{ items: ResumeFact[] }>;
+    evidenceSkills[0]!.items[2] = fact("Python", "Skills: Python");
+    generate.mockResolvedValue(evidence.model);
+
+    const imported = await importResumeCandidate(textUpload("Riley.txt", source), "riley@example.com");
+
+    expect(imported.resume.education[0]?.date).toBe("2024–2028");
+    expect(imported.resume.experience).toEqual(candidate.experience);
+    expect(imported.resume.skills).toEqual([{ label: "Languages", items: ["TypeScript", "C++"] }]);
+    expect(imported.warnings.join(" ")).toContain("skill group 1 item 3");
+  });
+
+  it("drops fabricated or unrelated facts while retaining an incomplete entry and supported sibling fields", async () => {
+    const source = [
+      "Morgan Lee",
+      "morgan@example.com",
+      "Northstar Labs",
+      "Software Intern",
+      "Summer 2025",
+      "Built TypeScript services",
+      "Dean's List",
+      "Languages TypeScript",
+      "morgan+jobs@example.com",
+      "Handled 1.2 million requests",
+      "Reduced latency by 12%",
+      "Signed a +$2.5M contract",
+      "Built C++ and C# clients with .NET, Node.js, and R",
+      "Built a Q# quantum simulator",
+      "F#",
+    ].join("\n");
+    const candidate: Omit<ResumeProfileCandidate, "ownerEmail"> = {
+      name: "Jordan Kim",
+      contact: ["morgan@example.com", "morgan@example.com"],
+      education: [],
+      experience: [{
+        title: "Senior Software Manager",
+        subtitle: "Northstar Labs",
+        date: "Summer 2025",
+        bullets: [
+          "Built TypeScript services",
+          "Increased throughput to 1.3 million requests",
+          "Reduced latency by 120%",
+          "Signed a $2.5M contract",
+          "Built C and C# clients with .NET, Node.js, and R",
+          "Built a Q quantum simulator",
+        ],
+      }],
+      projects: [],
+      awards: ["National Tech Prize"],
+      skills: [{ label: "Languages", items: ["Rust", "F", "F#"] }],
+    };
+    const model = modelEvidenceResume(candidate).model;
+    model.name = fact("Jordan Kim", "Morgan Lee");
+    model.contact = [
+      fact("morgan@example.com", "morgan+jobs@example.com"),
+      fact("morgan@example.com", "not present in this resume"),
+    ];
+    const experience = (model.experience as Array<Record<string, unknown>>)[0]!;
+    experience.title = fact("Senior Software Manager", "Software Intern");
+    experience.date = fact("Summer 2025", "Summer 2025");
+    experience.bullets = [
+      fact("Built TypeScript services", "Built TypeScript services"),
+      fact("Increased throughput to 1.3 million requests", "Handled 1.2 million requests"),
+      fact("Reduced latency by 120%", "Reduced latency by 12%"),
+      fact("Signed a $2.5M contract", "Signed a +$2.5M contract"),
+      fact("Built C and C# clients with .NET, Node.js, and R", "Built C++ and C# clients with .NET, Node.js, and R"),
+      fact("Built a Q quantum simulator", "Built a Q# quantum simulator"),
+    ];
+    model.awards = [fact("National Tech Prize", "Dean's List")];
+    model.skills = [{
+      label: fact("Languages"),
+      items: [fact("Rust", "TypeScript"), fact("F", "F#"), fact("F#", "F#")],
+    }];
+    generate.mockResolvedValue(model);
+
+    const imported = await importResumeCandidate(textUpload("Morgan.txt", source), "signed-in@example.com");
+
+    expect(imported.resume.ownerEmail).toBe("signed-in@example.com");
+    expect(imported.resume.name).toBe("");
+    expect(imported.resume.contact).toEqual([]);
+    expect(imported.resume.experience).toEqual([{
+      title: "",
+      subtitle: "Northstar Labs",
+      date: "Summer 2025",
+      bullets: ["Built TypeScript services"],
+    }]);
+    expect(imported.resume.awards).toEqual([]);
+    expect(imported.resume.skills).toEqual([{ label: "Languages", items: ["F#"] }]);
+    expect(imported.warnings.join(" ")).toContain("name");
+    expect(imported.warnings.join(" ")).toContain("Experience 1 title");
+    expect(imported.warnings.join(" ")).not.toContain("Experience 1 dates");
+    expect(imported.warnings.join(" ")).toContain("contact details");
+    expect(imported.warnings.join(" ")).toContain("award 1");
+    expect(imported.warnings.join(" ")).toContain("skill group 1 item 1");
+    expect(imported.warnings.join(" ")).toContain("skill group 1 item 2");
+  });
+
+  it("preserves URL path case when matching an exact source quote", async () => {
+    const source = [
+      "Morgan Lee",
+      "(https://example.com/cv)",
+      "https://example.com/cv(2)",
+      "https://example.com/cv/2024-2028",
+    ].join("\n");
+    const literalUrl = "https://example.com/cv";
+    const parenthesizedPathUrl = "https://example.com/cv(2)";
+    const literalDatePathUrl = "https://example.com/cv/2024-2028";
+    const candidate: Omit<ResumeProfileCandidate, "ownerEmail"> = {
+      name: "Morgan Lee",
+      contact: [
+        literalUrl,
+        "https://example.com/CV",
+        "HTTPS://EXAMPLE.COM/cv",
+        parenthesizedPathUrl,
+        literalUrl,
+        literalDatePathUrl,
+        "https://example.com/cv/2024–2028",
+      ],
+      education: [],
+      experience: [],
+      projects: [],
+      awards: [],
+      skills: [],
+    };
+    const model = modelEvidenceResume(candidate).model;
+    model.contact = [
+      fact(literalUrl, `(${literalUrl})`),
+      fact("https://example.com/CV", "(https://example.com/cv)"),
+      fact("HTTPS://EXAMPLE.COM/cv", literalUrl),
+      fact(parenthesizedPathUrl, parenthesizedPathUrl),
+      fact(literalUrl, parenthesizedPathUrl),
+      fact(literalDatePathUrl, literalDatePathUrl),
+      fact("https://example.com/cv/2024–2028", literalDatePathUrl),
+    ];
+    generate.mockResolvedValue(model);
+
+    const imported = await importResumeCandidate(textUpload("Morgan.txt", source), "morgan@example.com");
+
+    expect(imported.resume.contact).toEqual([literalUrl, "HTTPS://EXAMPLE.COM/cv", parenthesizedPathUrl, literalDatePathUrl]);
+    expect(imported.warnings.join(" ")).toContain("contact detail 2");
+    expect(imported.warnings.join(" ")).toContain("contact detail 5");
+    expect(imported.warnings.join(" ")).toContain("contact detail 7");
+  });
+
+  it("preserves currency and Unicode minus signs when checking numeric quote tokens", async () => {
+    const source = [
+      "Morgan Lee",
+      "Software Intern",
+      "Northstar Labs",
+      "Summer 2025",
+      "Amount: ¥500",
+      "Amount: 500",
+      "Cost: −2.5",
+      "Change: 5%",
+      "Change: −5%",
+    ].join("\n");
+    const candidate: Omit<ResumeProfileCandidate, "ownerEmail"> = {
+      name: "Morgan Lee",
+      contact: [],
+      education: [],
+      experience: [{
+        title: "Software Intern",
+        subtitle: "Northstar Labs",
+        date: "Summer 2025",
+        bullets: [
+          "Amount: 500",
+          "Amount: ¥500",
+          "Amount: ¥500",
+          "Cost: 2.5",
+          "Change: 5%",
+          "Change: −5%",
+          "Change: −5%",
+        ],
+      }],
+      projects: [],
+      awards: [],
+      skills: [],
+    };
+    const model = modelEvidenceResume(candidate).model;
+    const experience = (model.experience as Array<Record<string, unknown>>)[0]!;
+    experience.bullets = [
+      fact("Amount: 500", "Amount: ¥500"),
+      fact("Amount: ¥500", "Amount: 500"),
+      fact("Amount: ¥500", "Amount: ¥500"),
+      fact("Cost: 2.5", "Cost: −2.5"),
+      fact("Change: 5%", "Change: −5%"),
+      fact("Change: −5%", "Change: 5%"),
+      fact("Change: −5%", "Change: −5%"),
+    ];
+    generate.mockResolvedValue(model);
+
+    const imported = await importResumeCandidate(textUpload("Morgan.txt", source), "morgan@example.com");
+
+    expect(imported.resume.experience[0]?.bullets).toEqual(["Amount: ¥500", "Change: −5%"]);
+    expect(imported.warnings.join(" ")).toContain("Experience 1 bullet 1");
+    expect(imported.warnings.join(" ")).toContain("Experience 1 bullet 2");
+    expect(imported.warnings.join(" ")).toContain("Experience 1 bullet 4");
+    expect(imported.warnings.join(" ")).toContain("Experience 1 bullet 5");
+    expect(imported.warnings.join(" ")).toContain("Experience 1 bullet 6");
+  });
+
+  it("strips raw quote evidence from the API candidate and the saved profile", async () => {
+    const { directory, databasePath } = tempDatabase();
+    vi.stubEnv("NODE_ENV", "test");
+    vi.stubEnv("SUPABASE_URL", "");
+    vi.stubEnv("AUTH_SITE_URL", "");
+    const labeled = modelEvidenceResume(modelResume(), (path, value) => `${path}: ${value}`);
+    generate.mockResolvedValue(labeled.model);
+    try {
+      const result = response();
+      await handleResumeProfileRequest(request("/api/resume-profile/import", {
+        method: "POST",
+        headers: { origin: "http://localhost", "content-type": "application/json" },
+        body: textUpload("Morgan.txt", labeled.source),
+      }), result as unknown as ServerResponse, databasePath);
+      expect(result.statusCode).toBe(200);
+      const serializedResponse = result.body.toString("utf8");
+      expect(serializedResponse).not.toContain("name: Morgan Lee");
+      expect(serializedResponse).not.toContain("contact 1: morgan@example.com");
+      const returnedCandidate = (parsed(result).resume as ResumeProfileCandidate);
+      expect(returnedCandidate).not.toHaveProperty("evidence");
+      expect(returnedCandidate.name).toBe("Morgan Lee");
+
+      const save = response();
+      await handleResumeProfileRequest(request("/api/resume-profile", {
+        method: "PUT",
+        headers: { origin: "http://localhost", "content-type": "application/json" },
+        body: { resume: returnedCandidate, filename: "Morgan.txt" },
+      }), save as unknown as ServerResponse, databasePath);
+      expect(save.statusCode).toBe(200);
+      const stored = readResumeProfile(databasePath, "local:private");
+      expect(stored?.resume).not.toHaveProperty("evidence");
+      expect(JSON.stringify(stored)).not.toContain("name: Morgan Lee");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("rejects unsupported files, malformed base64, fake PDFs, and oversize uploads before calling OpenAI", async () => {
@@ -216,7 +583,7 @@ describe("resume profile API", () => {
     vi.stubEnv("NODE_ENV", "test");
     vi.stubEnv("SUPABASE_URL", "");
     vi.stubEnv("AUTH_SITE_URL", "");
-    generate.mockResolvedValue(modelResume());
+    generate.mockResolvedValue(modelEvidenceResume().model);
     try {
       const upload = request("/api/resume-profile/import", {
         method: "POST",

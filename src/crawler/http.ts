@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 
 import type { ScoutSettings } from "../domain/schemas.js";
+import { isRetiredInternListSource, RETIRED_INTERN_LIST_MESSAGE } from "../config/retiredSources.js";
 import { sha256 } from "../utils/hash.js";
 import { redactSensitiveText, redactSensitiveUrl, canonicalizeUrl } from "../utils/url.js";
 import { Semaphore, sleep } from "../utils/async.js";
@@ -14,6 +15,8 @@ import { composeAbortSignals, currentSourceAbortSignal, throwIfAborted } from ".
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 const MAX_CACHE_BODY_BYTES = 12_000_000;
+const MAX_MEMORY_CACHE_CHARS = 16_000_000;
+const MAX_OPT_IN_RESPONSE_BODY_BYTES = 48_000_000;
 const MAX_CIRCUIT_STATE_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 const MAX_REDIRECTS = 10;
 /** Public boards whose HTML/XML responses routinely exceed the default
@@ -104,10 +107,14 @@ interface HttpRequestOptions {
   timeoutMs?: number;
   /** Optional per-request retry budget for a feed-specific recovery policy. */
   retryCount?: number;
+  /** Opt-in hard UTF-8 byte limit for unusually large structured responses. */
+  maxResponseBodyBytes?: number;
   /** Serve an expired successful cache entry after a transient transport failure. */
   staleIfError?: boolean;
   /** Explicit owner-authorized source exception; all ordinary requests keep robots enforcement. */
   respectRobots?: boolean;
+  /** Exact URL origins that may be contacted after a redirect from this request. */
+  allowedRedirectOrigins?: readonly string[];
 }
 
 interface AuthorizedFetchResult {
@@ -141,6 +148,88 @@ export function retryDelayMs(attempt: number, retryAfterMs: number | null, baseD
   return Math.min(300_000, Math.max(exponential, retryAfterMs ?? 0) + jitter);
 }
 
+function normalizeOptInResponseBodyLimit(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value)) throw new RangeError("maxResponseBodyBytes must be a finite number");
+  return Math.max(1, Math.min(MAX_OPT_IN_RESPONSE_BODY_BYTES, Math.floor(value)));
+}
+
+function normalizeAllowedRedirectOrigins(origins: readonly string[] | undefined): string[] | undefined {
+  if (origins === undefined) return undefined;
+  const normalized = new Set<string>();
+  for (const value of origins) {
+    let origin: URL;
+    try {
+      origin = new URL(value);
+    } catch {
+      throw new TypeError(`Invalid allowed redirect origin: ${value}`);
+    }
+    if ((origin.protocol !== "http:" && origin.protocol !== "https:")
+      || origin.username
+      || origin.password
+      || origin.pathname !== "/"
+      || origin.search
+      || origin.hash) {
+      throw new TypeError(`Allowed redirect values must be bare HTTP(S) origins: ${value}`);
+    }
+    normalized.add(origin.origin);
+  }
+  return [...normalized].sort((left, right) => left.localeCompare(right));
+}
+
+function redirectScopeIdentity(origins: readonly string[] | undefined): string {
+  return origins === undefined ? "unrestricted" : JSON.stringify(origins);
+}
+
+async function readBoundedResponseText(response: Response, maxBytes: number, attempt: number): Promise<string> {
+  const responseHeaders = headerMap(response.headers);
+  const declaredLength = Number(responseHeaders["content-length"]);
+  const contentEncoding = responseHeaders["content-encoding"]?.trim().toLocaleLowerCase();
+  const tooLarge = (): HttpRequestError => new HttpRequestError(
+    `HTTP response exceeds the ${maxBytes}-byte response safety limit`,
+    response.status,
+    attempt,
+    "response_too_large",
+    null,
+    responseHeaders,
+  );
+  // Fetch may transparently decompress a response body. In that case the
+  // content-length header describes compressed bytes, so count the decoded
+  // stream below instead of rejecting from the header.
+  if ((!contentEncoding || contentEncoding === "identity") && Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    await response.body?.cancel().catch(() => undefined);
+    throw tooLarge();
+  }
+  if (!response.body) return "";
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      if (byteLength + value.byteLength > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw tooLarge();
+      }
+      chunks.push(value);
+      byteLength += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
 export class HttpClient {
   private readonly globalSemaphore: Semaphore;
   private readonly domainSemaphores = new Map<string, Semaphore>();
@@ -148,6 +237,7 @@ export class HttpClient {
   private readonly circuits = new Map<string, CircuitEntry>();
   private readonly pressure = new Map<string, { delayMs: number; strikes: number }>();
   private readonly cacheEntries = new Map<string, CacheEntry>();
+  private memoryCacheChars = 0;
   /** Share duplicate requests within one source, but never make one source's
    * abort signal cancel a sibling source's copy of the same request. */
   private readonly inFlight = new Map<string, InFlightRequestMap>();
@@ -174,21 +264,29 @@ export class HttpClient {
     this.ready = this.initialize();
   }
 
-  public async get(url: string, options: Pick<HttpRequestOptions, "headers" | "cache" | "perHostDelayMs" | "timeoutMs" | "retryCount" | "staleIfError" | "respectRobots"> = {}): Promise<HttpResponseSnapshot> {
+  public async get(url: string, options: Pick<HttpRequestOptions, "headers" | "cache" | "perHostDelayMs" | "timeoutMs" | "retryCount" | "staleIfError" | "respectRobots" | "allowedRedirectOrigins"> = {}): Promise<HttpResponseSnapshot> {
     throwIfAborted(this.activeSignal());
     await this.ready;
     throwIfAborted(this.activeSignal());
     const requestedUrl = canonicalizeUrl(url);
     const requestHeaders = new Headers(options.headers);
+    const allowedRedirectOrigins = normalizeAllowedRedirectOrigins(options.allowedRedirectOrigins);
+    const redirectIdentity = redirectScopeIdentity(allowedRedirectOrigins);
     // Include caller-provided header values in the de-duplication key. This
     // prevents an authenticated GitHub request from sharing a public request
     // already in flight for the same URL.
-    const requestKey = `GET\n${requestedUrl}\nrobots=${options.respectRobots === false ? "off" : "on"}\n${[...requestHeaders.entries()].toSorted(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${key}:${value}`).join("\n")}`;
+    const requestKey = `GET\n${requestedUrl}\nrobots=${options.respectRobots === false ? "off" : "on"}\nredirect-origins=${redirectIdentity}\n${[...requestHeaders.entries()].toSorted(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${key}:${value}`).join("\n")}`;
     const ownerSignal = currentSourceAbortSignal();
     const previous = this.inFlight.get(requestKey)?.get(ownerSignal);
     if (previous && !ownerSignal?.aborted) return previous;
     if (previous) this.inFlight.get(requestKey)?.delete(ownerSignal);
-    const operation = this.requestWithRobots(requestedUrl, options, requestHeaders);
+    const operation = this.requestWithRobots(requestedUrl, {
+      ...options,
+      ...(allowedRedirectOrigins === undefined ? {} : {
+        allowedRedirectOrigins,
+        cacheKey: `${requestedUrl}\nredirect-origins=${redirectIdentity}`,
+      }),
+    }, requestHeaders);
     const shared = operation.finally(() => {
       const owners = this.inFlight.get(requestKey);
       if (owners?.get(ownerSignal) === shared) {
@@ -203,15 +301,19 @@ export class HttpClient {
   }
 
   /** POST JSON through the same bounded, cached, retrying transport as GET. */
-  public async postJson(url: string, body: unknown, options: Pick<HttpRequestOptions, "headers" | "cache" | "perHostDelayMs" | "timeoutMs" | "retryCount" | "respectRobots"> = {}): Promise<HttpResponseSnapshot> {
+  public async postJson(url: string, body: unknown, options: Pick<HttpRequestOptions, "headers" | "cache" | "perHostDelayMs" | "timeoutMs" | "retryCount" | "respectRobots" | "maxResponseBodyBytes" | "allowedRedirectOrigins"> = {}): Promise<HttpResponseSnapshot> {
     throwIfAborted(this.activeSignal());
     await this.ready;
     throwIfAborted(this.activeSignal());
     const requestedUrl = canonicalizeUrl(url);
     const serializedBody = JSON.stringify(body);
+    const maxResponseBodyBytes = normalizeOptInResponseBodyLimit(options.maxResponseBodyBytes);
+    const allowedRedirectOrigins = normalizeAllowedRedirectOrigins(options.allowedRedirectOrigins);
+    const redirectIdentity = redirectScopeIdentity(allowedRedirectOrigins);
     const requestHeaders = new Headers(options.headers);
     requestHeaders.set("content-type", requestHeaders.get("content-type") ?? "application/json");
-    const requestKey = `POST\n${requestedUrl}\nrobots=${options.respectRobots === false ? "off" : "on"}\n${serializedBody}\n${[...requestHeaders.entries()].toSorted(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${key}:${value}`).join("\n")}`;
+    const limitIdentity = maxResponseBodyBytes === undefined ? "" : `response-limit=${maxResponseBodyBytes}\n`;
+    const requestKey = `POST\n${requestedUrl}\nrobots=${options.respectRobots === false ? "off" : "on"}\nredirect-origins=${redirectIdentity}\n${limitIdentity}${serializedBody}\n${[...requestHeaders.entries()].toSorted(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${key}:${value}`).join("\n")}`;
     const ownerSignal = currentSourceAbortSignal();
     const previous = this.inFlight.get(requestKey)?.get(ownerSignal);
     if (previous && !ownerSignal?.aborted) return previous;
@@ -220,7 +322,9 @@ export class HttpClient {
       ...options,
       method: "POST",
       body: serializedBody,
-      cacheKey: `${requestedUrl}\n${serializedBody}`,
+      ...(maxResponseBodyBytes === undefined ? {} : { maxResponseBodyBytes }),
+      ...(allowedRedirectOrigins === undefined ? {} : { allowedRedirectOrigins }),
+      cacheKey: `${requestedUrl}\n${serializedBody}${maxResponseBodyBytes === undefined ? "" : `\nresponse-limit=${maxResponseBodyBytes}`}${allowedRedirectOrigins === undefined ? "" : `\nredirect-origins=${redirectIdentity}`}`,
     }, requestHeaders);
     const shared = operation.finally(() => {
       const owners = this.inFlight.get(requestKey);
@@ -266,9 +370,16 @@ export class HttpClient {
     options: HttpRequestOptions,
     callerHeaders: Headers,
   ): Promise<HttpResponseSnapshot> {
+    this.rejectRetiredSource(requestedUrl);
     const respectRobots = options.respectRobots !== false;
     const policy = respectRobots ? await this.policyFor(requestedUrl) : null;
     return this.requestInternal(requestedUrl, options, callerHeaders, policy?.crawlDelayMs ?? null, respectRobots);
+  }
+
+  private rejectRetiredSource(url: string): void {
+    if (isRetiredInternListSource(url)) {
+      throw new HttpRequestError(RETIRED_INTERN_LIST_MESSAGE, null, 0, "source_retired");
+    }
   }
 
   private async policyFor(value: string): Promise<RobotsPolicySnapshot | null> {
@@ -371,7 +482,7 @@ export class HttpClient {
             // sum remains bounded by the staged budgets and is short enough
             // to isolate a stalled origin from unrelated queue workers.
             signal: this.fetchSignal(requestTimeoutMs),
-          }, attempt, options.perHostDelayMs ?? this.settings.perHostDelayMs, respectRobots);
+          }, attempt, options.perHostDelayMs ?? this.settings.perHostDelayMs, respectRobots, options.allowedRedirectOrigins);
           const response = fetched.response;
           const responseHeaders = headerMap(response.headers);
           const retryAfterMs = parseRetryAfterHeader(responseHeaders["retry-after"]);
@@ -405,7 +516,10 @@ export class HttpClient {
             throw new HttpRequestError(message, response.status, attempt, "not_found", null, responseHeaders);
           }
 
-          const body = (await response.text()).slice(0, MAX_CACHE_BODY_BYTES);
+          const responseBodyLimitBytes = options.maxResponseBodyBytes ?? MAX_CACHE_BODY_BYTES;
+          const body = options.maxResponseBodyBytes === undefined
+            ? (await response.text()).slice(0, MAX_CACHE_BODY_BYTES)
+            : await readBoundedResponseText(response, responseBodyLimitBytes, attempt);
           if (!response.ok) {
             this.profiler?.recordSpan("http_fetch", performance.now() - fetchStartedAt, { url: requestedUrl, domain, status: "error" }, "error");
             const message = `HTTP ${response.status}`;
@@ -450,7 +564,9 @@ export class HttpClient {
           if (error instanceof HttpRequestError) {
             lastError = error;
             if (
-              error.errorType === "access_denied"
+              error.errorType === "source_retired"
+              || error.errorType === "response_too_large"
+              || error.errorType === "access_denied"
               || error.errorType === "not_found"
               || error.errorType === "circuit_open"
               || error.errorType === "robots_disallowed"
@@ -493,6 +609,7 @@ export class HttpClient {
     attempt: number,
     configuredDelayMs: number,
     respectRobots: boolean,
+    allowedRedirectOrigins?: readonly string[],
   ): Promise<AuthorizedFetchResult> {
     let currentUrl = initialUrl;
     let currentMethod = init.method ?? "GET";
@@ -551,6 +668,21 @@ export class HttpClient {
           null,
           headerMap(response.headers),
         );
+      }
+      if (allowedRedirectOrigins !== undefined && !allowedRedirectOrigins.includes(new URL(nextUrl).origin)) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new HttpRequestError(
+          "HTTP redirect target is outside the explicitly allowed origins",
+          response.status,
+          attempt,
+          "redirect_error",
+          null,
+          headerMap(response.headers),
+        );
+      }
+      if (isRetiredInternListSource(nextUrl)) {
+        await response.body?.cancel().catch(() => undefined);
+        this.rejectRetiredSource(nextUrl);
       }
       const policy = robotsResource || !respectRobots ? null : await this.policyFor(nextUrl);
       const nextDomain = new URL(nextUrl).hostname.toLocaleLowerCase();
@@ -670,14 +802,18 @@ export class HttpClient {
 
   private async readCache(path: string): Promise<CacheEntry | null> {
     const inMemory = this.cacheEntries.get(path);
-    if (inMemory) return inMemory;
+    if (inMemory) {
+      this.cacheEntries.delete(path);
+      this.cacheEntries.set(path, inMemory);
+      return inMemory;
+    }
     try {
       const value = JSON.parse(await readFile(path, "utf8")) as CacheEntry;
       if (!value.url || typeof value.body !== "string" || !value.storedAt) return null;
       // Redirects are valid cache entries, but a malformed entry must never be
       // reused for a different request key.
       new URL(value.url);
-      this.cacheEntries.set(path, value);
+      this.rememberCacheEntry(path, value);
       return value;
     } catch {
       return null;
@@ -685,11 +821,27 @@ export class HttpClient {
   }
 
   private async writeCache(path: string, value: CacheEntry): Promise<void> {
-    this.cacheEntries.set(path, value);
+    this.rememberCacheEntry(path, value);
     try {
       await writeFile(path, JSON.stringify(value), "utf8");
     } catch (error) {
       this.logger.debug("CACHE", `Could not write HTTP cache entry: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private rememberCacheEntry(path: string, value: CacheEntry): void {
+    const previous = this.cacheEntries.get(path);
+    if (previous) this.memoryCacheChars -= previous.body.length;
+    this.cacheEntries.delete(path);
+    if (value.body.length <= MAX_MEMORY_CACHE_CHARS) {
+      this.cacheEntries.set(path, value);
+      this.memoryCacheChars += value.body.length;
+    }
+    while (this.memoryCacheChars > MAX_MEMORY_CACHE_CHARS) {
+      const oldest = this.cacheEntries.entries().next().value;
+      if (!oldest) break;
+      this.cacheEntries.delete(oldest[0]);
+      this.memoryCacheChars -= oldest[1].body.length;
     }
   }
 

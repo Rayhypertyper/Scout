@@ -27,6 +27,10 @@ describe("URL normalization", () => {
     expect(extractJobId("https://acme.wd5.myworkdayjobs.com/jobs/job/Toronto/Intern_R26_4907")).toBe("R26_4907");
     expect(isAtsUrl("https://simplify.jobs/p/example/job")).toBe(false);
     expect(isAggregatorUrl("https://simplify.jobs/p/example/job")).toBe(true);
+    expect(isAggregatorUrl("https://www.intern-list.com/swe-intern-list/example")).toBe(true);
+    expect(isAggregatorUrl("https://intern-list.com.example/jobs/1")).toBe(false);
+    expect(isAggregatorUrl("https://www.dreamworkhq.com/job/25c4865e-7ceb-47dd-9997-de9b5b5f179d")).toBe(true);
+    expect(isAggregatorUrl("https://dreamworkhq.com.example/job/12345")).toBe(false);
     expect(isCompanyLandingUrl("https://www.dreamworkhq.com/c/southstatebank.com")).toBe(true);
     expect(isCompanyLandingUrl("https://www.dreamworkhq.com/job/613e0503-940a-456d-b9b1-c01ee630c494")).toBe(false);
     expect(isJobrightUrl("https://jobright.ai/minisites-jobs/intern/us/swe?embed=true")).toBe(true);

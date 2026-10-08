@@ -9,14 +9,53 @@ import type {
 } from "./schema.js";
 
 export interface MatchEvaluation {
-  /** Legacy matcher fields remain stable for ranking/filter consumers. */
+  /** Eligibility remains the legacy hard compatibility signal. */
   eligible: boolean;
+  /** A positive preference fit, separate from eligibility evidence. */
+  matched: boolean;
+  /** Versioned user-facing matching result. */
+  status: "recommended" | "recommended_with_uncertainty" | "insufficient_fit" | "excluded";
+  version: "matching-v2";
   score: number;
   reasons: string[];
   incompatibilities: string[];
   unknown: string[];
+  scoreBreakdown: MatchScoreBreakdown;
+  explanation: MatchExplanation;
   /** Pure, versioned criterion-level eligibility result. */
   eligibility: EligibilityEvaluation;
+}
+
+export interface MatchScoreBreakdown {
+  roleCategory: number;
+  technology: number;
+  term: number;
+  location: number;
+  eligibility: number;
+  relevance: number;
+  freshness: number;
+  total: number;
+}
+
+export interface MatchExplanation {
+  hardExclusions: string[];
+  preferenceMismatches: string[];
+  uncertainty: string[];
+  insufficientFit: string[];
+}
+
+export interface CompiledMatcherDiagnostics {
+  evaluated: number;
+  /** Roles with positive fit that also pass confirmed hard eligibility checks. */
+  userMatched: number;
+  userFiltered: number;
+}
+
+export interface CompiledMatcher {
+  evaluate(role: Internship): MatchEvaluation;
+  evaluateMany(roles: readonly Internship[]): MatchEvaluation[];
+  matches(role: Internship): boolean;
+  readonly diagnostics: CompiledMatcherDiagnostics;
 }
 
 export interface RankedInternship {
@@ -59,7 +98,37 @@ function roleCountries(role: Internship): Set<PreferenceCountry> {
   }).filter((value): value is PreferenceCountry => value !== null));
 }
 
-function termEvaluation(preferences: InternshipPreferences, role: Internship, incompatibilities: string[], unknown: string[]): number {
+interface CompiledPreferenceSets {
+  readonly terms: Set<string>;
+  readonly termSeasons: Set<string>;
+  readonly termYears: Set<number>;
+  readonly selectedCountries: Set<PreferenceCountry>;
+  readonly preferredCities: Set<string>;
+  readonly selectedCategories: Set<string>;
+  readonly selectedTechnologies: Set<string>;
+}
+
+function compilePreferenceSets(preferences: InternshipPreferences): CompiledPreferenceSets {
+  return {
+    terms: new Set(preferences.terms.map(({ term, year }) => `${term}:${year}`)),
+    termSeasons: new Set(preferences.terms.map(({ term }) => term)),
+    termYears: new Set(preferences.terms.map(({ year }) => year)),
+    selectedCountries: new Set([
+      ...preferences.countries,
+      ...preferences.cities.map(({ country }) => country),
+    ]),
+    preferredCities: new Set(preferences.cities.map(({ name, country }) => `${country}:${normalizedText(name)}`)),
+    selectedCategories: new Set(preferences.roleCategories),
+    selectedTechnologies: new Set(preferences.technologies.map((value) => normalizedText(value))),
+  };
+}
+
+function termEvaluation(
+  sets: CompiledPreferenceSets,
+  role: Internship,
+  incompatibilities: string[],
+  unknown: string[],
+): number {
   const season = normalizedSeason(role.internshipTerm) ?? normalizedSeason(role.title);
   const year = normalizedYear(role.internshipYear) ?? normalizedYear(role.title);
   if (season === null && year === null) {
@@ -69,36 +138,40 @@ function termEvaluation(preferences: InternshipPreferences, role: Internship, in
   if (season === null || year === null) {
     unknown.push("The posting does not name a complete internship term.");
   }
-  const exact = preferences.terms.some((term) => term.term === season && term.year === year);
+  const exact = sets.terms.has(`${season}:${year}`);
   if (season !== null && year !== null && !exact) {
     incompatibilities.push(`The posting is for ${season} ${year}, outside your selected terms.`);
     return 0;
   }
-  if (season !== null && !preferences.terms.some((term) => term.term === season)) {
+  if (season !== null && !sets.termSeasons.has(season)) {
     incompatibilities.push(`The posting’s ${season} term is outside your selected terms.`);
     return 0;
   }
-  if (year !== null && !preferences.terms.some((term) => term.year === year)) {
+  if (year !== null && !sets.termYears.has(year)) {
     incompatibilities.push(`The posting’s ${year} term is outside your selected years.`);
     return 0;
   }
   return exact ? 30 : 14;
 }
 
-function remoteScopeCompatible(role: Internship, preferences: InternshipPreferences): boolean {
+function remoteScopeCompatible(role: Internship, sets: CompiledPreferenceSets): boolean {
   const scopes = new Set(role.normalizedLocations.filter(({ remote }) => remote).map(({ remoteScope }) => remoteScope));
   if (scopes.size === 0 || scopes.has(null) || scopes.has("unspecified") || scopes.has("worldwide")) return true;
-  const selectedCountries = new Set([
-    ...preferences.countries,
-    ...preferences.cities.map(({ country }) => country),
-  ]);
+  const selectedCountries = sets.selectedCountries;
   if (selectedCountries.size === 0) return true;
   if (scopes.has("north-america")) return true;
   return (scopes.has("canada") && selectedCountries.has("canada"))
     || (scopes.has("usa") && selectedCountries.has("united_states"));
 }
 
-function locationEvaluation(preferences: InternshipPreferences, role: Internship, incompatibilities: string[], unknown: string[], reasons: string[]): number {
+function locationEvaluation(
+  preferences: InternshipPreferences,
+  sets: CompiledPreferenceSets,
+  role: Internship,
+  incompatibilities: string[],
+  unknown: string[],
+  reasons: string[],
+): number {
   const locations = role.normalizedLocations;
   const hasReliableLocation = locations.some(({ city, country, remote }) => Boolean(city || country || remote));
   if (!hasReliableLocation) {
@@ -106,11 +179,8 @@ function locationEvaluation(preferences: InternshipPreferences, role: Internship
     return 0;
   }
   let best = 0;
-  const selectedCountries = new Set([
-    ...preferences.countries,
-    ...preferences.cities.map(({ country }) => country),
-  ]);
-  const preferredCities = new Set(preferences.cities.map(({ name, country }) => `${country}:${normalizedText(name)}`));
+  const selectedCountries = sets.selectedCountries;
+  const preferredCities = sets.preferredCities;
   const hasUnknownLocation = locations.some((location) => {
     if (location.remote) return false;
     const mappedCountry = countryKey(location.country)
@@ -124,7 +194,7 @@ function locationEvaluation(preferences: InternshipPreferences, role: Internship
       best = Math.max(best, 30);
     }
     if (country && selectedCountries.has(country)) best = Math.max(best, 20);
-    if (preferences.remote && (location.remote || role.remoteStatus === "remote") && remoteScopeCompatible(role, preferences)) {
+    if (preferences.remote && (location.remote || role.remoteStatus === "remote") && remoteScopeCompatible(role, sets)) {
       best = Math.max(best, 24);
     }
     // A remote posting with a broad/unknown scope is still a plausible fit for
@@ -135,7 +205,7 @@ function locationEvaluation(preferences: InternshipPreferences, role: Internship
       best = Math.max(best, 16);
     }
   }
-  if (best === 0 && preferences.remote && role.remoteStatus === "remote" && remoteScopeCompatible(role, preferences)) best = 24;
+  if (best === 0 && preferences.remote && role.remoteStatus === "remote" && remoteScopeCompatible(role, sets)) best = 24;
   if (best === 0) {
     if (hasUnknownLocation) {
       unknown.push("The posting’s location metadata cannot be mapped to a supported country.");
@@ -253,27 +323,39 @@ function authorizationEvaluation(preferences: InternshipPreferences, role: Inter
   return score;
 }
 
-function softPreferenceScore(preferences: InternshipPreferences, role: Internship, reasons: string[]): number {
-  const selectedCategories = new Set(preferences.roleCategories);
-  const categoryOverlap = role.categories.filter((category) => selectedCategories.has(category));
+function softPreferenceScore(
+  sets: CompiledPreferenceSets,
+  role: Internship,
+  reasons: string[],
+): { total: number; roleCategory: number; technology: number; relevance: number; freshness: number } {
+  const categoryOverlap = role.categories.filter((category) => sets.selectedCategories.has(category));
   const broadSoftwareOverlap = categoryOverlap.length === 0
-    && selectedCategories.has("swe")
+    && sets.selectedCategories.has("swe")
     && role.categories.some((category) => ["frontend", "backend", "fullstack", "mobile", "qa", "devops", "cloud"].includes(category));
   const categoryScore = Math.min(36, categoryOverlap.length * 12 + (broadSoftwareOverlap ? 6 : 0));
   if (categoryOverlap.length > 0) reasons.push(`${categoryOverlap.length} preferred role ${categoryOverlap.length === 1 ? "category" : "categories"}`);
   else if (broadSoftwareOverlap) reasons.push("Software engineering overlap");
 
-  const selectedTechnologies = new Set(preferences.technologies.map((value) => normalizedText(value)));
-  const technologyOverlap = role.technologies.filter((technology) => selectedTechnologies.has(normalizedText(technology)));
+  const technologyOverlap = role.technologies.filter((technology) => sets.selectedTechnologies.has(normalizedText(technology)));
   const technologyScore = Math.min(25, technologyOverlap.length * 5);
   if (technologyOverlap.length > 0) reasons.push(`${technologyOverlap.slice(0, 3).join(", ")} overlap`);
 
   const qualityScore = Math.round(Math.max(0, Math.min(100, role.relevanceScore)) / 10);
   const freshnessScore = role.lifecycleStatus === "NEW" ? 4 : role.lifecycleStatus === "UPDATED" ? 2 : 0;
-  return categoryScore + technologyScore + qualityScore + freshnessScore;
+  return {
+    total: categoryScore + technologyScore + qualityScore + freshnessScore,
+    roleCategory: categoryScore,
+    technology: technologyScore,
+    relevance: qualityScore,
+    freshness: freshnessScore,
+  };
 }
 
-export function evaluateInternshipMatch(preferences: InternshipPreferences, role: Internship): MatchEvaluation {
+function evaluateWithCompiledPreferences(
+  preferences: InternshipPreferences,
+  sets: CompiledPreferenceSets,
+  role: Internship,
+): MatchEvaluation {
   const reasons: string[] = [];
   // These legacy components still contribute a conservative ranking signal,
   // but their hard arrays are deliberately not used as an authority. The
@@ -281,11 +363,14 @@ export function evaluateInternshipMatch(preferences: InternshipPreferences, role
   // failure reasons, and unknown metadata.
   const legacyIncompatibilities: string[] = [];
   const legacyUnknown: string[] = [];
-  const hardScore = termEvaluation(preferences, role, legacyIncompatibilities, legacyUnknown)
-    + locationEvaluation(preferences, role, legacyIncompatibilities, legacyUnknown, reasons)
-    + eligibilityEvaluation(preferences, role, legacyIncompatibilities, legacyUnknown)
+  const termScore = termEvaluation(sets, role, legacyIncompatibilities, legacyUnknown);
+  const locationScore = locationEvaluation(preferences, sets, role, legacyIncompatibilities, legacyUnknown, reasons);
+  const eligibilityScore = eligibilityEvaluation(preferences, role, legacyIncompatibilities, legacyUnknown)
     + authorizationEvaluation(preferences, role, legacyIncompatibilities, legacyUnknown);
-  const softScore = softPreferenceScore(preferences, role, reasons);
+  const hardScore = termScore
+    + locationScore
+    + eligibilityScore;
+  const softScore = softPreferenceScore(sets, role, reasons);
   const eligibility = evaluateInternshipEligibility(preferences, role);
   const incompatibilities = eligibility.criterionResults
     .filter(({ state }) => state === "fail")
@@ -297,17 +382,80 @@ export function evaluateInternshipMatch(preferences: InternshipPreferences, role
     .filter(({ state }) => state === "pass" || state === "not_applicable")
     .map(({ reason }) => reason);
   const eligible = eligibility.status !== "not_eligible";
-  const score = eligible ? Math.min(100, hardScore + softScore) : 0;
+  const score = eligible ? Math.min(100, hardScore + softScore.total) : 0;
+  const hardExclusions = eligibility.criterionResults
+    .filter(({ state }) => state === "fail")
+    .map(({ reason }) => reason);
+  const preferenceMismatches = [
+    ...(sets.selectedCategories.size > 0 && softScore.roleCategory === 0 ? ["The posting does not match your preferred role categories."] : []),
+    ...(sets.selectedTechnologies.size > 0 && softScore.technology === 0 ? ["The posting does not list your preferred technologies."] : []),
+  ];
+  const uncertainty = eligibility.criterionResults
+    .filter(({ state }) => state === "unknown" || state === "conflict")
+    .map(({ reason }) => reason);
+  const preferenceOverlap = softScore.roleCategory > 0 || softScore.technology > 0;
+  const matched = eligible && preferenceOverlap;
+  const status: MatchEvaluation["status"] = hardExclusions.length > 0 || !eligible
+    ? "excluded"
+    : !matched
+      ? "insufficient_fit"
+      : uncertainty.length > 0
+        ? "recommended_with_uncertainty"
+        : "recommended";
+  const insufficientFit = matched || hardExclusions.length > 0 || !eligible ? [] : [
+    preferenceOverlap
+      ? "The posting has too little supporting eligibility evidence to recommend confidently."
+      : "No preferred role category or technology overlaps with this posting.",
+  ];
   const matchReasons = [...reasons, ...criterionReasons].slice(0, 5);
+  const scoreBreakdown: MatchScoreBreakdown = {
+    roleCategory: softScore.roleCategory,
+    technology: softScore.technology,
+    term: termScore,
+    location: locationScore,
+    eligibility: eligibilityScore,
+    relevance: softScore.relevance,
+    freshness: softScore.freshness,
+    total: score,
+  };
   return {
     eligible,
+    matched,
+    status,
+    version: "matching-v2",
     score,
     reasons: matchReasons.length > 0
       ? matchReasons
       : (eligible ? ["Eligible based on the metadata available"] : []),
     incompatibilities,
     unknown,
+    scoreBreakdown,
+    explanation: { hardExclusions, preferenceMismatches, uncertainty, insufficientFit },
     eligibility,
+  };
+}
+
+export function evaluateInternshipMatch(preferences: InternshipPreferences, role: Internship): MatchEvaluation {
+  return evaluateWithCompiledPreferences(preferences, compilePreferenceSets(preferences), role);
+}
+
+export function compileMatcher(preferences: InternshipPreferences): CompiledMatcher {
+  const sets = compilePreferenceSets(preferences);
+  let evaluated = 0;
+  let userMatched = 0;
+  let userFiltered = 0;
+  const evaluate = (role: Internship): MatchEvaluation => {
+    const match = evaluateWithCompiledPreferences(preferences, sets, role);
+    evaluated += 1;
+    if (match.matched) userMatched += 1;
+    else userFiltered += 1;
+    return match;
+  };
+  return {
+    evaluate,
+    evaluateMany: (roles) => roles.map(evaluate),
+    matches: (role) => evaluate(role).matched,
+    get diagnostics() { return { evaluated, userMatched, userFiltered }; },
   };
 }
 

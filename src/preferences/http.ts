@@ -278,6 +278,9 @@ async function handleJobsEntry(
 ): Promise<boolean> {
   if (request.method !== "GET" && request.method !== "HEAD") return false;
   const requestedView = requestUrl.searchParams.get("view");
+  // Public browsing must not wait for a remote session refresh after idle.
+  // Onboarding and the personalized matches entry retain their verified gate.
+  if (requestedView === "all") return false;
   let context: AuthRequestContext;
   try {
     context = createAuthRequestContext(request);
@@ -312,10 +315,7 @@ async function handleJobsEntry(
     return true;
   }
 
-  // An explicitly requested all-internships view remains public.  Only the
-  // implicit jobs entry and the matches view participate in onboarding gates.
-  if (requestedView === "all") return false;
-
+  // The implicit jobs entry and matches view participate in onboarding gates.
   let preferences: InternshipPreferences;
   try {
     preferences = readInternshipPreferences(databasePath, user.id);

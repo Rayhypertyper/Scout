@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { InternshipCrawler, isRetryableFailure, sourceStatus } from "../src/crawler/crawler.js";
-import type { PageSnapshot, SourceCrawlResult } from "../src/domain/types.js";
+import type { PageSnapshot, RawJob, SourceCrawlResult } from "../src/domain/types.js";
+import type { HttpClient } from "../src/crawler/http.js";
 import { resolveSettings } from "../src/config/settings.js";
 import { Logger } from "../src/utils/logger.js";
 import type { SourceAdapterResult } from "../src/crawler/adapters/types.js";
@@ -93,6 +94,117 @@ describe("source failure semantics", () => {
 });
 
 describe("source timing", () => {
+  it("keeps a complete empty Intern List feed on HTTP and marks its inventory complete", async () => {
+    const source = "https://www.intern-list.com/?k=eng";
+    const payload = JSON.stringify({ success: true, result: { total: 0, jobList: [] } });
+    const emptyFeedUrl = "https://swan-api.jobright.ai/swan/mini-sites/list?count=50&position=0&feedCategory=intern%3Aus%3Aengineering_development";
+    const emptyFeed: PageSnapshot = {
+      requestedUrl: emptyFeedUrl,
+      url: emptyFeedUrl,
+      status: 200,
+      contentType: "application/json",
+      title: "Intern List feed",
+      html: "",
+      text: payload,
+      links: [],
+      fetchedAt: new Date().toISOString(),
+    };
+    const crawler = new InternshipCrawler(resolveSettings({ respectRobotsTxt: false }), new Logger("error"));
+    (crawler as unknown as { adapterRouter: unknown }).adapterRouter = {
+      collect: async (): Promise<SourceAdapterResult> => ({
+        snapshots: [emptyFeed],
+        retrievalMethod: "Intern List structured API",
+        retrievalUrls: [emptyFeedUrl],
+        attempts: 1,
+        httpStatus: 200,
+        notes: ["Retrieved 0 rows (0 unique job IDs) against advertised total 0 in one complete structured snapshot."],
+        failures: [],
+        strategy: "structured_endpoint",
+        inventoryComplete: true,
+      }),
+    };
+    const browser = (crawler as unknown as { browser: { fetchPage: (...args: unknown[]) => Promise<PageSnapshot> } }).browser;
+    const browserFetch = vi.spyOn(browser, "fetchPage").mockRejectedValue(new Error("unexpected browser fallback"));
+
+    const result = await crawler.crawl([source]);
+
+    expect(browserFetch).not.toHaveBeenCalled();
+    expect(result.sourceResults[0]).toMatchObject({
+      completed: true,
+      coverageComplete: true,
+      status: "no_internships_found",
+      jobs: [],
+      failures: [],
+    });
+  });
+
+  it("keeps a nonempty result partial when an adapter reports incomplete inventory", async () => {
+    const source = "https://www.intern-list.com/?k=eng";
+    const root: PageSnapshot = { requestedUrl: source, url: source, status: 200, contentType: "application/json", title: "Internships", html: "", text: "Software Engineering Intern", links: [], fetchedAt: new Date().toISOString() };
+    const crawler = new InternshipCrawler(resolveSettings({ respectRobotsTxt: false }), new Logger("error"));
+    (crawler as unknown as { adapterRouter: unknown }).adapterRouter = {
+      collect: async (): Promise<SourceAdapterResult> => ({ snapshots: [root], retrievalMethod: "Intern List feed", retrievalUrls: [source], attempts: 1, httpStatus: 200, notes: [], failures: [], strategy: "structured_endpoint", inventoryComplete: false }),
+    };
+    (crawler as unknown as { extractJobsWithFallback: unknown }).extractJobsWithFallback = async (): Promise<RawJob[]> => [{ company: "Acme", title: "Software Engineering Intern", postingUrl: "https://jobright.ai/jobs/info/987654", locations: ["Toronto, Canada"], description: "Software internship", sourceProvider: "jobright-intern-list" }];
+    (crawler as unknown as { analyzeJobWithProfile: unknown }).analyzeJobWithProfile = async () => ({ accepted: true, value: analyzed(makeInternship({ sourceUrl: source, sources: [source], jobId: "987654" })) });
+
+    const result = await crawler.crawl([source]);
+
+    expect(result.sourceResults[0]).toMatchObject({ completed: true, coverageComplete: false, status: "partial" });
+  });
+
+  it("reports qualifying Jobright roles without cached employer destinations as incomplete coverage", async () => {
+    const source = "https://www.intern-list.com/?k=swe";
+    const root: PageSnapshot = { requestedUrl: source, url: source, status: 200, contentType: "application/json", title: "Internships", html: "", text: "Software Engineering Intern", links: [], fetchedAt: new Date().toISOString() };
+    const crawler = new InternshipCrawler(resolveSettings({ respectRobotsTxt: false }), new Logger("error"));
+    (crawler as unknown as { adapterRouter: unknown }).adapterRouter = {
+      collect: async (): Promise<SourceAdapterResult> => ({ snapshots: [root], retrievalMethod: "Intern List feed", retrievalUrls: [source], attempts: 1, httpStatus: 200, notes: [], failures: [], strategy: "structured_endpoint" }),
+    };
+    (crawler as unknown as { extractJobsWithFallback: unknown }).extractJobsWithFallback = async (): Promise<RawJob[]> => [{ company: "Acme", title: "Software Engineering Intern", postingUrl: "https://jobright.ai/jobs/info/123", locations: ["Toronto, Canada"], description: "Software internship", sourceProvider: "jobright-intern-list" }];
+    (crawler as unknown as { analyzeJobWithProfile: unknown }).analyzeJobWithProfile = async () => ({ accepted: false, reason: "Jobright's Original job post could not be resolved to an employer or ATS posting." });
+    const result = await crawler.crawl([source], new Map(), undefined, undefined, { getJobrightDestinations: () => new Map() });
+    expect(result.sourceResults[0]).toMatchObject({ completed: true, coverageComplete: false, status: "partial", jobs: [] });
+    expect(result.sourceResults[0]?.coverageNotes?.join(" ")).toContain("1 qualifying Jobright listing(s)");
+  });
+
+  it("retains Radar detail links beyond the former 5000-listing and 2000-page ceilings", async () => {
+    const source = "https://earlycareerradar.com/summer-internships";
+    const links = Array.from({ length: 5100 }, (_, index) => ({ url: `${source.replace('/summer-internships', '')}/jobs/job-${index}`, text: "Software Engineering Intern", rel: "" }));
+    const root: PageSnapshot = { requestedUrl: source, url: source, status: 200, contentType: "text/html", title: "Internships", html: "", text: "", links, fetchedAt: new Date().toISOString() };
+    const crawler = new InternshipCrawler(resolveSettings({ respectRobotsTxt: false, maxPagesPerSource: 100, maxDepth: 1 }), new Logger("error"));
+    (crawler as unknown as { adapterRouter: unknown }).adapterRouter = {
+      collect: async (): Promise<SourceAdapterResult> => ({ snapshots: [root], retrievalMethod: "Radar HTML", retrievalUrls: [source], attempts: 1, httpStatus: 200, notes: [], failures: [], strategy: "static_html", maxRawListings: 10_000 }),
+    };
+    (crawler as unknown as { extractJobsWithFallback: unknown }).extractJobsWithFallback = async () => [];
+    const http = (crawler as unknown as { http: HttpClient }).http;
+    const get = vi.spyOn(http, "get").mockImplementation(async (url) => ({ requestedUrl: url, url, status: 200, contentType: "text/html", body: "", headers: {}, attempts: 1, fromCache: false }));
+    try {
+      const result = await crawler.crawl([source]);
+      expect(get).toHaveBeenCalledTimes(5100);
+      expect(result.sourceResults[0]).toMatchObject({ completed: true, pagesVisited: 5101, failures: [] });
+    } finally { get.mockRestore(); }
+  });
+
+  it("stops Radar discovery after parsing a role while preserving its employer Apply URL", async () => {
+    const source = "https://earlycareerradar.com/summer-internships";
+    const detail = "https://earlycareerradar.com/jobs/job-1";
+    const employer = "https://careers.example.com/jobs/software-intern-1";
+    const crawler = new InternshipCrawler(resolveSettings({ respectRobotsTxt: false, maxDepth: 4 }), new Logger("error"));
+    const root: PageSnapshot = { requestedUrl: source, url: source, status: 200, contentType: "text/html", title: "Internships", html: "", text: "", links: [{ url: detail, text: "Software Engineering Intern", rel: "" }], fetchedAt: new Date().toISOString() };
+    (crawler as unknown as { adapterRouter: unknown }).adapterRouter = {
+      collect: async (): Promise<SourceAdapterResult> => ({ snapshots: [root], retrievalMethod: "Radar HTML", retrievalUrls: [source], attempts: 1, httpStatus: 200, notes: [], failures: [], strategy: "static_html", maxRawListings: 10_000 }),
+    };
+    (crawler as unknown as { extractJobsWithFallback: unknown }).extractJobsWithFallback = async (snapshot: PageSnapshot): Promise<RawJob[]> => snapshot.url === detail ? [{ company: "Acme", title: "Software Engineering Intern", applicationUrl: employer, postingUrl: detail, locations: ["Toronto, Canada"], description: "Software engineering internship", sourceProvider: "generic" }] : [];
+    (crawler as unknown as { analyzeJobWithProfile: unknown }).analyzeJobWithProfile = async () => ({ accepted: true, value: analyzed(makeInternship({ applicationUrl: employer, postingUrl: detail, sourceUrl: source, sources: [source] })) });
+    const http = (crawler as unknown as { http: HttpClient }).http;
+    const get = vi.spyOn(http, "get").mockImplementation(async (url) => ({ requestedUrl: url, url, status: 200, contentType: "text/html", body: `<a href="${employer}">Software Engineering Intern Apply</a>`, headers: {}, attempts: 1, fromCache: false }));
+    try {
+      const result = await crawler.crawl([source]);
+      expect(get.mock.calls.map(([url]) => url)).toEqual([detail]);
+      expect(result.sourceResults[0]?.jobs[0]?.internship.applicationUrl).toBe(employer);
+    } finally { get.mockRestore(); }
+  });
+
   it("attaches elapsed time to every settled source result", async () => {
     const sourceResult: SourceCrawlResult = {
       sourceUrl: "https://example.com/source",
@@ -257,6 +369,12 @@ describe("source timing", () => {
 
     expect(browserCalls).toHaveLength(100);
     expect(result.sourceResults[0]?.pagesVisited).toBe(100);
-    expect(result.sourceResults[0]?.completed).toBe(true);
+    expect(result.sourceResults[0]).toMatchObject({
+      completed: true,
+      coverageComplete: false,
+      trustedInventory: false,
+      inventoryStatus: "unknown",
+      status: "partial",
+    });
   });
 });

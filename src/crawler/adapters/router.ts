@@ -6,7 +6,7 @@ import { GreenhouseAdapter, LeverAdapter, WorkdayAdapter } from "./ats.js";
 import { InternListAdapter } from "./internList.js";
 import { EarlyCareerRadarAdapter } from "./earlyCareerRadar.js";
 import { StaticHTMLAdapter } from "./static.js";
-import type { SourceAdapter, SourceAdapterResult } from "./types.js";
+import type { AdapterCollectOptions, SourceAdapter, SourceAdapterResult } from "./types.js";
 
 /**
  * Known-source router implementing structured endpoint → direct HTTP → static
@@ -41,7 +41,7 @@ export class SourceAdapterRouter {
     return this.adapters.find((adapter) => adapter.canHandle(sourceUrl)) ?? (this.genericStatic.canHandle(sourceUrl) ? this.genericStatic : null);
   }
 
-  public async collect(sourceUrl: string): Promise<SourceAdapterResult> {
+  public async collect(sourceUrl: string, options?: AdapterCollectOptions): Promise<SourceAdapterResult> {
     const adapter = this.route(sourceUrl);
     if (!adapter) {
       return {
@@ -56,15 +56,14 @@ export class SourceAdapterRouter {
         browserRequired: true,
       };
     }
-    const result = await adapter.collect(sourceUrl);
+    const result = await adapter.collect(sourceUrl, options);
     // A public structured endpoint can be temporarily unavailable (rate limit,
     // deprecation, or an unexpected response). Preserve the HTTP-first ladder
     // by trying the same source's static representation before asking the
     // browser lane to intervene. GitHub is intentionally excluded: it has its
     // own raw/API-only contract and must never route to Playwright.
-    // Intern List's configured page is a robots-disallowed shell whose useful
-    // content belongs to the structured Jobright feed. A failed feed must not
-    // be replaced by a static/browser attempt against that shell.
+    // Intern List already combines public HTML, sitemap and SSR routes. Its
+    // browser Load More control calls the retired API, so do not expand it.
     if (result.strategy === "structured_endpoint" && result.failures.length > 0 && result.snapshots.length === 0 && adapter.name !== "GitHub" && adapter.name !== "Intern List") {
       const fallback = await this.genericStatic.collect(sourceUrl);
       return {

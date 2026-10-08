@@ -1,9 +1,8 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call */
 
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-// @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
 import {
   OperationsAccessError,
   diagnosticText,

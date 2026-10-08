@@ -341,8 +341,13 @@ describe("development edition switcher", () => {
 
   it("keeps crawler administration and source diagnostics server-side in public edition", async () => {
     setDashboardEditionForTests("public");
+    for (const method of ["GET", "HEAD", "POST", "DELETE"]) {
+      const retiredSnapshot = response();
+      await requestHandler(request(method, undefined, {}, "127.0.0.1", "/api/data") as never, retiredSnapshot as never, "/tmp/unused.db");
+      expect(retiredSnapshot.statusCode).toBe(410);
+      expect(retiredSnapshot.headers["Cache-Control"]).toBe("private, no-store");
+    }
     for (const [method, pathname] of [
-      ["GET", "/api/data"],
       ["POST", "/api/terminate"],
       ["POST", "/api/sources"],
       ["POST", "/api/refresh"],

@@ -20,6 +20,12 @@ const REVISION_TRIGGERS = [
   "dashboard_revision_identities_insert",
   "dashboard_revision_identities_update",
   "dashboard_revision_identities_delete",
+  "dashboard_revision_user_listing_actions_insert",
+  "dashboard_revision_user_listing_actions_update",
+  "dashboard_revision_user_listing_actions_delete",
+  "dashboard_revision_user_listing_action_identities_insert",
+  "dashboard_revision_user_listing_action_identities_update",
+  "dashboard_revision_user_listing_action_identities_delete",
 ] as const;
 
 /**
@@ -94,6 +100,14 @@ export function ensureDashboardRevisionSchema(database: DatabaseSync): void {
       UPDATE dashboard_revisions SET revision = revision + 1 WHERE domain = 'identities';
     END;
   `);
+  for (const [table, domain] of [["user_listing_actions", "actions"], ["user_listing_action_identities", "identities"]] as const) {
+    for (const operation of ["INSERT", "UPDATE", "DELETE"] as const) {
+      database.exec(`CREATE TRIGGER IF NOT EXISTS dashboard_revision_${table}_${operation.toLowerCase()}
+        AFTER ${operation} ON ${table} BEGIN
+          UPDATE dashboard_revisions SET revision = revision + 1 WHERE domain = '${domain}';
+        END;`);
+    }
+  }
 }
 
 /**

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveSettings } from "../src/config/settings.js";
 import { InternshipDatabase } from "../src/database/db.js";
+import { QualificationDetailsSchema } from "../src/domain/schemas.js";
 import type { CrawlResult, ScoutRunOptions } from "../src/domain/types.js";
 import { analyzed, makeInternship } from "./helpers.js";
 
@@ -50,7 +51,7 @@ describe("Jobright destination cache", () => {
       jobId: "abc123",
       applicationUrl: jobrightUrl,
       postingUrl: jobrightUrl,
-      qualificationDetails: { applicationUrl: jobrightUrl },
+      qualificationDetails: QualificationDetailsSchema.parse({ applicationUrl: jobrightUrl }),
     });
     const analyzedJob = analyzed(internship);
     const crawl: CrawlResult = {

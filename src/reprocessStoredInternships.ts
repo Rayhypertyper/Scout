@@ -1,9 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
 import { parseArgs } from "node:util";
+import { pathToFileURL } from "node:url";
 
 import { internshipContentHash } from "./classification/analyzeJob.js";
 import { directApplicationOverride } from "./config/directApplicationOverrides.js";
-import { MIN_LISTING_SCORE } from "./config/thresholds.js";
 import { classifyRole, detectInternship } from "./classification/roleClassifier.js";
 import { InternshipSchema } from "./domain/schemas.js";
 import { companyFromEvidence, companyFromUrl } from "./extractors/helpers.js";
@@ -20,18 +20,11 @@ interface InternshipRow {
   payload_json: string;
 }
 
-async function main(): Promise<void> {
-  const { values } = parseArgs({
-    options: { database: { type: "string", default: "output/live/internships.db" } },
-  });
-  const database = new DatabaseSync(values.database);
+export function reprocessStoredInternships(databasePath: string): number {
+  const database = new DatabaseSync(databasePath);
   let changed = 0;
   database.exec("BEGIN IMMEDIATE");
   try {
-    database.prepare(`
-      DELETE FROM internships
-      WHERE CAST(json_extract(payload_json, '$.relevanceScore') AS INTEGER) < @minimumScore
-    `).run({ minimumScore: MIN_LISTING_SCORE });
     const rows = database.prepare("SELECT id, payload_json FROM internships").all() as unknown as InternshipRow[];
     const update = database.prepare(`
       UPDATE internships
@@ -76,10 +69,10 @@ async function main(): Promise<void> {
         applicationUrl: internship.applicationUrl,
         deadline: internship.deadline,
       });
-      const rawLocations = /(?:^|\.)useno\.app\/internship-masterlist(?:\/|$)/i.test(internship.sourceUrl)
+      const rawLocations = /(?:^|\.)useno\.app\/(?:resources\/)?internship-masterlist(?:\/|$)/i.test(internship.sourceUrl)
         ? internship.location.slice(0, 1)
         : internship.location;
-      const preserveUsenoSourceLocation = /(?:^|\.)useno\.app\/internship-masterlist(?:\/|$)/i.test(internship.sourceUrl);
+      const preserveUsenoSourceLocation = /(?:^|\.)useno\.app\/(?:resources\/)?internship-masterlist(?:\/|$)/i.test(internship.sourceUrl);
       const parsedLocations = parseLocations(rawLocations, internship.description);
       const title = decodeHtmlEntities(internship.title);
       const nextBase = InternshipSchema.parse({
@@ -113,7 +106,7 @@ async function main(): Promise<void> {
         deadline: internship.deadline && containsExplicitDate(internship.deadline)
           ? internship.deadline
           : temporal.deadline,
-        categories: classification.categories,
+        categories: classification.categories.length > 0 ? classification.categories : ["other-internship"],
         relevanceScore: classification.score,
         relevanceReason: `${classification.reason} ${detection.reason}`,
       });
@@ -142,7 +135,15 @@ async function main(): Promise<void> {
   } finally {
     database.close();
   }
-  process.stdout.write(`${JSON.stringify({ reprocessed: changed })}\n`);
+  return changed;
 }
 
-await main();
+function main(): void {
+  const { values } = parseArgs({
+    options: { database: { type: "string", default: "output/live/internships.db" } },
+  });
+  const reprocessed = reprocessStoredInternships(values.database);
+  process.stdout.write(`${JSON.stringify({ reprocessed })}\n`);
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

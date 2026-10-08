@@ -50,6 +50,7 @@ interface RolesPayload {
 }
 
 const SOURCE = "https://private-source.example/careers";
+const PROVENANCE_PAGE = "https://private-evidence.example/posting/1";
 const USER: AuthUser = {
   id: "edition-matching-user",
   email: "edition-matching@example.com",
@@ -103,6 +104,11 @@ describe("edition-aware stored-job HTTP matching", () => {
         id: "summer-role", jobId: "SUMMER-1", company: "Summer Labs",
         applicationUrl: "https://boards.greenhouse.io/summer/jobs/100/apply",
         postingUrl: "https://boards.greenhouse.io/summer/jobs/100",
+        provenance: [{
+          field: "title", value: "Software Engineering Intern", provider: "openai", model: "test-model",
+          pageUrl: PROVENANCE_PAGE, contentHash: "a".repeat(64), quote: "Software Engineering Intern",
+          start: 0, end: "Software Engineering Intern".length,
+        }],
       }),
       makeInternship({
         id: "winter-role", jobId: "WINTER-1", company: "Winter Labs", internshipTerm: "Winter",
@@ -123,6 +129,7 @@ describe("edition-aware stored-job HTTP matching", () => {
         id: "sparse-role", jobId: "SPARSE-1", company: "Sparse Systems", title: "Backend Software Intern",
         applicationUrl: "https://boards.greenhouse.io/sparse/jobs/400/apply",
         postingUrl: "https://boards.greenhouse.io/sparse/jobs/400",
+        internshipTerm: null, internshipYear: null,
         description: "Build backend services and improve developer tooling.",
         responsibilities: ["Build backend services."],
         requiredQualifications: [], preferredQualifications: [], educationRequirements: [],
@@ -239,13 +246,14 @@ describe("edition-aware stored-job HTTP matching", () => {
     const summerResponse = await dispatch(query);
     expect(summerResponse.statusCode).toBe(200);
     const summer = payload<RolesPayload>(summerResponse);
-    console.log("MATCH_DEBUG", JSON.stringify(summer, null, 2));
-    expect(summer.items.map(({ id }) => id)).toEqual(["summer-role", "sparse-role", "winter-role"]);
+    expect(summer.items.map(({ id }) => id)).toEqual(["summer-role", "sparse-role"]);
     expect(summer.items.every(({ matchMatched }) => matchMatched === true)).toBe(true);
-    expect(summer.items[0]).toMatchObject({ matchScoreVersion: "matching-v2", matchStatus: expect.any(String) });
+    expect(summer.items[0]?.matchScoreVersion).toBe("matching-v2");
+    expect(["recommended", "recommended_with_uncertainty", "insufficient_fit", "excluded"]).toContain(summer.items[0]?.matchStatus);
     expect(summer.items.find(({ id }) => id === "sparse-role")?.matchExplanation?.uncertainty.length).toBeGreaterThan(0);
     expect(summer.items.map(({ id }) => id)).not.toEqual(expect.arrayContaining(["hard-role", "unrelated-role", "marketing-role"]));
-    expect(summer.matchingDiagnostics).toEqual({ evaluated: 5, userMatched: 3, userFiltered: 2, hardExcluded: 1, insufficientFit: 1, uncertain: expect.any(Number) });
+    expect(summer.matchingDiagnostics).toMatchObject({ evaluated: 5, userMatched: 2, userFiltered: 3, hardExcluded: 2, insufficientFit: 1 });
+    expect(typeof summer.matchingDiagnostics?.uncertain).toBe("number");
     expect(readPreferences).toHaveBeenCalledExactlyOnceWith(databasePath, USER.id);
     expect(compileMatcher).toHaveBeenCalledTimes(1);
 
@@ -260,9 +268,10 @@ describe("edition-aware stored-job HTTP matching", () => {
     const winterResponse = await dispatch(query);
     expect(winterResponse.statusCode).toBe(200);
     const winter = payload<RolesPayload>(winterResponse);
-    expect(winter.items.map(({ id }) => id)).toEqual(["winter-role", "sparse-role", "summer-role"]);
+    expect(winter.items.map(({ id }) => id)).toEqual(["winter-role", "sparse-role"]);
     expect(winter.items.every(({ matchMatched }) => matchMatched === true)).toBe(true);
-    expect(winter.matchingDiagnostics).toEqual({ evaluated: 5, userMatched: 3, userFiltered: 2, hardExcluded: 1, insufficientFit: 1, uncertain: expect.any(Number) });
+    expect(winter.matchingDiagnostics).toMatchObject({ evaluated: 5, userMatched: 2, userFiltered: 3, hardExcluded: 3, insufficientFit: 0 });
+    expect(typeof winter.matchingDiagnostics?.uncertain).toBe("number");
     expect(readPreferences).toHaveBeenCalledExactlyOnceWith(databasePath, USER.id);
     expect(compileMatcher).toHaveBeenCalledTimes(1);
 
@@ -286,11 +295,16 @@ describe("edition-aware stored-job HTTP matching", () => {
       const result = await dispatch(url);
       expect(result.statusCode, url).toBe(200);
       expect(result.body.toString("utf8"), url).not.toContain(SOURCE);
+      expect(result.body.toString("utf8"), url).not.toContain(PROVENANCE_PAGE);
       for (const field of ["sourceUrl", "sourceResults", "relevanceReason", "currentSources", "failures", "latestRun"]) {
         expect(payload<Record<string, unknown>>(result), `${url}: ${field}`).not.toHaveProperty(field);
         expect(result.body.toString("utf8"), `${url}: ${field}`).not.toContain(`"${field}":`);
       }
     }
+    const detail = await dispatch("/api/roles/internship/summer-role");
+    const detailRole = payload<{ role: Record<string, unknown> }>(detail).role;
+    expect(detailRole).not.toHaveProperty("provenance");
+    expect(JSON.stringify(detailRole)).not.toContain(PROVENANCE_PAGE);
     const sourceSearch = await dispatch("/api/roles?view=all&tab=internship&status=all&q=private-source.example");
     expect(payload<RolesPayload>(sourceSearch).pagination.total).toBe(0);
   });
@@ -315,6 +329,34 @@ describe("edition-aware stored-job HTTP matching", () => {
     expect(publicResponse.body.toString("utf8")).not.toContain(SOURCE);
     expect(canonicalSnapshot()).toBe(before);
     expect(crawlRunner).not.toHaveBeenCalled();
+  });
+
+  it("varies detail validators by edition and strips nested provenance from public details", async () => {
+    const url = "/api/roles/internship/summer-role";
+    dashboard.setDashboardEditionForTests("personal");
+    const personal = await dispatch(url);
+    expect(personal.statusCode).toBe(200);
+    const personalRole = payload<{ role: Record<string, unknown> }>(personal).role;
+    expect(personalRole.provenance).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pageUrl: PROVENANCE_PAGE }),
+    ]));
+
+    dashboard.setDashboardEditionForTests("public");
+    const publicDetail = await dispatch(url, "GET", undefined, { "if-none-match": String(personal.headers.ETag) });
+    expect(publicDetail.statusCode).toBe(200);
+    expect(publicDetail.headers.ETag).not.toBe(personal.headers.ETag);
+    const publicRole = payload<{ role: Record<string, unknown> }>(publicDetail).role;
+    expect(publicRole).not.toHaveProperty("provenance");
+    expect(JSON.stringify(publicRole)).not.toContain(PROVENANCE_PAGE);
+  });
+
+  it("returns the retired full snapshot's safe 410 in public edition", async () => {
+    dashboard.setDashboardEditionForTests("public");
+    for (const method of ["GET", "HEAD", "POST", "DELETE"]) {
+      const retired = await dispatch("/api/data", method);
+      expect(retired.statusCode).toBe(410);
+      expect(retired.headers["Cache-Control"]).toContain("no-store");
+    }
   });
 
   it("reevaluates closing-soon alerts when the server edition changes", async () => {

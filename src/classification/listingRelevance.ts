@@ -21,6 +21,11 @@ export interface ListingRelevanceResult {
   categories: Category[];
   matchedPositive: string[];
   matchedNegative: string[];
+  matchedPositiveTitle: string[];
+  matchedNegativeTitle: string[];
+  matchedAmbiguousTitle: string[];
+  matchedPositiveDepartment: string[];
+  matchedPositiveSnippet: string[];
   ambiguous: boolean;
   mixedSignal: boolean;
   /** True only for a clearly irrelevant function with no technical evidence. */
@@ -134,6 +139,11 @@ export function scoreListingRelevance(
     categories,
     matchedPositive,
     matchedNegative,
+    matchedPositiveTitle: titlePositive.matches.map((rule) => rule.term),
+    matchedNegativeTitle: titleNegative.matches.map((rule) => rule.term),
+    matchedAmbiguousTitle: titleAmbiguous.matches.map((rule) => rule.term),
+    matchedPositiveDepartment: departmentPositive.matches.map((rule) => rule.term),
+    matchedPositiveSnippet: snippetPositive.matches.map((rule) => rule.term),
     ambiguous: hasAmbiguousEvidence,
     mixedSignal,
     clearlyIrrelevant,

@@ -11,6 +11,8 @@ import { internshipListingActionIdentities } from "../src/database/actions.js";
 import type { Internship } from "../src/domain/schemas.js";
 import type { CrawlResult, ScoutRunOptions } from "../src/domain/types.js";
 import { analyzed, makeInternship } from "./helpers.js";
+import { dashboardAccountHeaders, installDashboardAccountFixture, DASHBOARD_TEST_USER } from "./dashboardAccountFixture.js";
+import { accountActionScope } from "../src/database/accountActions.js";
 
 interface CapturedResponse {
   statusCode: number;
@@ -36,7 +38,7 @@ function request(method: string, url: string, body?: unknown): Record<string, un
   return {
     method,
     url,
-    headers: { host: "localhost" },
+    headers: dashboardAccountHeaders(),
     ...(body === undefined ? {} : {
       async *[Symbol.asyncIterator](): AsyncGenerator<string> {
         yield JSON.stringify(body);
@@ -125,14 +127,14 @@ function addHandledAlias(databasePath: string): void {
   const database = new DatabaseSync(databasePath);
   try {
     database.prepare(`
-      INSERT INTO listing_actions (
-        listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at
-      ) VALUES ('internship:background-alias', 'internship', 'background-alias', 'cant_fit',
+      INSERT INTO user_listing_actions (
+        user_id, listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at
+      ) VALUES ('dashboard-test-user', 'internship:background-alias', 'internship', 'background-alias', 'cant_fit',
                 'Alias Labs', 'alias labs', 'Alias Intern', @createdAt)
     `).run({ createdAt: new Date().toISOString() });
     database.prepare(`
-      INSERT INTO listing_action_identities (listing_key, identity_key, direct_job_ids_json)
-      VALUES ('internship:background-alias', @identityKey, '[]')
+      INSERT INTO user_listing_action_identities (user_id, listing_key, identity_key, direct_job_ids_json)
+      VALUES ('dashboard-test-user', 'internship:background-alias', @identityKey, '[]')
     `).run({ identityKey: identity.identityKey });
   } finally {
     database.close();
@@ -140,7 +142,9 @@ function addHandledAlias(databasePath: string): void {
 }
 
 describe("dashboard durable revision fast path", () => {
+  const originalScoutEdition = process.env.SCOUT_EDITION;
   let directory = "";
+  let restoreAuth: () => void;
   let requestHandler: typeof import("../src/dashboard.js").requestHandler;
   let setFastDashboardBuildBatchHookForTests: typeof import("../src/dashboard.js").setFastDashboardBuildBatchHookForTests;
   let setFastDatabaseRevisionScanHookForTests: typeof import("../src/dashboard.js").setFastDatabaseRevisionScanHookForTests;
@@ -183,7 +187,49 @@ describe("dashboard durable revision fast path", () => {
     return latest;
   }
 
+  it("advances the visible catalog while every build batch receives another crawl write", async () => {
+    const databasePath = join(directory, "continuous-ready-publication.db");
+    const database = new InternshipDatabase(databasePath);
+    const opts = options(databasePath, directory);
+    try {
+      const seeds = Array.from({ length: 80 }, (_, index) => makeInternship({
+        id: `seed-${index}`, company: `Seed Labs ${index}`, jobId: `SEED-${index}`,
+        applicationUrl: `https://jobs.example.com/seed/${index}/apply`, postingUrl: `https://jobs.example.com/seed/${index}`,
+      }));
+      database.persistRun(database.startRun(opts), crawl(seeds), 2);
+      await readRoles(databasePath, "/api/roles?tab=canada&season=all&q=published&limit=10");
+      const runId = database.startRun(opts);
+      database.persistReadyJobs(runId, [analyzed(makeInternship({
+        id: "published-during-crawl", company: "Published Labs", jobId: "PUBLISHED-1",
+        applicationUrl: "https://jobs.example.com/published/1/apply", postingUrl: "https://jobs.example.com/published/1",
+      }))]);
+      let writes = 0;
+      setFastDashboardBuildBatchHookForTests(async () => {
+        writes += 1;
+        updatePayloadCompany(databasePath, `Still Crawling Labs ${writes}`, "seed-0");
+      });
+      const visible = await waitForRoles(
+        databasePath, "/api/roles?tab=canada&season=all&q=published&limit=10",
+        (items) => items.some(({ id }) => id === "published-during-crawl"),
+      );
+      expect(visible.response.statusCode).toBe(200);
+      expect(visible.payload.items.map(({ id }) => id)).toContain("published-during-crawl");
+      expect(writes).toBeGreaterThan(1);
+      const reader = new DatabaseSync(databasePath, { readOnly: true });
+      try { expect(reader.prepare("SELECT status FROM crawl_runs WHERE id = ?").get(runId)).toMatchObject({ status: "RUNNING" }); }
+      finally { reader.close(); }
+      database.markRunCancelled(runId);
+    } finally {
+      setFastDashboardBuildBatchHookForTests(null);
+      database.close();
+    }
+  });
+
   beforeAll(async () => {
+    restoreAuth = installDashboardAccountFixture();
+    // The revision tests exercise owner-facing scan/run metadata, which is
+    // intentionally unavailable in the safe Public default.
+    process.env.SCOUT_EDITION = "personal";
     directory = mkdtempSync(join(tmpdir(), "internshipmatic-dashboard-revisions-"));
     process.env.INTERNSHIPMATIC_ROOT = directory;
     process.env.DASHBOARD_SKIP_LIVE_BOARD = "1";
@@ -213,6 +259,7 @@ describe("dashboard durable revision fast path", () => {
   });
 
   afterAll(() => {
+    restoreAuth();
     setFastDashboardBuildBatchHookForTests(null);
     setFastDatabaseRevisionScanHookForTests(null);
     setFastChangesAfterHydrationHookForTests(null);
@@ -225,6 +272,8 @@ describe("dashboard durable revision fast path", () => {
     delete process.env.DASHBOARD_SKIP_STARTUP_SCAN;
     delete process.env.SCOUT_OUTPUT_DIR;
     delete process.env.GRIND_JOB_BOARD_CACHE_PATH;
+    if (originalScoutEdition === undefined) delete process.env.SCOUT_EDITION;
+    else process.env.SCOUT_EDITION = originalScoutEdition;
   });
 
   it("returns fresh active-crawl progress without rescanning role or membership rows", async () => {
@@ -234,7 +283,7 @@ describe("dashboard durable revision fast path", () => {
     const activeRunId = writable.startRun(options(databasePath, directory));
     writable.close();
 
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
     const scans: RevisionScanDomain[] = [];
     let builds = 0;
     setFastDatabaseRevisionScanHookForTests((domain) => scans.push(domain));
@@ -334,7 +383,7 @@ describe("dashboard durable revision fast path", () => {
   it("observes a legacy payload-only write without hashing the full role table", async () => {
     const databasePath = join(directory, "payload-only.db");
     createDatabase(databasePath, directory, "Before Payload Labs");
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
 
     const scans: RevisionScanDomain[] = [];
     let builds = 0;
@@ -407,7 +456,7 @@ describe("dashboard durable revision fast path", () => {
     } finally {
       removeRevisionTriggers.close();
     }
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
 
     let batches = 0;
     let enterFirstBatch!: () => void;
@@ -462,7 +511,7 @@ describe("dashboard durable revision fast path", () => {
   it("keeps revision counters transactional and observes INSERT OR REPLACE writes", async () => {
     const databasePath = join(directory, "transactional-counter.db");
     createDatabase(databasePath, directory, "Transactional Labs");
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
 
     const scans: RevisionScanDomain[] = [];
     let builds = 0;
@@ -508,7 +557,7 @@ describe("dashboard durable revision fast path", () => {
     const databasePath = join(directory, "table-domains.db");
     const target = role("Table Revision Labs");
     createDatabase(databasePath, directory, target.company);
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
 
     const scans: RevisionScanDomain[] = [];
     let builds = 0;
@@ -543,9 +592,9 @@ describe("dashboard durable revision fast path", () => {
     const addAction = new DatabaseSync(databasePath);
     try {
       addAction.prepare(`
-        INSERT INTO listing_actions (
-          listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at
-        ) VALUES ('internship:revision-alias', 'internship', 'revision-alias', 'cant_fit',
+        INSERT INTO user_listing_actions (
+          user_id, listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at
+        ) VALUES ('dashboard-test-user', 'internship:revision-alias', 'internship', 'revision-alias', 'cant_fit',
                   'Alias Labs', 'alias labs', 'Alias Intern', @createdAt)
       `).run({ createdAt: new Date().toISOString() });
     } finally {
@@ -562,8 +611,8 @@ describe("dashboard durable revision fast path", () => {
     const addIdentity = new DatabaseSync(databasePath);
     try {
       addIdentity.prepare(`
-        INSERT INTO listing_action_identities (listing_key, identity_key, direct_job_ids_json)
-        VALUES ('internship:revision-alias', @identityKey, '[]')
+        INSERT INTO user_listing_action_identities (user_id, listing_key, identity_key, direct_job_ids_json)
+        VALUES ('dashboard-test-user', 'internship:revision-alias', @identityKey, '[]')
       `).run({ identityKey: roleIdentity!.identityKey });
     } finally {
       addIdentity.close();
@@ -582,7 +631,7 @@ describe("dashboard durable revision fast path", () => {
     const crawler = new InternshipDatabase(databasePath);
     const activeRunId = crawler.startRun(options(databasePath, directory));
     crawler.close();
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
 
     const beforeResponse = response();
     await requestHandler(request("GET", "/api/roles?tab=summer&status=all&limit=10") as never, beforeResponse as never, databasePath);
@@ -676,7 +725,7 @@ describe("dashboard durable revision fast path", () => {
     } finally {
       ageBaseline.close();
     }
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
 
     const beforeResponse = response();
     await requestHandler(request("GET", "/api/roles?tab=summer&status=all&limit=10") as never, beforeResponse as never, databasePath);
@@ -731,7 +780,7 @@ describe("dashboard durable revision fast path", () => {
     const crawler = new InternshipDatabase(databasePath);
     crawler.startRun(options(databasePath, directory));
     crawler.close();
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
 
     let enteredBatch!: () => void;
     let releaseBatch!: () => void;
@@ -802,7 +851,7 @@ describe("dashboard durable revision fast path", () => {
       replacementRevisionDb.close();
     }
 
-    await expect(prewarmFastDashboardIndexForTests(databasePath)).resolves.toBe(true);
+    await expect(accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => prewarmFastDashboardIndexForTests(databasePath))).resolves.toBe(true);
     let builds = 0;
     const scans: RevisionScanDomain[] = [];
     setFastDatabaseRevisionScanHookForTests((domain) => scans.push(domain));

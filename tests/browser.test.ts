@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { Browser } from "playwright";
 
-import { BrowserManager, extractEarlyCareerRadarEmbeddedLinks, extractJobrightOriginalPostHref, isEarlyCareerRadarRoleExpansionLabel, isTargetClosedError, PageFetchError, parseRetryAfter, preferredApplicationDestination } from "../src/crawler/browser.js";
+import { BrowserManager, extractEarlyCareerRadarEmbeddedLinks, extractJobrightOriginalPostHref, isJobrightAuthenticationRequiredPage, isEarlyCareerRadarRoleExpansionLabel, isTargetClosedError, PageFetchError, parseRetryAfter, preferredApplicationDestination } from "../src/crawler/browser.js";
 import { resolveSettings } from "../src/config/settings.js";
 import { InternshipCrawler, settleSourceTasks } from "../src/crawler/crawler.js";
 import type { CrawlStateRecord, PageSnapshot } from "../src/domain/types.js";
@@ -13,6 +13,13 @@ import { Logger } from "../src/utils/logger.js";
 import { makeInternship } from "./helpers.js";
 
 describe("application redirect selection", () => {
+  it("recognizes Jobright's anonymous signup gate without treating a public original link as gated", () => {
+    const anonymous = '<body><button>SIGN IN</button><button>JOIN NOW</button><button>APPLY NOW<svg aria-label="arr-right"></svg></button></body>';
+    const url = "https://jobright.ai/jobs/info/abc123";
+    expect(isJobrightAuthenticationRequiredPage(anonymous, url)).toBe(true);
+    expect(isJobrightAuthenticationRequiredPage(anonymous.replace("</body>", '<a href="https://careers.example.com/jobs/123">Original Job Post</a></body>'), url)).toBe(false);
+    expect(isJobrightAuthenticationRequiredPage('<body><button>Apply</button></body>', url)).toBe(false);
+  });
   it("extracts the exact Jobright Original Job Post anchor href without relying on hashed classes", () => {
     const originalUrl = "https://q-block-computing.breezy.hr/p/6d13d3d6cc7e-embedded-systems-developer-intern?jr_id=6a5333d4e726ec56126a6084";
     const html = `<div class="index_job-buttons-item__3G9QM"><a class="index_origin__e6tHu" href="${originalUrl}" target="_blank"><svg></svg><span>Original Job Post</span></a></div>`;

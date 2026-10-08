@@ -1,3 +1,5 @@
+import { CRAWL_METRIC_KEYS } from "./metrics.js";
+
 export const BENCHMARK_FIELDS = [
   "totalRuntimeMs",
   "urlsDiscovered",
@@ -12,6 +14,9 @@ export const BENCHMARK_FIELDS = [
   "failedSources",
   "retries",
 ] as const;
+
+/** Canonical crawl metric names accepted by typed benchmark consumers. */
+export const BENCHMARK_STABLE_FIELDS = CRAWL_METRIC_KEYS;
 
 export type BenchmarkField = (typeof BENCHMARK_FIELDS)[number] | (string & {});
 

@@ -30,8 +30,8 @@ const role: ResumeRole = {
   title: "Frontend Engineering Intern",
   company: "Northstar",
   description: "Build accessible frontend tools for users, with REST APIs and calendar filtering.",
-  responsibilities: ["Create and maintain web interfaces."],
-  requiredQualifications: ["Experience with TypeScript."],
+  responsibilities: ["Create and maintain web interfaces.", "Maintain calendar filtering based on volunteer feedback."],
+  requiredQualifications: ["Experience with TypeScript and REST APIs."],
   preferredQualifications: ["React experience."],
   technologies: ["React", "TypeScript"],
   location: ["Toronto, ON"],
@@ -346,6 +346,7 @@ describe("grounded application drafts", () => {
 
     const result = await createApplicationDraft(dataResume, dataRole, "resume");
 
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(result.resume?.experience[0]?.bullets).toContain(after);
     expect(result.resume?.experience[0]?.bullets).toContain("Organized volunteer event schedules.");
     expect(result.resume?.projects).toEqual(dataResume.projects);
@@ -359,6 +360,192 @@ describe("grounded application drafts", () => {
     for (const irrelevant of ["Toronto", "deadline", "salary"]) expect(prompt.parsedRoleKeywords).not.toContain(irrelevant);
     expect(prompt.sourceBullets.find((bullet) => bullet.sourceRef === experienceBulletRef)?.matchingRoleKeywords).toEqual(expect.arrayContaining(["Python", "PostgreSQL"]));
     expect(prompt.task).toContain("Return only bullets");
+  });
+
+  it("sends only bullets at or above the relevance threshold and keeps excluded wording", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-only-key");
+    const boundaryResume = structuredClone(resume);
+    boundaryResume.experience[0]!.bullets = [
+      "Built dashboards with Python for market analysis.",
+      "Loaded CSV records with SQL queries.",
+      "Used an R workflow to chart river levels.",
+      "Prepared analytics summaries for surveys.",
+      "Organized campus events for peer mentors.",
+    ];
+    const boundaryRole: ResumeRole = {
+      title: "Quality Analyst Intern",
+      company: "Example",
+      description: "Analytics support.",
+      requiredQualifications: ["SQL proficiency."],
+      preferredQualifications: ["Python experience."],
+      technologies: ["R"],
+    };
+    const fetchMock = setOpenAIReplies({ bullets: [] });
+
+    const result = await createApplicationDraft(boundaryResume, boundaryRole, "resume");
+
+    const requestBody = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body;
+    if (typeof requestBody !== "string") throw new Error("Expected a serialized relevance-selection request.");
+    const request = JSON.parse(requestBody) as { input: Array<{ content: Array<{ text: string }> }> };
+    const prompt = JSON.parse(request.input[0]!.content[0]!.text) as {
+      sourceBullets: Array<{ sourceRef: string; text: string }>;
+    };
+    expect(prompt.sourceBullets).toMatchObject([
+      { sourceRef: "experience.0.bullets.1", text: boundaryResume.experience[0]!.bullets[1] },
+      { sourceRef: "experience.0.bullets.0", text: boundaryResume.experience[0]!.bullets[0] },
+      { sourceRef: "experience.0.bullets.2", text: boundaryResume.experience[0]!.bullets[2] },
+    ]);
+    expect(result.resume?.experience[0]?.bullets).toEqual(expect.arrayContaining([
+      boundaryResume.experience[0]!.bullets[3],
+      boundaryResume.experience[0]!.bullets[4],
+    ]));
+    expect(result.changes?.bullets).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps dotted technical terms when trimming sentence punctuation for relevance", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-only-key");
+    const dottedResume = structuredClone(resume);
+    dottedResume.experience[0]!.bullets = ["Built a Node.js service.", "Maintained a .NET platform."];
+    const dottedRole: ResumeRole = {
+      title: "Analyst Intern",
+      company: "Example",
+      requiredQualifications: ["Node.js experience.", ".NET experience."],
+    };
+    const fetchMock = setOpenAIReplies({ bullets: [] });
+
+    await createApplicationDraft(dottedResume, dottedRole, "resume");
+
+    const requestBody = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body;
+    if (typeof requestBody !== "string") throw new Error("Expected a serialized dotted-technology request.");
+    const request = JSON.parse(requestBody) as { input: Array<{ content: Array<{ text: string }> }> };
+    const prompt = JSON.parse(request.input[0]!.content[0]!.text) as {
+      sourceBullets: Array<{ sourceRef: string }>;
+    };
+    expect(prompt.sourceBullets.map(({ sourceRef }) => sourceRef)).toEqual([
+      "experience.0.bullets.0",
+      "experience.0.bullets.1",
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns an unchanged wording draft without a provider call when no bullets meet the cutoff", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "");
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const unrelatedRole: ResumeRole = {
+      title: "Rust Security Intern",
+      company: "Example",
+      description: "Kubernetes deployment orchestration.",
+      responsibilities: ["Maintain distributed systems."],
+      requiredQualifications: ["Haskell proficiency."],
+      technologies: ["C++"],
+    };
+
+    const result = await createApplicationDraft(resume, unrelatedRole, "resume");
+
+    expect(result.source).toBe("llm");
+    expect(result.changes?.bullets).toEqual([]);
+    expect(result.resume?.experience[0]?.bullets).toContain(resume.experience[0]!.bullets[0]);
+    expect(result.resume?.projects.flatMap((entry) => entry.bullets)).toEqual(expect.arrayContaining(resume.projects[0]!.bullets));
+    expect(result.warnings.join(" ")).toContain("No source bullets matched the role closely enough");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves cancellation when no bullets meet the cutoff", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-only-key");
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const unrelatedRole: ResumeRole = {
+      title: "Rust Security Intern",
+      company: "Example",
+      description: "Kubernetes deployment orchestration.",
+      responsibilities: ["Maintain distributed systems."],
+      requiredQualifications: ["Haskell proficiency."],
+      technologies: ["C++"],
+    };
+    const controller = new AbortController();
+    controller.abort();
+
+    const error = await rejected(createApplicationDraft(resume, unrelatedRole, "resume", controller.signal));
+
+    expect(errorStatus(error)).toBe(504);
+    expect(error.message).toContain("cancelled or exceeded its time limit");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("orders eligible bullets by score with stable ties before applying the 40-item cap", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-only-key");
+    const manyResume: Resume = {
+      ...resume,
+      experience: [{
+        ...resume.experience[0]!,
+        bullets: Array.from({ length: 8 }, (_, index) => `Built a TypeScript module for candidate ${index}.`),
+      }],
+      projects: Array.from({ length: 5 }, (_, projectIndex) => ({
+        ...resume.projects[0]!,
+        title: `Project ${projectIndex}`,
+        bullets: Array.from({ length: 8 }, (_, bulletIndex) => `Built a TypeScript utility for project ${projectIndex}, bullet ${bulletIndex}.`),
+      })),
+    };
+    const capRole: ResumeRole = {
+      title: "TypeScript Tools Intern",
+      company: "Example",
+      requiredQualifications: ["TypeScript experience."],
+      technologies: ["TypeScript"],
+    };
+    const expectedRefs = [
+      ...Array.from({ length: 8 }, (_, index) => `experience.0.bullets.${index}`),
+      ...Array.from({ length: 4 }, (_, projectIndex) => Array.from({ length: 8 }, (_, bulletIndex) => `projects.${projectIndex}.bullets.${bulletIndex}`)).flat(),
+    ];
+    const fetchMock = setOpenAIReplies({ bullets: [] });
+
+    await createApplicationDraft(manyResume, capRole, "resume");
+
+    const requestBody = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body;
+    if (typeof requestBody !== "string") throw new Error("Expected a serialized capped relevance request.");
+    const request = JSON.parse(requestBody) as { input: Array<{ content: Array<{ text: string }> }> };
+    const prompt = JSON.parse(request.input[0]!.content[0]!.text) as {
+      sourceBullets: Array<{ sourceRef: string }>;
+    };
+    expect(prompt.sourceBullets.map(({ sourceRef }) => sourceRef)).toEqual(expectedRefs.slice(0, 40));
+    expect(prompt.sourceBullets).toHaveLength(40);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("finds eligible bullets after more than 40 ineligible source bullets", async () => {
+    vi.stubEnv("OPENAI_API_KEY", "test-only-key");
+    const unrelatedBullet = "Organized campus events for peer mentors.";
+    const mixedResume: Resume = {
+      ...resume,
+      experience: [{ ...resume.experience[0]!, bullets: Array.from({ length: 8 }, () => unrelatedBullet) }],
+      projects: Array.from({ length: 8 }, (_, projectIndex) => ({
+        ...resume.projects[0]!,
+        title: `Project ${projectIndex}`,
+        bullets: Array.from({ length: 8 }, (_, bulletIndex) => projectIndex < 5
+          ? unrelatedBullet
+          : `Built a TypeScript utility for workflow ${projectIndex}-${bulletIndex}.`),
+      })),
+    };
+    const mixedRole: ResumeRole = {
+      title: "TypeScript Tools Intern",
+      company: "Example",
+      requiredQualifications: ["TypeScript experience."],
+    };
+    const fetchMock = setOpenAIReplies({ bullets: [] });
+
+    await createApplicationDraft(mixedResume, mixedRole, "resume");
+
+    const requestBody = (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body;
+    if (typeof requestBody !== "string") throw new Error("Expected a serialized mixed relevance request.");
+    const request = JSON.parse(requestBody) as { input: Array<{ content: Array<{ text: string }> }> };
+    const prompt = JSON.parse(request.input[0]!.content[0]!.text) as {
+      sourceBullets: Array<{ sourceRef: string }>;
+    };
+    expect(prompt.sourceBullets.map(({ sourceRef }) => sourceRef)).toEqual(
+      Array.from({ length: 3 }, (_, projectIndex) => Array.from({ length: 8 }, (_, bulletIndex) => `projects.${projectIndex + 5}.bullets.${bulletIndex}`)).flat(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("repairs a generic synonym swap when review finds no role-specific improvement", async () => {

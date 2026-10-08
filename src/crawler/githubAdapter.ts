@@ -1,9 +1,12 @@
+import { isZshahSource, ZSHAH_JOBS_URL, ZSHAH_README_URL } from "../config/zshahSource.js";
 import type { FetchFailure, PageSnapshot } from "../domain/types.js";
 import { extractPublicBoardJobs } from "../extractors/publicBoards.js";
+import { extractZshahDashboardInventory } from "../extractors/zshah.js";
 import { canonicalizeUrl, redactSensitiveUrl } from "../utils/url.js";
 import type { Logger } from "../utils/logger.js";
 import { HttpClient, HttpRequestError } from "./http.js";
 import { mapBounded } from "./staticAdapters.js";
+import { snapshotFromStructuredJson } from "./adapters/static.js";
 
 interface RepositoryEntry {
   name?: unknown;
@@ -25,6 +28,7 @@ export interface GitHubAdapterResult {
   httpStatus: number | null;
   notes: string[];
   failures?: FetchFailure[];
+  inventoryComplete?: boolean;
 }
 
 function stringValue(value: unknown): string | null {
@@ -67,7 +71,9 @@ function isMarkdownFile(entry: RepositoryEntry): boolean {
 }
 
 function isRepositoryDirectory(entry: RepositoryEntry): boolean {
-  return entry.type === "dir" && Boolean(stringValue(entry.path));
+  const path = stringValue(entry.path);
+  return entry.type === "dir" && Boolean(path)
+    && !/(?:^|\/)(?:\.[^/]+|digests?|archive[sd]?|history|historical|docs?|tests?|scripts?|assets?|images?|node_modules)(?:\/|$)/i.test(path!);
 }
 
 function jsonValue(body: string): unknown {
@@ -104,10 +110,50 @@ export class GitHubSourceAdapter {
   ) {}
 
   public canHandle(sourceUrl: string): boolean {
+    if (isZshahSource(sourceUrl)) return true;
     try { return /(^|\.)github\.com$/i.test(new URL(sourceUrl).hostname); } catch { return false; }
   }
 
   public async collect(sourceUrl: string): Promise<GitHubAdapterResult> {
+    if (isZshahSource(sourceUrl)) return this.collectZshahSource(sourceUrl);
+    return this.collectRepository(sourceUrl);
+  }
+
+  private async collectZshahSource(sourceUrl: string): Promise<GitHubAdapterResult> {
+    let attempts = 0;
+    let fallbackReason: string;
+    try {
+      const response = await this.http.get(ZSHAH_JOBS_URL, { cache: true });
+      attempts += response.attempts;
+      const snapshot = snapshotFromStructuredJson(response, response.body);
+      const inventory = extractZshahDashboardInventory(snapshot);
+      if (inventory.complete) {
+        return {
+          snapshots: [snapshot], retrievalMethod: "zshah live dashboard JSON export",
+          retrievalUrls: [snapshot.url], attempts, httpStatus: response.status,
+          notes: response.stale ? ["The cached dashboard export is stale; inventory coverage is incomplete."] : [],
+          failures: [], inventoryComplete: !response.stale,
+        };
+      }
+      fallbackReason = "The dashboard JSON export did not expose a complete, parseable internship inventory.";
+    } catch (error) {
+      if (error instanceof HttpRequestError) attempts += error.attempts + 1;
+      fallbackReason = `The dashboard was unavailable: ${error instanceof Error ? error.message : String(error)}`;
+    }
+    // The README lists only a subset of the dashboard. Never inspect sibling
+    // files or use that smaller fallback to close unseen dashboard listings.
+    const fallback = await this.collectRepository(ZSHAH_README_URL);
+    return {
+      ...fallback,
+      retrievalMethod: `zshah README fallback (${fallback.retrievalMethod})`,
+      attempts: attempts + fallback.attempts,
+      notes: [fallbackReason, "The README is a limited fallback; dashboard inventory coverage is incomplete.", ...fallback.notes],
+      failures: fallback.failures?.map((failure) => ({ ...failure, sourceUrl })) ?? [],
+      inventoryComplete: false,
+    };
+  }
+
+  private async collectRepository(sourceUrl: string): Promise<GitHubAdapterResult> {
     this.logger.debug("GITHUB", `Collecting ${redactSensitiveUrl(sourceUrl)} through API/raw transport.`);
     const parts = repositoryParts(sourceUrl);
     if (!parts) {
@@ -121,6 +167,7 @@ export class GitHubSourceAdapter {
     let branch = parts.branch;
     let apiSucceeded = false;
     let entries: RepositoryEntry[] = [];
+    const requestedFile = parts.requestedPath && /\.(?:md|markdown|mdown)$/i.test(parts.requestedPath);
     const token = process.env.GITHUB_TOKEN?.trim();
     const authHeaders: HeadersInit = token ? { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" } : { accept: "application/vnd.github+json" };
 
@@ -130,13 +177,14 @@ export class GitHubSourceAdapter {
       lastStatus = metadataResponse.status;
       const metadata = jsonValue(metadataResponse.body) as RepositoryMetadata | null;
       branch ??= stringValue(metadata?.default_branch);
-      if (branch) {
+      if (branch && !requestedFile) {
         const rootResponse = await this.http.get(`${apiBase}/contents/?ref=${encodeURIComponent(branch)}`, { headers: authHeaders });
         attempts += rootResponse.attempts;
         lastStatus = rootResponse.status;
         entries = entriesFrom(rootResponse.body);
         apiSucceeded = true;
       }
+      if (branch && requestedFile) apiSucceeded = true;
     } catch (error) {
       if (error instanceof HttpRequestError) {
         attempts += error.attempts + 1;
@@ -164,7 +212,7 @@ export class GitHubSourceAdapter {
 
     // A small bounded directory walk catches repos that keep their list in an
     // `internships/` or `jobs/` folder without turning GitHub into a crawler.
-    if (apiSucceeded && branch) {
+    if (apiSucceeded && branch && !requestedFile) {
       const ref = branch;
       const directories = entries.filter(isRepositoryDirectory).slice(0, 8);
       const directoryResults = await mapBounded(directories, 4, async (directory) => {

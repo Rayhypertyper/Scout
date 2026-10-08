@@ -107,6 +107,47 @@ describe("telemetry presentation contracts", () => {
     expect(safe.second).toEqual({ label: "same object" });
     expect(redactDiagnosticUrl("https://user:pass@example.test/jobs?token=private#fragment"))
       .toBe("https://example.test/jobs");
+    expect(redactDiagnosticUrl("https://%zz?access_token=private")).toBe("[Invalid URL]");
+    const malformed = redactDiagnostic({ url: "https://%zz?access_token=private" }) as Record<string, unknown>;
+    expect(malformed.url).toBe("[Invalid URL]");
+    expect(JSON.stringify(malformed)).not.toContain("private");
+  });
+
+  it("redacts normalized credential field names and bounds diagnostic traversal", () => {
+    const safe = redactDiagnostic({
+      refreshToken: "refresh-value",
+      clientSecret: "client-value",
+      authToken: "auth-value",
+      passwordHash: "password-value",
+      supabaseKey: "supabase-value",
+    }) as Record<string, unknown>;
+    expect(Object.values(safe)).toEqual(Array(5).fill("[REDACTED]"));
+
+    const secretText = `access_token=${"sensitive-value".repeat(10_000)}`;
+    const boundedString = redactDiagnostic({ details: secretText }) as Record<string, unknown>;
+    expect(boundedString.details).toBe("access_token=[REDACTED]");
+
+    const deep: Record<string, unknown> = {};
+    let cursor = deep;
+    for (let index = 0; index < 20; index += 1) {
+      const child: Record<string, unknown> = {};
+      cursor.child = child;
+      cursor = child;
+    }
+    const boundedTree = redactDiagnostic({ deep, values: Array.from({ length: 100 }, (_, index) => index) }) as Record<string, unknown>;
+    const values = boundedTree.values as unknown[];
+    expect(values.length).toBeLessThanOrEqual(33);
+    expect(values.at(-1)).toBe("[Truncated]");
+
+    const lines: string[] = [];
+    new Logger("debug", { sink: (line) => lines.push(line) }).event("info", "large.event", {
+      fields: Object.fromEntries(Array.from({ length: 100 }, (_, index) => [`field${index}`, "x".repeat(512)])),
+      deep,
+      secretText,
+    });
+    expect(lines[0]!.length).toBeLessThanOrEqual(8_192);
+    expect(lines[0]).toContain('"diagnostics":"[Truncated]"');
+    expect(lines[0]).not.toContain("sensitive-value");
   });
 
   it("routes structured and legacy warning/error output to their severity streams", () => {
@@ -128,11 +169,11 @@ describe("telemetry presentation contracts", () => {
     }
     expect(warnLines).toEqual(expect.arrayContaining([
       expect.stringContaining('"level":"warn"'),
-      expect.stringContaining("[SOURCE] https://example.test/jobs"),
+      expect.stringMatching(/\[SOURCE\] \[[^\]]+\] https:\/\/example\.test\/jobs/),
     ]));
     expect(errorLines).toEqual(expect.arrayContaining([
       expect.stringContaining('"level":"error"'),
-      expect.stringContaining("[SOURCE] authorization: [REDACTED]"),
+      expect.stringMatching(/\[SOURCE\] \[[^\]]+\] authorization: \[REDACTED\]/),
     ]));
     expect(warnLines.join(" ")).not.toContain("private");
     expect(errorLines.join(" ")).not.toContain("private");

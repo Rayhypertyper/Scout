@@ -52,3 +52,21 @@ export function makeInternship(overrides: Partial<Internship> = {}): Internship 
 export function analyzed(internship: Internship): AnalyzedJob {
   return { internship, contentHash: internshipContentHash(internship) };
 }
+
+export function makeCmpaInternship(overrides: Partial<Internship> = {}): Internship {
+  const jobId = overrides.jobId ?? "25c4865e-7ceb-47dd-9997-de9b5b5f179d";
+  return makeInternship({
+    id: "cmpa-careers",
+    jobId,
+    company: "**Carrières CMPA/ACPM**",
+    title: "Co-Op Student - Data Engineer, AI Readiness (Medical-Legal Data)",
+    location: ["Remote (Ottawa, Ontario)"],
+    normalizedLocations: [{ raw: "Remote (Ottawa, Ontario)", country: "Canada", provinceState: "Ontario", city: "Ottawa", remote: true, remoteScope: "canada" }],
+    remoteStatus: "remote",
+    applicationUrl: `https://www.dreamworkhq.com/job/${jobId}`,
+    postingUrl: `https://www.dreamworkhq.com/job/${jobId}`,
+    sourceUrl: "https://github.com/dreamworkhq/Tech-Internships-2027",
+    sources: ["https://github.com/dreamworkhq/Tech-Internships-2027"],
+    ...overrides,
+  });
+}

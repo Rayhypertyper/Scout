@@ -2,9 +2,17 @@ import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 import { SOURCES } from "./sources.js";
-import { canonicalizeUrl } from "../utils/url.js";
+import { isRetiredInternListSource } from "./retiredSources.js";
+import { configuredSourceUrl } from "./zshahSource.js";
+import { internListSourceUrl } from "./internListSource.js";
+import { isUsenoInternshipMasterlistUrl, USENO_INTERNSHIP_MASTERLIST_URL } from "../extractors/useno.js";
 
-export const STATIC_CONFIGURED_SOURCES = [...new Set(SOURCES.map((source) => canonicalizeUrl(source)))];
+/** Canonical source identity shared by crawl selection and lifecycle reconciliation. */
+export function normalizeCatalogSourceUrl(source: string): string {
+  return isUsenoInternshipMasterlistUrl(source) ? USENO_INTERNSHIP_MASTERLIST_URL : internListSourceUrl(configuredSourceUrl(source));
+}
+
+export const STATIC_CONFIGURED_SOURCES = [...new Set(SOURCES.map(normalizeCatalogSourceUrl))].filter((source) => !isRetiredInternListSource(source));
 
 function hasDatabaseColumn(database: DatabaseSync, table: string, column: string): boolean {
   const columns = database.prepare(`PRAGMA table_info(${table})`).all() as unknown as Array<{ name: string }>;
@@ -17,7 +25,7 @@ export function readConfiguredSources(database: DatabaseSync): string[] {
     if (!hasDatabaseColumn(database, "sources", "is_configured")) return [...configured].toSorted();
     const rows = database.prepare("SELECT url FROM sources WHERE is_configured = 1 ORDER BY url").all() as unknown as Array<{ url: string }>;
     for (const row of rows) {
-      if (row.url) configured.add(canonicalizeUrl(row.url));
+      if (row.url && !isRetiredInternListSource(row.url)) configured.add(normalizeCatalogSourceUrl(row.url));
     }
   } catch {
     // Keep the static catalog available while a legacy or unavailable store

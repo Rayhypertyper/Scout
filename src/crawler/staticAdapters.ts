@@ -1,4 +1,6 @@
 import { load, type CheerioAPI } from "cheerio";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 import type { FetchFailure, LinkCandidate, PageSnapshot } from "../domain/types.js";
 import type { ScoutSettings } from "../domain/schemas.js";
@@ -34,6 +36,7 @@ export interface StaticDetailCandidate {
 export interface StaticListingResult extends Omit<StaticAdapterResult, "snapshots"> {
   listingSnapshots: PageSnapshot[];
   detailCandidates: StaticDetailCandidate[];
+  coverageComplete?: boolean;
 }
 
 interface AdapterProfile {
@@ -85,9 +88,10 @@ const PROFILES: AdapterProfile[] = [
     host: /(?:^|\.)applybolt\.app$/i,
     path: /\/jobs\/2027(?:-all)?-internships$/i,
     detailPath: /^\/job\//i,
-    maxDetails: 500,
-    maxListPages: 30,
+    maxDetails: 25_000,
+    maxListPages: 500,
     candidatePattern: /(?:intern|internship|co-?op|student|software|developer|data|qa|automation|machine learning|\bai\b|cyber|embedded|computer science)/i,
+    listingLinkExtractor: applyBoltListingLinks,
   },
   {
     name: "HiringCafe",
@@ -139,6 +143,16 @@ function profileFor(sourceUrl: string): AdapterProfile | null {
   } catch {
     return null;
   }
+}
+
+function applyBoltListingLinks(snapshot: PageSnapshot): LinkCandidate[] {
+  const $ = load(snapshot.html);
+  return $("tr").toArray().flatMap((row) => {
+    const href = $(row).find("a[href*='/job/']").first().attr("href");
+    const url = href ? safeCanonicalizeUrl(href, snapshot.url) : null;
+    if (!url) return [];
+    return [{ url, text: [$(row).find(".jb-job-title").text(), $(row).find(".jb-company-name").text(), $(row).find(".jb-location-text").text()].filter(Boolean).join(" — "), rel: "listing-row" }];
+  });
 }
 
 /**
@@ -311,7 +325,8 @@ function failureRetryCount(error: unknown): number {
   return error instanceof HttpRequestError ? error.attempts : 0;
 }
 
-function resilientBoardRequestOptions(profile: AdapterProfile): { staleIfError?: boolean } {
+function resilientBoardRequestOptions(profile: AdapterProfile): { staleIfError?: boolean; timeoutMs?: number } {
+  if (profile.name === "ApplyBolt") return { timeoutMs: 30_000 };
   return profile.name === "CSJobs" || profile.name === "HiringCafe" || profile.name === "InternInsider"
     ? { staleIfError: true }
     : {};
@@ -347,7 +362,7 @@ export class StaticHttpAdapter {
   }
 
   /** Fetch only listing/sitemap pages; no expensive detail-page I/O occurs. */
-  public async collectListing(sourceUrl: string): Promise<StaticListingResult> {
+  public async collectListing(sourceUrl: string, onListingPage?: (pages: number) => Promise<void>): Promise<StaticListingResult> {
     const profile = profileFor(sourceUrl);
     if (!profile) throw new Error(`No static adapter profile for ${sourceUrl}`);
     const rootPolicy = this.urlPolicy ? await this.urlPolicy(sourceUrl) : { allowed: true, crawlDelayMs: null };
@@ -359,19 +374,32 @@ export class StaticHttpAdapter {
     const listSnapshots: PageSnapshot[] = [];
     let attempts = 0;
     let httpStatus: number | null = null;
+    let paginationTruncated = false;
     if (rootResponse) {
       const root = snapshotFromHttp(rootResponse);
       if (root.fromCache && root.stale) notes.push(`${profile.name} used its last successful cached page after a transient transport failure.`);
       listSnapshots.push(root);
       attempts = rootResponse.attempts;
       httpStatus = rootResponse.status;
+      await onListingPage?.(listSnapshots.length);
     }
     if (profile.maxListPages > 1 && listSnapshots[0]) {
       const listingRoot = listSnapshots[0];
       const paginationQueue = listingRoot.links
         .map(({ url }) => safeCanonicalizeUrl(url, listingRoot.url))
         .filter((url): url is string => Boolean(url));
-      const seenPagination = new Set<string>();
+      const seenPagination = new Set<string>([canonicalizeUrl(sourceUrl)]);
+      // The public board prints its page count. Seed all pages so discovery
+      // does not wait on a serial chain of hundreds of Next links.
+      if (profile.name === "ApplyBolt") {
+        const pageCount = Number(/Page\s+\d+\s+of\s+([\d,]+)/i.exec(listingRoot.text)?.[1]?.replaceAll(",", "") ?? 1);
+        paginationTruncated = pageCount > profile.maxListPages;
+        for (let page = 2; page <= Math.min(pageCount, profile.maxListPages); page += 1) {
+          const url = new URL(sourceUrl);
+          url.searchParams.set("page", String(page));
+          paginationQueue.push(canonicalizeUrl(url.toString()));
+        }
+      }
       while (paginationQueue.length > 0 && listSnapshots.length < profile.maxListPages) {
         const batch: string[] = [];
         const batchDelays = new Map<string, number>();
@@ -405,6 +433,7 @@ export class StaticHttpAdapter {
             httpStatus = result.value.status;
             const snapshot = snapshotFromHttp(result.value);
             listSnapshots.push(snapshot);
+            await onListingPage?.(listSnapshots.length);
             for (const link of snapshot.links) {
               const next = safeCanonicalizeUrl(link.url, snapshot.url);
               if (next && !seenPagination.has(next)) paginationQueue.push(next);
@@ -497,6 +526,18 @@ export class StaticHttpAdapter {
       }
     }
     const detailCandidates = detailLinkCandidates(profile, listSnapshots, sourceUrl, extraDetailUrls);
+    const advertisedCount = profile.name === "ApplyBolt"
+      ? Number(/([\d,]+)\s+recent listings/i.exec(listSnapshots[0]?.text ?? "")?.[1]?.replaceAll(",", "") ?? 0)
+      : 0;
+    const coverageComplete = failures.length === 0 && !paginationTruncated
+      && (advertisedCount === 0 || detailCandidates.length >= advertisedCount);
+    if (!coverageComplete && profile.name === "ApplyBolt") notes.push(`ApplyBolt inventory is incomplete: discovered ${detailCandidates.length} unique postings against ${advertisedCount || "an unknown number of"} advertised listings. Missing rows must not be treated as closed.`);
+    if (profile.name === "ApplyBolt") {
+      const outputPath = join(this.settings.outputDirectory, "applybolt-inventory.json");
+      await mkdir(this.settings.outputDirectory, { recursive: true });
+      await writeFile(outputPath, `${JSON.stringify({ sourceUrl, retrievedAt: new Date().toISOString(), advertisedCount, listingPages: listSnapshots.length, coverageComplete, listings: detailCandidates }, null, 2)}\n`, "utf8");
+      notes.push(`ApplyBolt discovered ${detailCandidates.length} unique postings; inventory saved to ${outputPath}.`);
+    }
     if (listSnapshots.length > 1 || listSnapshots[0]?.links.length !== detailCandidates.length) {
       notes.push(`${profile.name} selected ${detailCandidates.length} relevant detail URLs across ${listSnapshots.length} list page(s).`);
     }
@@ -504,6 +545,7 @@ export class StaticHttpAdapter {
     return {
       listingSnapshots: listSnapshots,
       detailCandidates,
+      coverageComplete,
       retrievalMethod: `${profile.name} static HTTP`,
       retrievalUrls: listSnapshots.map(({ url }) => url),
       attempts,
@@ -514,7 +556,11 @@ export class StaticHttpAdapter {
   }
 
   /** Fetch a caller-selected subset of detail candidates after early filtering. */
-  public async fetchDetails(sourceUrl: string, candidates: readonly StaticDetailCandidate[]): Promise<StaticAdapterResult> {
+  public async fetchDetails(
+    sourceUrl: string,
+    candidates: readonly StaticDetailCandidate[],
+    onSnapshot?: (snapshot: PageSnapshot) => Promise<void>,
+  ): Promise<StaticAdapterResult> {
     const profile = profileFor(sourceUrl);
     if (!profile) throw new Error(`No static adapter profile for ${sourceUrl}`);
     const details: PageSnapshot[] = [];
@@ -531,19 +577,32 @@ export class StaticHttpAdapter {
         if (policy.crawlDelayMs !== null && policy.crawlDelayMs !== undefined) candidateDelays.set(candidate.url, policy.crawlDelayMs);
       } else failures.push({ sourceUrl, url: candidate.url, errorType: "robots_disallowed", message: "Disallowed by robots.txt", statusCode: null, retryCount: 0, occurredAt: new Date().toISOString() });
     }
-    const detailResults = await mapBounded(allowedCandidates, Math.max(1, Math.min(this.settings.httpConcurrency, 8)), async ({ url }) => this.http.get(url, {
-      cache: true,
-      // The HTTP client still enforces one request at a time per origin; this
-      // lower delay avoids making a large public feed take an hour.
-      perHostDelayMs: Math.max(Math.min(this.settings.perHostDelayMs, 150), candidateDelays.get(url) ?? 0),
-      ...resilientBoardRequestOptions(profile),
-    }));
+    const detailResults = await mapBounded(allowedCandidates, Math.max(1, Math.min(this.settings.httpConcurrency, 8)), async ({ url }) => {
+      const response = await this.http.get(url, {
+        cache: true,
+        // The HTTP client still enforces one request at a time per origin; this
+        // lower delay avoids making a large public feed take an hour.
+        perHostDelayMs: Math.max(Math.min(this.settings.perHostDelayMs, 150), candidateDelays.get(url) ?? 0),
+        ...resilientBoardRequestOptions(profile),
+      });
+      const snapshot = snapshotFromHttp(response);
+      await onSnapshot?.(snapshot);
+      // The streaming consumer has already parsed and published this page.
+      // Retain transport metadata rather than thousands of hydration bodies.
+      if (onSnapshot && profile.name === "ApplyBolt") {
+        snapshot.html = "";
+        snapshot.text = "";
+        snapshot.links = [];
+        return { response: { ...response, body: "" }, snapshot };
+      }
+      return { response, snapshot };
+    });
     for (const [index, result] of detailResults.entries()) {
       const url = allowedCandidates[index]?.url ?? sourceUrl;
       if (result.status === "fulfilled") {
-        attempts += result.value.attempts;
-        httpStatus = result.value.status;
-        details.push(snapshotFromHttp(result.value));
+        attempts += result.value.response.attempts;
+        httpStatus = result.value.response.status;
+        details.push(result.value.snapshot);
       } else {
         const message = result.reason instanceof Error ? result.reason.message : String(result.reason);
         notes.push(`A detail page could not be retrieved: ${message}`);

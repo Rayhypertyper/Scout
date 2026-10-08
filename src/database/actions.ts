@@ -1,11 +1,13 @@
 import type { DatabaseSync } from "node:sqlite";
 
+import { ensureAccountActionSchema, listingActionReadTable } from "./accountActions.js";
+
 import { providerJobIdentityKeys } from "../deduplication/deduplicate.js";
 import { APPLICATION_STAGES } from "../domain/applicationStages.js";
 import { InternshipSchema, type Internship } from "../domain/schemas.js";
 import { parseLocation } from "../parsing/locations.js";
 import { normalizeCompanyIdentity, normalizeIdentity, normalizeRoleIdentity, uniqueStrings } from "../utils/text.js";
-import { extractJobId, normalizedJobUrl, organizationTokenFromUrl } from "../utils/url.js";
+import { extractJobId, isAggregatorUrl, normalizedJobUrl, organizationTokenFromUrl } from "../utils/url.js";
 import { sha256 } from "../utils/hash.js";
 
 export type ListingAction = "applied" | "cant_fit";
@@ -201,21 +203,22 @@ function actionUrlIdentities(urls: string[], directJobIds: string[]): ListingAct
 
 function actionDirectJobIds(internship: Internship): string[] {
   const urls = [internship.applicationUrl, internship.postingUrl];
-  const specificUrls = urls.filter((url) => !isGenericListingUrl(url));
+  const specificUrls = urls.filter((url) => !isGenericListingUrl(url) && !isAggregatorUrl(url));
   // A generic careers page or embedded form shell is not a requisition ID.
   // Treating an aggregator slug as a direct ID makes an otherwise identical
   // employer ATS copy look like a different job.
   return actionJobIdAliases(uniqueStrings([
     ...specificUrls.map((url) => extractJobId(url) ?? ""),
-    ...(specificUrls.length > 0 ? [internship.jobId ?? ""] : []),
+    ...(specificUrls.length > 0 && !urls.some(isAggregatorUrl) ? [internship.jobId ?? ""] : []),
     ...embeddedListingJobIds(urls),
   ].filter((id) => id.startsWith("embedded:") || /\d/.test(id)).map((id) => id.toLocaleLowerCase())));
 }
 
 function contextJobIds(context: ListingActionContext): string[] {
+  const urls = [context.applicationUrl, context.postingUrl].filter((value): value is string => Boolean(value));
   return actionJobIdAliases(uniqueStrings([
-    context.jobId ?? "",
-    ...[context.applicationUrl, context.postingUrl].filter((value): value is string => Boolean(value)).map((url) => extractJobId(url) ?? ""),
+    ...(!urls.some(isAggregatorUrl) ? [context.jobId ?? ""] : []),
+    ...urls.filter((url) => !isAggregatorUrl(url)).map((url) => extractJobId(url) ?? ""),
   ].filter((id) => /\d/.test(id)).map((id) => id.toLocaleLowerCase())));
 }
 
@@ -491,10 +494,10 @@ export function compileListingActionMatcher(
 /** Read the durable identity projection without reparsing every action's
  * internship payload. The dashboard detail path uses this narrow projection;
  * the full matcher path below still rebuilds legacy aliases when necessary. */
-export function readPersistedListingActionIdentities(database: DatabaseSync): StoredListingActionIdentity[] {
+export function readPersistedListingActionIdentities(database: DatabaseSync, userId?: string | null): StoredListingActionIdentity[] {
   const rows = database.prepare(`
     SELECT listing_key, identity_key, direct_job_ids_json
-    FROM listing_action_identities
+    FROM ${listingActionReadTable(userId, true)}
   `).all() as unknown as ListingActionIdentityRow[];
   const storedIdentities = rows.flatMap((row) => {
     try {
@@ -510,8 +513,8 @@ export function readPersistedListingActionIdentities(database: DatabaseSync): St
   return storedIdentities;
 }
 
-export function readListingActionIdentities(database: DatabaseSync): StoredListingActionIdentity[] {
-  const storedIdentities = readPersistedListingActionIdentities(database);
+export function readListingActionIdentities(database: DatabaseSync, userId?: string | null): StoredListingActionIdentity[] {
+  const storedIdentities = readPersistedListingActionIdentities(database, userId);
   // Rebuild every action's identities in memory as well as reading the
   // persisted aliases. The context columns are the durable fallback when a
   // listing row was merged, removed, or an older write stopped before its
@@ -519,7 +522,7 @@ export function readListingActionIdentities(database: DatabaseSync): StoredListi
   const actionRows = database.prepare(`
     SELECT a.listing_key, a.listing_type, a.listing_id, a.company, a.title,
            a.application_url, a.posting_url, a.job_id, a.location, i.payload_json
-    FROM listing_actions a
+    FROM ${listingActionReadTable(userId)} a
     LEFT JOIN internships i ON i.id = a.listing_id
   `).all() as unknown as Array<{
     listing_key: string;
@@ -563,6 +566,7 @@ export function readListingActionIdentities(database: DatabaseSync): StoredListi
 export async function readListingActionMatcherCooperatively(
   database: DatabaseSync,
   batchSize = 40,
+  userId?: string | null,
 ): Promise<ListingActionMatcher> {
   if (!Number.isSafeInteger(batchSize) || batchSize < 1) {
     throw new RangeError("batchSize must be a positive safe integer");
@@ -572,13 +576,13 @@ export async function readListingActionMatcherCooperatively(
   try {
     const firstPersistedPage = database.prepare(`
       SELECT rowid AS row_id, listing_key, identity_key, direct_job_ids_json
-      FROM listing_action_identities
+      FROM ${listingActionReadTable(userId, true)}
       ORDER BY rowid
       LIMIT @limit
     `);
     const nextPersistedPage = database.prepare(`
       SELECT rowid AS row_id, listing_key, identity_key, direct_job_ids_json
-      FROM listing_action_identities
+      FROM ${listingActionReadTable(userId, true)}
       WHERE rowid > @after
       ORDER BY rowid
       LIMIT @limit
@@ -617,7 +621,7 @@ export async function readListingActionMatcherCooperatively(
     const firstActionPage = database.prepare(`
       SELECT a.rowid AS row_id, a.listing_key, a.listing_type, a.listing_id, a.company, a.title,
              a.application_url, a.posting_url, a.job_id, a.location, i.payload_json
-      FROM listing_actions a
+      FROM ${listingActionReadTable(userId)} a
       LEFT JOIN internships i ON i.id = a.listing_id
       ORDER BY a.rowid
       LIMIT @limit
@@ -625,7 +629,7 @@ export async function readListingActionMatcherCooperatively(
     const nextActionPage = database.prepare(`
       SELECT a.rowid AS row_id, a.listing_key, a.listing_type, a.listing_id, a.company, a.title,
              a.application_url, a.posting_url, a.job_id, a.location, i.payload_json
-      FROM listing_actions a
+      FROM ${listingActionReadTable(userId)} a
       LEFT JOIN internships i ON i.id = a.listing_id
       WHERE a.rowid > @after
       ORDER BY a.rowid
@@ -699,15 +703,19 @@ export function replaceListingActionIdentities(
   title: string,
   internship?: Internship | null,
   context: ListingActionContext = {},
+  userId?: string,
 ): void {
-  database.prepare("DELETE FROM listing_action_identities WHERE listing_key = @listingKey").run({ listingKey });
+  const table = userId === undefined ? "listing_action_identities" : "user_listing_action_identities";
+  database.prepare(`DELETE FROM ${table} WHERE listing_key = @listingKey${userId === undefined ? "" : " AND user_id = @userId"}`)
+    .run({ listingKey, ...(userId === undefined ? {} : { userId }) });
   const insert = database.prepare(`
-    INSERT INTO listing_action_identities (listing_key, identity_key, direct_job_ids_json)
-    VALUES (@listingKey, @identityKey, @directJobIds)
+    INSERT INTO ${table} (${userId === undefined ? "" : "user_id, "}listing_key, identity_key, direct_job_ids_json)
+    VALUES (${userId === undefined ? "" : "@userId, "}@listingKey, @identityKey, @directJobIds)
   `);
   for (const identity of actionIdentitiesForListing(listingType, listingId, company, title, internship, context)) {
     insert.run({
       listingKey,
+      ...(userId === undefined ? {} : { userId }),
       identityKey: identity.identityKey,
       directJobIds: JSON.stringify(identity.directJobIds),
     });
@@ -794,6 +802,7 @@ export function ensureListingActionSchema(database: DatabaseSync): void {
       WHERE application_stage = 'applied'
     `);
   }
+  ensureAccountActionSchema(database);
 }
 
 export const LISTING_ACTIONS_SCHEMA = `

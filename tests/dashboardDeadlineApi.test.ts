@@ -9,6 +9,7 @@ import { resolveSettings } from "../src/config/settings.js";
 import { InternshipDatabase } from "../src/database/db.js";
 import type { CrawlResult, ScoutRunOptions } from "../src/domain/types.js";
 import { analyzed, makeInternship } from "./helpers.js";
+import { dashboardAccountHeaders, installDashboardAccountFixture } from "./dashboardAccountFixture.js";
 
 interface CapturedResponse {
   statusCode: number;
@@ -42,7 +43,7 @@ function request(
   return {
     method,
     url,
-    headers,
+    headers: { ...dashboardAccountHeaders(), ...headers },
     async *[Symbol.asyncIterator](): AsyncGenerator<string> {
       // The dashboard reads request bodies through the same async interface as
       // node:http requests, even for this bodyless GET fixture.
@@ -55,8 +56,10 @@ describe("dashboard deadline notification API", () => {
   let requestHandler: typeof import("../src/dashboard.js").requestHandler;
   let databasePath = "";
   let directory = "";
+  let restoreAuth: () => void;
 
   beforeAll(async () => {
+    restoreAuth = installDashboardAccountFixture();
     directory = mkdtempSync(join(tmpdir(), "internshipmatic-dashboard-deadline-"));
     mkdirSync(join(directory, "output"), { recursive: true });
     process.env.INTERNSHIPMATIC_ROOT = directory;
@@ -107,6 +110,7 @@ describe("dashboard deadline notification API", () => {
   });
 
   afterAll(() => {
+    restoreAuth();
     rmSync(directory, { recursive: true, force: true });
     delete process.env.INTERNSHIPMATIC_ROOT;
     delete process.env.DASHBOARD_SKIP_LIVE_BOARD;

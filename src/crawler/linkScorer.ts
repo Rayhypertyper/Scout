@@ -30,6 +30,9 @@ export function scoreLink(link: LinkCandidate, currentUrl: string): ScoredLink {
   if (BLOCKED_EXTENSIONS.test(link.url) || /^(?:mailto|tel|javascript):/i.test(link.url)) {
     return { score: -1000, reason: "non-page resource" };
   }
+  if (/\/cdn-cgi\//i.test(new URL(link.url, currentUrl).pathname)) {
+    return { score: -1000, reason: "browser infrastructure" };
+  }
   let score = 0;
   const reasons: string[] = [];
   for (const rule of POSITIVE) {

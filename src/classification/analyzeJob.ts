@@ -24,6 +24,11 @@ export interface AnalyzeOptions {
   /** Allow the structured Intern List feed to retain a Jobright detail URL
    * when its current unauthenticated UI does not expose an employer URL. */
   allowUnresolvedJobright?: boolean;
+  /** Canonical corpus admission options. When supplied, geography and legacy
+   * title/score visibility rules are left to downstream user-facing filters. */
+  minimumRelevanceScore?: number;
+  allowUnclassifiedInternships?: boolean;
+  applyTitleExclusions?: boolean;
 }
 
 function evidenceValueMatches(left: string, right: string): boolean {
@@ -239,6 +244,9 @@ export async function analyzeRawJob(
   now = new Date().toISOString(),
   options: AnalyzeOptions = {},
 ): Promise<AnalyzeResult> {
+  const hasCanonicalAdmission = options.minimumRelevanceScore !== undefined
+    || options.allowUnclassifiedInternships !== undefined
+    || options.applyTitleExclusions !== undefined;
   const titleIndicatesRemote = /^\[remote\]\s*/i.test(raw.title ?? "");
   const title = oneLine(decodeHtmlEntities(raw.title ?? ""))
     .replace(/^\[(?:remote|hybrid|onsite|on-site)\]\s*/i, "")
@@ -246,7 +254,7 @@ export async function analyzeRawJob(
     .trim();
   const rawCompany = oneLine(raw.company ?? "");
   const description = raw.description?.trim() ?? "";
-  const excludedTitleReason = excludedJobTitleReason(title);
+  const excludedTitleReason = options.applyTitleExclusions === false ? null : excludedJobTitleReason(title);
   if (excludedTitleReason) {
     return { accepted: false, reason: `The job title contains ${excludedTitleReason}, which is excluded.`, title };
   }
@@ -274,8 +282,10 @@ export async function analyzeRawJob(
   if (!internshipDetection.isInternship) {
     return { accepted: false, reason: `${relevance.reason} ${internshipDetection.reason}`, title };
   }
-  const effectiveMinimumScore = Math.max(minimumScore, MIN_LISTING_SCORE);
-  if (relevance.score < effectiveMinimumScore || relevance.categories.length === 0) {
+  const effectiveMinimumScore = options.minimumRelevanceScore
+    ?? (hasCanonicalAdmission ? minimumScore : Math.max(minimumScore, MIN_LISTING_SCORE));
+  if (relevance.score < effectiveMinimumScore
+    || relevance.categories.length === 0 && options.allowUnclassifiedInternships !== true) {
     return { accepted: false, reason: `${relevance.reason} Minimum required score is ${effectiveMinimumScore}.`, title };
   }
 
@@ -290,7 +300,7 @@ export async function analyzeRawJob(
     ...inferredLocations(description),
   ]);
   const locations = parseLocations(rawLocations, description);
-  if (!isAllowedPostingLocation(locations.normalized, locations.remoteStatus)) {
+  if (!hasCanonicalAdmission && !isAllowedPostingLocation(locations.normalized, locations.remoteStatus)) {
     return { accepted: false, reason: "The posting is not located in Canada, the United States, or a remote work arrangement.", title };
   }
   const extractedUrl = new URL(extractedApplicationUrl);
@@ -395,7 +405,9 @@ export async function analyzeRawJob(
     salary: raw.salary?.trim() || temporal.salary,
     postingDate: raw.postingDate?.trim() || temporal.postingDate,
     deadline: raw.deadline?.trim() || temporal.deadline,
-    categories: relevance.categories,
+    categories: relevance.categories.length > 0
+      ? relevance.categories
+      : options.allowUnclassifiedInternships === true ? ["other-internship"] : relevance.categories,
     relevanceScore: relevance.score,
     relevanceReason: `${relevance.reason} ${internshipDetection.reason}`,
     lifecycleStatus: "NEW",

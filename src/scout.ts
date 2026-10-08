@@ -2,6 +2,9 @@ import { DatabaseSync } from "node:sqlite";
 
 import { InternshipCrawler } from "./crawler/crawler.js";
 import { activeRunMaxDurationMs, RUN_HEARTBEAT_INTERVAL_MS } from "./config/runLock.js";
+import { isRetiredInternListSource, RETIRED_INTERN_LIST_MESSAGE } from "./config/retiredSources.js";
+import { internListSourceUrl } from "./config/internListSource.js";
+import { holdSystemAwakeForCrawl } from "./config/wakeLock.js";
 import { InternshipDatabase } from "./database/db.js";
 import type { Internship } from "./domain/schemas.js";
 import { CliFiltersSchema } from "./domain/schemas.js";
@@ -12,7 +15,7 @@ import { filterInternships } from "./output/filter.js";
 import { writeJsonOutput } from "./output/json.js";
 import { Logger } from "./utils/logger.js";
 import { canonicalizeUrl, isHttpUrl } from "./utils/url.js";
-import { CrawlCancelledError, CrawlDeadlineExceededError, isCrawlDeadlineExceededError, throwIfAborted } from "./domain/cancellation.js";
+import { CrawlCancelledError, CrawlDeadlineExceededError, currentSourceAbortSignal, isCrawlDeadlineExceededError, throwIfAborted } from "./domain/cancellation.js";
 
 export interface ScoutExecution {
   crawl: CrawlResult;
@@ -28,15 +31,19 @@ export async function runScout(options: ScoutRunOptions): Promise<ScoutExecution
   }
   const sources = [...new Set(options.sources.map((source) => {
     if (!isHttpUrl(source)) throw new Error(`Source must be an HTTP(S) URL: ${source}`);
-    return canonicalizeUrl(source);
+    if (isRetiredInternListSource(source)) throw new Error(RETIRED_INTERN_LIST_MESSAGE);
+    return canonicalizeUrl(internListSourceUrl(source));
   }))];
   const filters = CliFiltersSchema.parse(options.filters);
   throwIfAborted(options.cancellationSignal);
   const normalizedOptions: ScoutRunOptions = { ...options, sources, filters };
   const logger = new Logger(options.settings.verbose ? "debug" : "info");
   const database = new InternshipDatabase(options.settings.databasePath);
+  let releaseWakeLock: (() => void) | undefined;
   try {
     const runId = database.startRun(normalizedOptions);
+    releaseWakeLock = holdSystemAwakeForCrawl(logger);
+    logger.info("RUN", `Started crawl ${runId} at ${new Date().toISOString()} (${sources.length} sources)`);
     options.onRunStarted?.(runId);
     const cancellation = new AbortController();
     let crawler: InternshipCrawler | null = null;
@@ -127,6 +134,15 @@ export async function runScout(options: ScoutRunOptions): Promise<ScoutExecution
           signal: cancellation.signal,
           classifyListing: (source, hint) => database.classifyListing(source, hint),
           getJobrightDestinations: (source) => database.getJobrightDestinations(source),
+          getUsenoApplications: () => database.getUsenoApplications(),
+          recordReadyJobs: (id, jobs) => {
+            const sourceSignal = currentSourceAbortSignal();
+            return enqueueWrite(() => {
+              throwIfAborted(cancellation.signal);
+              throwIfAborted(sourceSignal);
+              database.persistReadyJobs(id, jobs);
+            });
+          },
           recordLightweightSightings: (id, sightings) => enqueueWrite(() => database.recordLightweightSightings(id, sightings)),
           recordCrawlMetrics: (id, metrics) => enqueueWrite(() => database.recordCrawlMetrics(id, metrics)),
           recordSourceStart: (source, startedAt) => {
@@ -146,6 +162,11 @@ export async function runScout(options: ScoutRunOptions): Promise<ScoutExecution
         options.settings.closedAfterMisses,
         () => options.onRunCommitted?.(runId),
       );
+      // Persistence has cleared the RUNNING lease. Exports can take another
+      // minute; they must not emit a false "heartbeat lost" for that success.
+      clearInterval(heartbeat);
+      clearInterval(cancellationPoller);
+      clearTimeout(deadlineTimer);
       const displayed = filterInternships(persisted.internships, filters);
       const [jsonPath, csvPath] = await Promise.all([
         writeJsonOutput(options.settings.outputDirectory, displayed),
@@ -178,6 +199,7 @@ export async function runScout(options: ScoutRunOptions): Promise<ScoutExecution
       options.cancellationSignal?.removeEventListener("abort", onExternalCancellation);
     }
   } finally {
+    releaseWakeLock?.();
     database.close();
   }
 }

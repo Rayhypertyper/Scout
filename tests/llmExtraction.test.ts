@@ -199,9 +199,11 @@ describe("OpenAI fallback extraction guards", () => {
 
     await fallback.recover(snapshot(), [rawJob()], snapshot().url);
     await fallback.recover(snapshot(), [rawJob()], snapshot().url);
+    await Promise.all(Array.from({ length: 100 }, () => fallback.recover(snapshot(), [rawJob()], snapshot().url)));
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
     expect(audit(directory).map((record) => record.status)).toEqual(["accepted", "request_limit"]);
+    expect(JSON.stringify(audit(directory)[1]).length).toBeLessThan(1_500);
   });
 
   it("keeps overlapping recoveries within the configured OpenAI concurrency cap", async () => {

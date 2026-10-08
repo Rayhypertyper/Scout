@@ -79,6 +79,7 @@ export function normalizeCompanyIdentity(value: string): string {
     .replace(/\s+/g, " ")
     .trim();
   const compact = normalized.replace(/\s+/g, "");
+  if (["cmpaacpm", "carrierescmpaacpm", "careerscmpaacpm"].includes(compact)) return "cmpa acpm";
   if (["chase", "jpmorganchase", "jpmorganchaseandco"].includes(compact)) return "jpmorgan chase";
   if (normalized.startsWith("castleton commodities ")) return "castleton commodities";
   if (["plus", "plusai"].includes(compact)) return "plus";

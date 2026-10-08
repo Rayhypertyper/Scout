@@ -5,6 +5,7 @@ import {
   SourceStalledError,
 } from "../domain/cancellation.js";
 import type { FetchFailure, SourceCrawlResult } from "../domain/types.js";
+import { isEarlyCareerRadarNotFoundPage } from "./publicSources.js";
 
 /**
  * A small surface for source-level history.  The persistence implementation
@@ -245,6 +246,7 @@ export function sourceNeedsDeferredRetry(
   result: SourceCrawlResult,
   isRetryableFailure: SourceRetryability,
 ): boolean {
+  if (isEarlyCareerRadarNotFoundPage(result.sourceUrl, result.httpStatus ?? null)) return false;
   if (result.coverageComplete || result.status === "no_internships_found") return false;
   if (["robots_disallowed", "access_denied", "authentication_required", "circuit_open"].includes(result.status ?? "")) return false;
   if (result.failures.length > 0) return result.failures.some((failure) => isRetryableFailure(failure));

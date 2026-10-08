@@ -2,6 +2,9 @@ import { z } from "zod";
 
 import { MIN_LISTING_SCORE } from "../config/thresholds.js";
 
+export type ScoutEdition = "personal" | "public";
+export const ScoutEditionSchema = z.enum(["personal", "public"]);
+
 export const CATEGORIES = [
   "swe",
   "frontend",
@@ -239,6 +242,7 @@ export const InternshipSchema = z.object({
 export type Internship = z.infer<typeof InternshipSchema>;
 
 export const ScoutSettingsSchema = z.object({
+  edition: ScoutEditionSchema.default("public"),
   maxDepth: z.number().int().min(0).max(12).default(4),
   maxPagesPerSource: z.number().int().min(1).max(10_000).default(100),
   /** General request ceiling retained for backwards compatibility. */
@@ -261,7 +265,7 @@ export const ScoutSettingsSchema = z.object({
   detailRecheckTtlMs: z.number().int().min(0).max(31_536_000_000).default(21_600_000),
   circuitBreakerFailureThreshold: z.number().int().min(1).max(10).default(3),
   circuitBreakerCooldownMs: z.number().int().min(1_000).max(86_400_000).default(300_000),
-  minRelevanceScore: z.number().int().min(0).max(100).default(MIN_LISTING_SCORE),
+  minRelevanceScore: z.number().int().min(0).max(100).default(0),
   // Per-domain semaphores provide the primary bound. This small delay keeps
   // the default crawl fast while still remaining polite and is raised by
   // robots.txt Crawl-delay and adaptive transport backoff when present.

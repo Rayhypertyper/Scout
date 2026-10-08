@@ -5,7 +5,6 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { STATIC_CONFIGURED_SOURCES } from "../src/config/sourceCatalog.js";
 import { DATABASE_SCHEMA } from "../src/database/schema.js";
 import { METRIC_REGISTRY } from "../src/observability/metrics.js";
 import {
@@ -259,14 +258,9 @@ describe("operations health snapshots", () => {
     const codes = new Set(result.anomalies.map(({ code }) => code));
     expect(result.dataState).toBe("ready");
     expect(result.metrics.durationTrend).toBe("up");
-    expect(codes).toEqual(expect.objectContaining({
-      DURATION_REGRESSION: expect.anything(),
-      CLOSURE_SPIKE: expect.anything(),
-      DEDUP_DRIFT: expect.anything(),
-      ZERO_YIELD: expect.anything(),
-      LOW_YIELD: expect.anything(),
-      SLOW_SOURCE: expect.anything(),
-    }));
+    for (const code of ["DURATION_REGRESSION", "CLOSURE_SPIKE", "DEDUP_DRIFT", "ZERO_YIELD", "LOW_YIELD", "SLOW_SOURCE"] as const) {
+      expect(codes.has(code)).toBe(true);
+    }
     database.close();
   });
 

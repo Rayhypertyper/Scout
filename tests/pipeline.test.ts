@@ -92,81 +92,18 @@ describe("generic HTTP incremental pipeline", () => {
     expect(result.failures).toEqual([]);
   });
 
-  it("uses the public Intern List feed origin when the page shell is robots-disallowed", async () => {
-    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-intern-list-pipeline-"));
+  it.each([INTERN_LIST_API_URL, `${INTERN_LIST_API_URL}?position=50&count=50`, `${INTERN_LIST_API_URL}/obsolete`])("retires %s without fetching the endpoint, robots or starting a browser", async (source) => {
+    const directory = mkdtempSync(join(tmpdir(), "internshipmatic-retired-feed-"));
     temporaryDirectories.push(directory);
-    const source = "https://www.intern-list.com/?k=swe";
-    const requests: Array<{ url: string; method: string; category?: string }> = [];
-    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
-      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-      const method = init?.method ?? (typeof input !== "string" && !(input instanceof URL) ? input.method : "GET");
-      const body = typeof init?.body === "string" ? init.body : "";
-      const category = body ? (JSON.parse(body) as { category?: string }).category : undefined;
-      requests.push({ url, method, ...(category ? { category } : {}) });
-      if (url === "https://swan-api.jobright.ai/robots.txt") return new Response("", { status: 200, headers: { "content-type": "text/plain" } });
-      if (url.startsWith("https://swan-api.jobright.ai/swan/mini-sites/list?")) {
-        const jobId = category === "intern:ca:engineering_development" ? "canada-job" : "us-job";
-        return new Response(JSON.stringify({
-          success: true,
-          result: {
-            total: 1,
-            jobList: [{
-              jobId,
-              tabCategory: [category],
-              properties: {
-                title: "Software Engineering Intern",
-                company: "Example Robotics",
-                location: "Toronto, ON",
-                workModel: "Hybrid",
-                industry: ["Software"],
-                qualifications: "1. Pursuing Computer Science. 2. Experience with Python.",
-              },
-              postedAt: 1786803050000,
-            }],
-          },
-        }), { status: 200, headers: { "content-type": "application/json" } });
-      }
-      throw new Error(`unexpected request: ${method} ${url}`);
-    });
-
-    const settings = resolveSettings({
-      outputDirectory: directory,
-      databasePath: join(directory, "crawl.db"),
-      respectRobotsTxt: true,
-      retryCount: 0,
-      perHostDelayMs: 0,
-      maxDepth: 0,
-      maxPagesPerSource: 8,
-      httpConcurrency: 2,
-      browserConcurrency: 1,
-    });
-    const crawler = new InternshipCrawler(settings, new Logger("error"));
-    const originalPostCalls: string[] = [];
-    const fakeBrowser = {
-      navigations: 0,
-      resolveOriginalJobPostUrl: async (url: string) => {
-        originalPostCalls.push(url);
-        return `https://employer.example/jobs/${new URL(url).pathname.split("/").filter(Boolean).at(-1)}`;
-      },
-      resolveApplicationUrl: async (url: string) => `https://employer.example/jobs/${new URL(url).pathname.split("/").filter(Boolean).at(-1)}`,
-      releaseSource: async () => undefined,
-      close: async () => undefined,
-    };
-    (crawler as unknown as { browser: typeof fakeBrowser }).browser = fakeBrowser;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("unexpected request"));
+    const crawler = new InternshipCrawler(resolveSettings({
+      outputDirectory: directory, databasePath: join(directory, "crawl.db"), respectRobotsTxt: true,
+    }), new Logger("error"));
     const result = await crawler.crawl([source]);
-
-    expect(result.sourceResults[0]?.status).toBe("success");
-    expect(result.sourceResults[0]?.jobs.length).toBe(2);
-    expect(result.jobs.every(({ internship }) => internship.postingUrl.startsWith("https://employer.example/jobs/"))).toBe(true);
-    expect(result.jobs.every(({ internship }) => internship.applicationUrl === internship.postingUrl)).toBe(true);
-    expect(new Set(originalPostCalls).size).toBe(2);
-    const postCategories = requests.filter(({ method }) => method === "POST").map(({ category }) => category);
-    expect(postCategories).toEqual(expect.arrayContaining([
-      "intern:us:swe",
-      "intern:ca:engineering_development",
-    ]));
-    expect(new Set(postCategories).size).toBe(2);
-    expect(requests.map(({ url }) => url)).not.toContain(source);
+    expect(result.sourceResults[0]).toMatchObject({ status: "source_unavailable", completed: false, coverageComplete: false, pagesVisited: 0 });
+    expect(result.failures).toEqual([expect.objectContaining({ errorType: "source_retired" })]);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.metrics?.browserNavigations).toBe(0);
   });
 
   it("settles a failed Intern List target without browser fallback or sibling cancellation", async () => {
@@ -179,10 +116,10 @@ describe("generic HTTP incremental pipeline", () => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
       const method = init?.method ?? (typeof input !== "string" && !(input instanceof URL) ? input.method : "GET");
       requests.push(`${method} ${url}`);
-      if (url === "https://swan-api.jobright.ai/robots.txt" || url === "https://sibling.example/robots.txt") {
+      if (new URL(url).pathname === "/robots.txt") {
         return new Response("", { status: 200, headers: { "content-type": "text/plain" } });
       }
-      if (url.startsWith(`${INTERN_LIST_API_URL}?`)) {
+      if (new URL(url).hostname === "www.intern-list.com") {
         return new Response("temporarily unavailable", { status: 404, headers: { "content-type": "text/plain" } });
       }
       if (url === sibling) {
@@ -221,7 +158,8 @@ describe("generic HTTP incremental pipeline", () => {
     expect(result.sourceResults[0]).toMatchObject({ sourceUrl: source, status: "source_unavailable", completed: false });
     expect(result.sourceResults[1]?.sourceUrl).toBe(sibling);
     expect(browserCalls).toEqual([]);
-    expect(requests.some((request) => request.includes(`GET ${source}`))).toBe(false);
+    expect(requests.some((request) => request.includes(INTERN_LIST_API_URL))).toBe(false);
+    expect(requests.some((request) => request.includes("www.intern-list.com"))).toBe(true);
   });
 
   it("classifies a repeated listing identity once before detail fetch", async () => {

@@ -11,6 +11,33 @@
         ],
         "createdAt": "2026-10-03T20:29:02.047Z",
         "reason": "Agent retained the incumbent app 12px supporting-copy and disclosure-control size, matching the role metadata and resume review description on this narrow refinement."
+      },
+      {
+        "rule": "overused-font",
+        "value": "geist",
+        "files": [
+          "public/styles.css"
+        ],
+        "createdAt": "2026-10-06T18:19:45.683Z",
+        "reason": "Agent preserved the Geist family explicitly specified in DESIGN.md; this performance change self-hosts the existing font without redesigning typography."
+      },
+      {
+        "rule": "overused-font",
+        "value": "geist mono",
+        "files": [
+          "public/styles.css"
+        ],
+        "createdAt": "2026-10-06T18:19:45.718Z",
+        "reason": "Agent preserved the Geist Mono family explicitly specified in DESIGN.md; this performance change self-hosts the existing font without redesigning typography."
+      },
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "src/extractors/publicBoards.ts"
+        ],
+        "createdAt": "2026-10-06T21:04:08.882Z",
+        "reason": "Codex decided: this backend Markdown parser removes literal img markup with a regex; it does not render an image element."
       }
     ]
   }

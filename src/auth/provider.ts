@@ -25,13 +25,15 @@ function metadataDisplayName(user: User): string | undefined {
   return undefined;
 }
 
-function publicUser(user: User): AuthUser {
+export function publicUser(user: User): AuthUser {
   const displayName = metadataDisplayName(user);
   return {
     id: user.id,
     email: user.email ?? "",
     ...(displayName ? { displayName } : {}),
-    emailVerified: Boolean(user.email_confirmed_at ?? user.confirmed_at),
+    // `confirmed_at` can describe a phone confirmation. The auth boundary
+    // requires explicit email confirmation before enabling account features.
+    emailVerified: Boolean(user.email_confirmed_at),
     createdAt: user.created_at,
   };
 }
@@ -44,6 +46,12 @@ function sessionMissing(error: AuthError): boolean {
   return error.name === "AuthSessionMissingError"
     || error.code === "session_not_found"
     || /auth session missing/i.test(error.message);
+}
+
+function callbackRedirectType(data: unknown): string | null {
+  if (!data || typeof data !== "object" || !("redirectType" in data)) return null;
+  const value = data.redirectType;
+  return typeof value === "string" ? value : null;
 }
 
 export function createSupabaseAuthGateway(
@@ -114,7 +122,7 @@ export function createSupabaseAuthGateway(
       const { data, error } = await client.auth.exchangeCodeForSession(code, options);
       if (error) throw providerError(error);
       if (!data.user) throw new AuthProviderError("user_missing", "The authentication link did not return a user.", 400);
-      return publicUser(data.user);
+      return { ...publicUser(data.user), redirectType: callbackRedirectType(data) };
     },
     async updatePassword(password) {
       const { data, error } = await client.auth.updateUser({ password });

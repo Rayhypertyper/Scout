@@ -1,38 +1,19 @@
+import { load } from "cheerio";
 import type { Logger } from "../../utils/logger.js";
-import { canonicalizeUrl } from "../../utils/url.js";
-import type { PageSnapshot } from "../../domain/types.js";
+import { canonicalizeUrl, safeCanonicalizeUrl } from "../../utils/url.js";
 import type { HttpClient, HttpResponseSnapshot } from "../http.js";
-import { snapshotFromStructuredJson } from "./static.js";
-import { adapterFailure, type SourceAdapter, type SourceAdapterResult } from "./types.js";
-import { currentSourceAbortSignal } from "../../domain/cancellation.js";
+import type { ClosedPage, FetchFailure, RawJob, SourceInventoryPart } from "../../domain/types.js";
+import { CrawlCancelledError, CrawlDeadlineExceededError, SourceStalledError, currentSourceAbortSignal, throwIfAborted } from "../../domain/cancellation.js";
+import { INTERN_LIST_SOURCE_URL, isInternListSource } from "../../config/internListSource.js";
+import { internListInventorySnapshot, parseInternListDetail, parseInternListTab } from "../../extractors/internList.js";
+import { isRetiredInternListSource, RETIRED_INTERN_LIST_MESSAGE, RETIRED_JOBRIGHT_LIST_URL } from "../../config/retiredSources.js";
+import { adapterFailure, type AdapterCollectOptions, type SourceAdapter, type SourceAdapterResult } from "./types.js";
 
-export const INTERN_LIST_API_URL = "https://swan-api.jobright.ai/swan/mini-sites/list";
-export const INTERN_LIST_PAGE_SIZE = 50;
-export const INTERN_LIST_FALLBACK_PAGE_SIZE = 1_000;
-// Exact-total requests stay below the old oversized-request timeout pattern while
-// covering the largest currently configured Intern List category in one
-// consistent response. The engineering feed already exceeds 5,000 rows; 15,000
-// still returns in a few seconds and avoids mixing offset windows from a live
-// list. Offset pages remain the recovery path if this fails.
-export const INTERN_LIST_MAX_BULK_COUNT = 15_000;
-export const INTERN_LIST_MAX_OFFSET_PAGES = 64;
-export const INTERN_LIST_BULK_TIMEOUT_MS = 30_000;
-export const INTERN_LIST_PAGE_TIMEOUT_MS = 15_000;
-export const INTERN_LIST_RETRY_COUNT = 1;
-// The adapter never retains more than one exact-total bulk response plus the
-// bounded offset walk below. Expose that finite bound to the central crawler
-// so a legitimate feed larger than the generic 5,000-row guard is not
-// incorrectly reported as a source failure.
-export const INTERN_LIST_MAX_RAW_LISTINGS = INTERN_LIST_MAX_BULK_COUNT
-  + INTERN_LIST_MAX_OFFSET_PAGES * INTERN_LIST_FALLBACK_PAGE_SIZE;
+// Legacy snapshot identities remain available for saved payloads only.
+export const INTERN_LIST_API_URL = RETIRED_JOBRIGHT_LIST_URL;
+export const INTERN_LIST_MAX_RAW_LISTINGS = 94_000;
 export const INTERN_LIST_CANADA_TAB_CATEGORY = "intern:ca:engineering_development";
 export const INTERN_LIST_CANADA_TAB_URL = "https://jobright.ai/minisites-jobs/intern/ca/engineering_development?embed=true";
-export const INTERN_LIST_CANADA_SWE_CATEGORY = "intern:ca:swe";
-export const INTERN_LIST_CANADA_SWE_URL = "https://jobright.ai/minisites-jobs/intern/ca/swe?embed=true";
-export const INTERN_LIST_CANADA_AIML_CATEGORY = "intern:ca:ml_ai";
-export const INTERN_LIST_CANADA_AIML_URL = "https://jobright.ai/minisites-jobs/intern/ca/ml_ai?embed=true";
-export const INTERN_LIST_CANADA_ENG_CATEGORY = "intern:ca:engineering_development";
-export const INTERN_LIST_CANADA_ENG_URL = "https://jobright.ai/minisites-jobs/intern/ca/engineering_development?embed=true";
 
 export type InternListCountry = "us" | "ca";
 
@@ -105,12 +86,7 @@ function embeddedFeedUrl(category: string): string {
   return `https://jobright.ai/minisites-jobs/intern/${country ?? "us"}/${path ?? "swe"}?embed=true`;
 }
 
-/**
- * The visible Canada tab is a shared Canada engineering/development feed. It
- * does not change the parent page URL or preserve the selected US category;
- * the iframe switches to the fixed route below. Keep that behavior explicit
- * so the scheduled crawler mirrors the UI rather than guessing a URL query.
- */
+/** Archived category mapping. Live collection discovers every tab from HTML. */
 export function internListFeeds(sourceUrl: string): InternListFeed[] {
   const category = internListCategory(sourceUrl);
   const key = selectedQueryKey(sourceUrl);
@@ -121,14 +97,12 @@ export function internListFeeds(sourceUrl: string): InternListFeed[] {
     label: "United States selected category",
     embeddedUrl: embeddedFeedUrl(category),
   }];
-  if (key === "swe" || key === "aiml") {
-    feeds.push({
-      category: INTERN_LIST_CANADA_TAB_CATEGORY,
-      country: "ca",
-      label: "Canada tab",
-      embeddedUrl: INTERN_LIST_CANADA_TAB_URL,
-    });
-  }
+  feeds.push({
+    category: INTERN_LIST_CANADA_TAB_CATEGORY,
+    country: "ca",
+    label: "Canada tab",
+    embeddedUrl: INTERN_LIST_CANADA_TAB_URL,
+  });
   return feeds;
 }
 
@@ -149,326 +123,211 @@ export function parseInternListResponse(value: unknown): InternListPage | null {
   return { total: Number(result.total), jobList };
 }
 
-function statusCodeOf(error: unknown): number | null {
-  return error instanceof Error && "statusCode" in error && typeof error.statusCode === "number" ? error.statusCode : null;
+const DETAIL_PATH = /^\/(swe-intern-list|da-intern-list|mkt-intern-list|accounting-and-finance-intern-list|pm-intern-list|data-science-internships)\/[^/]+\/?$/u;
+const LISTING_PATHS = ["swe-intern-list", "da-intern-list", "mkt-intern-list", "accounting-and-finance-intern-list", "pm-intern-list"];
+
+function siteUrl(value: string, base = INTERN_LIST_SOURCE_URL): string | null {
+  const url = safeCanonicalizeUrl(value, base);
+  if (!url) return null;
+  const parsed = new URL(url);
+  return parsed.protocol === "https:" && parsed.hostname.replace(/^www\./u, "") === "intern-list.com"
+    ? `${new URL(INTERN_LIST_SOURCE_URL).origin}${parsed.pathname}${parsed.search}` : null;
 }
 
-function internListJobId(job: InternListJobRecord): string {
-  if (typeof job.jobId === "string") return job.jobId.trim();
-  if (typeof job.jobId === "number" && Number.isFinite(job.jobId)) return String(job.jobId);
-  return "";
+export function discoverInternListTabs(html: string): InternListFeed[] {
+  const $ = load(html);
+  const tabs = new Map<string, InternListFeed>();
+  $("[data-job-path]").each((_index, element) => {
+    const match = /^\/(us|ca)\/([a-z_]+)\/?$/u.exec($(element).attr("data-job-path") ?? "");
+    if (!match) return;
+    const country = match[1] as InternListCountry;
+    const category = `intern:${country}:${match[2]}`;
+    tabs.set(category, { country, category, label: $(element).text().replace(/\s+/gu, " ").trim() || category, embeddedUrl: embeddedFeedUrl(category) });
+  });
+  return [...tabs.values()];
 }
 
-function uniqueJobIdSet(jobs: InternListJobRecord[]): Set<string> {
-  return new Set(jobs.map(internListJobId).filter(Boolean));
+export function parseInternListSitemap(xml: string, base: string): { valid: boolean; details: string[]; sitemaps: string[] } {
+  const $ = load(xml, { xmlMode: true });
+  const urls = $("urlset > url > loc").toArray().map((element) => siteUrl($(element).text(), base)).filter((url): url is string => Boolean(url));
+  const sitemaps = $("sitemapindex > sitemap > loc").toArray().map((element) => siteUrl($(element).text(), base)).filter((url): url is string => Boolean(url));
+  return { valid: $("urlset, sitemapindex").length === 1, details: [...new Set(urls.filter((url) => DETAIL_PATH.test(new URL(url).pathname)))], sitemaps };
 }
 
-interface PageAttempt {
-  endpoint: string;
-  response: HttpResponseSnapshot | null;
-  page: InternListPage | null;
-  failure: ReturnType<typeof adapterFailure> | null;
+export function parseInternListListing(html: string, url: string): { valid: boolean; details: string[]; next: string | null } {
+  const $ = load(html);
+  const details = [...new Set($(".w-dyn-item a[href]").toArray()
+    .map((element) => siteUrl($(element).attr("href") ?? "", url))
+    .filter((href): href is string => Boolean(href && DETAIL_PATH.test(new URL(href).pathname))))];
+  const href = $("a.w-pagination-next:not(.w-condition-invisible):not([hidden])").first().attr("href");
+  const next = href ? siteUrl(href, url) : null;
+  const sameCollection = Boolean(next && new URL(next).pathname === new URL(url).pathname);
+  return { valid: $(".w-dyn-list").length > 0 && (details.length > 0 || $(".w-dyn-empty").length > 0) && (!href || sameCollection), details,
+    next: sameCollection ? next : null };
 }
 
-interface FeedCollection {
-  snapshots: PageSnapshot[];
-  retrievalUrls: string[];
-  attempts: number;
-  httpStatus: number | null;
-  notes: string[];
-  failures: SourceAdapterResult["failures"];
+export interface InternListCollectLimits {
+  maxDetailPages?: number;
+  maxListingPages?: number;
+  concurrency?: number;
 }
 
-interface CachedFeedCollection {
-  promise: Promise<FeedCollection>;
-  ownerSignal?: AbortSignal;
-}
-
-function feedSnapshotUrl(endpoint: string, category: string): string {
-  const url = new URL(endpoint);
-  // The POST body carries category, so add a non-network identity parameter
-  // to keep simultaneous US and Canada snapshots distinct in the crawler's
-  // URL-indexed work queue.
-  url.searchParams.set("feedCategory", category);
-  return canonicalizeUrl(url.toString());
-}
-
+/** HTTP-only collection of first-party CMS pages and public SSR tab records. */
 export class InternListAdapter implements SourceAdapter {
   public readonly name = "Intern List";
   public readonly strategy = "structured_endpoint" as const;
-  private readonly feedCollections = new Map<string, CachedFeedCollection>();
 
-  public constructor(private readonly http: HttpClient, private readonly logger: Logger) {}
+  public constructor(private readonly http: HttpClient, private readonly logger: Logger, private readonly limits: InternListCollectLimits = {}) {}
 
   public canHandle(sourceUrl: string): boolean {
-    return internListCategory(sourceUrl) !== null;
+    return isInternListSource(sourceUrl) || isRetiredInternListSource(sourceUrl);
   }
 
-  public async collect(sourceUrl: string): Promise<SourceAdapterResult> {
-    const feeds = internListFeeds(sourceUrl);
-    if (feeds.length === 0) {
-      return {
-        snapshots: [],
-        retrievalMethod: "Intern List structured API",
-        retrievalUrls: [sourceUrl],
-        attempts: 0,
-        httpStatus: null,
-        notes: ["Not an Intern List root/category URL."],
-        failures: [],
-        strategy: "structured_endpoint",
-      };
-    }
-
-    const collections: FeedCollection[] = [];
-    for (const feed of feeds) collections.push(await this.collectFeedOnce(sourceUrl, feed));
-    const retrievalUrls = collections.flatMap(({ retrievalUrls: urls }) => urls);
-    const notes = collections.flatMap(({ notes: feedNotes }) => feedNotes);
-    const failures = collections.flatMap(({ failures: feedFailures }) => feedFailures);
-    return {
-      snapshots: collections.flatMap(({ snapshots }) => snapshots),
-      retrievalMethod: feeds.length > 1
-        ? "Intern List / Jobright structured API (selected US feed + Canada tab feed)"
-        : "Intern List / Jobright structured API (bulk snapshot)",
-      retrievalUrls,
-      attempts: collections.reduce((total, collection) => total + collection.attempts, 0),
-      httpStatus: collections.map(({ httpStatus: status }) => status).find((status): status is number => status !== null) ?? null,
-      notes,
-      failures,
-      strategy: "structured_endpoint",
-      maxRawListings: feeds.length * INTERN_LIST_MAX_RAW_LISTINGS,
+  public async collect(sourceUrl: string, options: AdapterCollectOptions = {}): Promise<SourceAdapterResult> {
+    if (isRetiredInternListSource(sourceUrl)) return {
+      snapshots: [], retrievalMethod: "Intern List retired endpoint", retrievalUrls: [], attempts: 0, httpStatus: null,
+      notes: [RETIRED_INTERN_LIST_MESSAGE], failures: [{ ...adapterFailure(sourceUrl, sourceUrl, new Error(RETIRED_INTERN_LIST_MESSAGE)), errorType: "source_retired" }],
+      strategy: this.strategy, inventoryComplete: false, browserRequired: false,
     };
-  }
-
-  /** Share a feed request when the configured root and category URLs overlap. */
-  private collectFeedOnce(sourceUrl: string, feed: InternListFeed): Promise<FeedCollection> {
-    const existing = this.feedCollections.get(feed.category);
-    const ownerSignal = currentSourceAbortSignal();
-    if (existing && !existing.ownerSignal?.aborted) {
-      // A source-level timeout aborts the signal captured by the shared
-      // request. A sibling may still be waiting on that same feed, so let it
-      // discard the aborted collection and issue a fresh request under its own
-      // signal instead of inheriting the timed-out source's failure.
-      if (!existing.ownerSignal || existing.ownerSignal === ownerSignal) return existing.promise;
-      return existing.promise.then(
-        (collection) => {
-          if (!existing.ownerSignal?.aborted) return collection;
-          if (this.feedCollections.get(feed.category) === existing) this.feedCollections.delete(feed.category);
-          return this.collectFeedOnce(sourceUrl, feed);
-        },
-        (error) => {
-          if (!existing.ownerSignal?.aborted) throw error;
-          if (this.feedCollections.get(feed.category) === existing) this.feedCollections.delete(feed.category);
-          return this.collectFeedOnce(sourceUrl, feed);
-        },
-      );
-    }
-    if (existing && this.feedCollections.get(feed.category) === existing) this.feedCollections.delete(feed.category);
-    const collection = this.collectFeed(sourceUrl, feed);
-    const cached: CachedFeedCollection = { promise: collection, ...(ownerSignal ? { ownerSignal } : {}) };
-    this.feedCollections.set(feed.category, cached);
-    void collection.then(() => {
-      if (cached.ownerSignal?.aborted && this.feedCollections.get(feed.category) === cached) this.feedCollections.delete(feed.category);
-    }, () => {
-      if (this.feedCollections.get(feed.category) === cached) this.feedCollections.delete(feed.category);
-    });
-    return collection;
-  }
-
-  private async collectFeed(sourceUrl: string, feed: InternListFeed): Promise<FeedCollection> {
-    const { category } = feed;
-    const retrievalUrls: string[] = [];
-    const notes: string[] = [`${feed.label}: Jobright category: ${category}`];
-    const failures: SourceAdapterResult["failures"] = [];
+    const parts: SourceInventoryPart[] = [];
+    const failures: FetchFailure[] = [];
+    const retrievalUrls = new Set<string>();
+    const jobs = new Map<string, RawJob>();
+    const details = new Set<string>();
+    const closedPages: ClosedPage[] = [];
+    const incompleteJobs: RawJob[] = [];
+    const closedIds = new Set<string>();
+    const tabIds = new Map<string, Set<string>>();
+    const detailIds = new Set<string>();
+    let pages = 0;
     let attempts = 0;
-    const probe = await this.fetchPage(sourceUrl, category, 0, INTERN_LIST_PAGE_SIZE, {
-      timeoutMs: INTERN_LIST_PAGE_TIMEOUT_MS,
-      retryCount: INTERN_LIST_RETRY_COUNT,
-    });
-    retrievalUrls.push(probe.endpoint);
-    attempts += probe.response?.attempts ?? 0;
-    let httpStatus: number | null = probe.response?.status ?? probe.failure?.statusCode ?? null;
-    if (!probe.page || !probe.response) {
-      notes.push("The initial structured page could not be retrieved.");
-      return {
-        snapshots: [],
-        retrievalUrls,
-        attempts,
-        httpStatus,
-        notes,
-        failures: probe.failure ? [probe.failure] : failures,
-      };
-    }
-
-   let first = probe;
-   let total = probe.page.total;
-   if (probe.page.jobList.length < total) {
-     if (total <= INTERN_LIST_MAX_BULK_COUNT) {
-        let requestedTotal = total;
-        let exactBulkComplete = false;
-        for (let bulkAttempt = 0; bulkAttempt < 2; bulkAttempt += 1) {
-          const bulk = await this.fetchPage(sourceUrl, category, 0, requestedTotal, {
-            timeoutMs: INTERN_LIST_BULK_TIMEOUT_MS,
-            retryCount: INTERN_LIST_RETRY_COUNT,
-          });
-          retrievalUrls.push(bulk.endpoint);
-          attempts += bulk.response?.attempts ?? 0;
-          httpStatus = bulk.response?.status ?? httpStatus ?? bulk.failure?.statusCode ?? null;
-          if (!bulk.page || !bulk.response || (bulk.page.jobList.length === 0 && bulk.page.total !== 0)) break;
-          if (bulk.page.total !== requestedTotal) notes.push(`Feed total changed from ${requestedTotal} to ${bulk.page.total} during retrieval.`);
-          total = bulk.page.total;
-          first = bulk;
-         if (bulk.page.jobList.length >= total) {
-           exactBulkComplete = true;
-           break;
-         }
-         if (total > INTERN_LIST_MAX_BULK_COUNT) break;
-          if (total === requestedTotal) break;
-         requestedTotal = total;
-        }
-        if (!exactBulkComplete) {
-          notes.push("The exact-total structured request was incomplete or unavailable; continuing with bounded offset pages.");
-       }
-     } else {
-        notes.push(`The feed has ${total} records; using bounded ${INTERN_LIST_FALLBACK_PAGE_SIZE}-record offsets instead of one oversized request.`);
-      }
-    }
-
-    if (!first.page || !first.response) {
-      return { snapshots: [], retrievalUrls, attempts, httpStatus, notes, failures };
-    }
-    const firstPage = { ...first.page, total };
-    const firstResponse = first.response;
-    const firstUnique = uniqueJobIdSet(firstPage.jobList);
-    if (firstPage.jobList.length >= total) {
-      const duplicateRows = Math.max(0, firstPage.jobList.length - firstUnique.size);
-      notes.push(duplicateRows > 0
-        ? `Retrieved ${firstUnique.size}/${total} unique records in one complete structured snapshot (${duplicateRows} duplicate rows in the source payload).`
-        : `Retrieved ${total}/${total} records in one complete structured snapshot.`);
-      this.logger.debug("ADAPTER", `Intern List ${category}: ${firstUnique.size} records in bulk response`);
-      return {
-        snapshots: [snapshotFromStructuredJson(firstResponse, { success: true, result: firstPage }, feedSnapshotUrl(first.endpoint, category))],
-        retrievalUrls,
-        attempts,
-        httpStatus,
-        notes,
-        failures,
-      };
-    }
-
-    notes.push(`Structured response returned ${firstUnique.size}/${total} unique records; falling back to up to ${INTERN_LIST_FALLBACK_PAGE_SIZE}-record offsets.`);
-
-    const pages: Array<{ response: HttpResponseSnapshot; page: InternListPage; endpoint: string }> = [{ response: firstResponse, page: firstPage, endpoint: first.endpoint }];
-    const seen = new Set(firstUnique);
-    let position = firstPage.jobList.length;
-    let latestTotal = total;
-    let repeatedWindow = false;
-    let noNewUniqueAfterCoveredRange = false;
-    while (pages.length < INTERN_LIST_MAX_OFFSET_PAGES) {
-      if (seen.size >= latestTotal) break;
-      if (position >= latestTotal && noNewUniqueAfterCoveredRange) break;
-      const attempt = await this.fetchPage(sourceUrl, category, position, INTERN_LIST_FALLBACK_PAGE_SIZE, {
-        timeoutMs: INTERN_LIST_PAGE_TIMEOUT_MS,
-        retryCount: INTERN_LIST_RETRY_COUNT,
-        cache: false,
-      });
-      retrievalUrls.push(attempt.endpoint);
-      attempts += attempt.response?.attempts ?? 0;
-      httpStatus = attempt.response?.status ?? httpStatus ?? attempt.failure?.statusCode ?? null;
-      if (!attempt.page || !attempt.response) {
-        if (attempt.failure) failures.push(attempt.failure);
-        position += INTERN_LIST_FALLBACK_PAGE_SIZE;
-        if (position >= latestTotal) noNewUniqueAfterCoveredRange = true;
-        continue;
-      }
-      latestTotal = attempt.page.total;
-      const uniqueBefore = seen.size;
-      for (const job of attempt.page.jobList) {
-        const id = internListJobId(job);
-        if (id) seen.add(id);
-      }
-      const newUnique = seen.size - uniqueBefore;
-      if (attempt.page.jobList.length === 0) {
-        if (position >= latestTotal) noNewUniqueAfterCoveredRange = true;
-        break;
-      }
-      if (newUnique === 0) {
-        if (position >= latestTotal) {
-          noNewUniqueAfterCoveredRange = true;
-          break;
-        }
-        if (attempt.page.jobList.length >= INTERN_LIST_PAGE_SIZE) repeatedWindow = true;
-      }
-      pages.push({
-        response: attempt.response,
-        page: { ...attempt.page, total: latestTotal },
-        endpoint: attempt.endpoint,
-      });
-      // Advance by what the service actually returned. This remains complete
-      // if Jobright temporarily caps a requested 1,000-row page to a smaller
-      // server-side limit. Duplicate windows from a live list are recovered by
-      // continuing past the original total until unique IDs catch up.
-      position += Math.max(1, attempt.page.jobList.length);
-      if (newUnique === 0 && position >= latestTotal) {
-        noNewUniqueAfterCoveredRange = true;
-        break;
-      }
-    }
-
-    const records = pages.flatMap(({ page }) => page.jobList);
-    const ids = uniqueJobIdSet(records);
-    const duplicateRows = Math.max(0, records.length - ids.size);
-    const coveredRange = position >= latestTotal || records.length >= latestTotal || noNewUniqueAfterCoveredRange;
-    if (ids.size >= latestTotal) {
-      notes.push(`Retrieved ${ids.size}/${latestTotal} unique records across ${pages.length} structured pages${duplicateRows > 0 ? ` (${duplicateRows} duplicate boundary rows deduplicated downstream)` : ""}.`);
-    } else if (coveredRange && !repeatedWindow && failures.length === 0) {
-      notes.push(`Retrieved ${ids.size}/${latestTotal} unique records across ${pages.length} structured pages (${duplicateRows} duplicate rows in the live feed; remaining advertised total is not a coverage gap).`);
-    } else {
-      failures.push(adapterFailure(sourceUrl, INTERN_LIST_API_URL, new Error(`Structured coverage is incomplete: ${ids.size} unique IDs across ${records.length} rows; expected ${latestTotal}.`), httpStatus));
-      notes.push(`Coverage validation failed: ${ids.size}/${latestTotal} unique records.`);
-    }
-    this.logger.debug("ADAPTER", `Intern List ${category}: ${ids.size}/${latestTotal} records`);
-    return {
-      snapshots: pages.map(({ response, page, endpoint }) => snapshotFromStructuredJson(response, { success: true, result: page }, feedSnapshotUrl(endpoint, category))),
-      retrievalUrls,
-      attempts,
-      httpStatus,
-      notes,
-      failures,
+    const parseFailure = (url: string, message: string): void => {
+      failures.push({ ...adapterFailure(sourceUrl, url, new Error(message), 200), errorType: "parse_error" });
     };
-  }
-
-  private async fetchPage(
-    sourceUrl: string,
-    category: string,
-    position: number,
-    count: number,
-    options: { timeoutMs: number; retryCount: number; cache?: boolean },
-  ): Promise<PageAttempt> {
-    const endpoint = internListEndpoint(position, count);
-    try {
-      const response = await this.http.postJson(endpoint, {
-        category,
-        excludeTitle: [],
-        excludedTitle: [],
-      }, { cache: options.cache ?? true, headers: { accept: "application/json" }, timeoutMs: options.timeoutMs, retryCount: options.retryCount });
-      const value: unknown = JSON.parse(response.body);
-      const page = parseInternListResponse(value);
-      if (!page) throw new Error("Intern List API returned an invalid response shape.");
-      // The API is expected to honor `count`, but keep the adapter's retained
-      // payload bounded if a provider regression returns a larger window.
-      return {
-        endpoint,
-        response,
-        page: page.jobList.length > count ? { ...page, jobList: page.jobList.slice(0, count) } : page,
-        failure: null,
-      };
-    } catch (error) {
-      return {
-        endpoint,
-        response: null,
-        page: null,
-        failure: adapterFailure(sourceUrl, endpoint, error, statusCodeOf(error)),
-      };
+    const get = async (url: string): Promise<HttpResponseSnapshot | null> => {
+      throwIfAborted(currentSourceAbortSignal());
+      retrievalUrls.add(url);
+      try {
+        const response = await this.http.get(url, { cache: true, timeoutMs: 30_000, retryCount: 1,
+          allowedRedirectOrigins: ["https://www.intern-list.com", "https://intern-list.com", "https://jobright.ai"] });
+        attempts += response.attempts;
+        pages += 1;
+        if (response.stale) failures.push({ ...adapterFailure(sourceUrl, url, new Error("Using an expired HTTP cache after a transport failure."), response.status), errorType: "stale_cache" });
+        await options.onProgress?.(pages);
+        return response;
+      } catch (error) {
+        throwIfAborted(currentSourceAbortSignal());
+        if (error instanceof CrawlCancelledError || error instanceof CrawlDeadlineExceededError || error instanceof SourceStalledError) throw error;
+        const failure = adapterFailure(sourceUrl, url, error, (error as { statusCode?: number }).statusCode ?? null);
+        attempts += Math.max(1, failure.retryCount);
+        failures.push(failure);
+        await options.onProgress?.(pages);
+        return null;
+      }
+    };
+    const map = async <T>(values: T[], action: (value: T) => Promise<void>): Promise<void> => {
+      let cursor = 0;
+      await Promise.all(Array.from({ length: Math.min(values.length, Math.max(1, this.limits.concurrency ?? 6)) }, async () => {
+        while (cursor < values.length) { const value = values[cursor++]; if (value !== undefined) await action(value); }
+      }));
+    };
+    const addJob = (job: RawJob): void => {
+      const key = job.jobId || job.postingUrl;
+      const prior = jobs.get(key);
+      if (!prior || job.sourceProvider === "intern-list-html") jobs.set(key, job);
+    };
+    const root = await get(INTERN_LIST_SOURCE_URL);
+    const tabs = root ? discoverInternListTabs(root.body) : [];
+    parts.push({ id: "tab_discovery", kind: "listing_pages", url: INTERN_LIST_SOURCE_URL, inventoryCount: null,
+      retrievedCount: tabs.length, complete: Boolean(root && tabs.some((tab) => tab.country === "us") && tabs.some((tab) => tab.country === "ca")), notes: [`Discovered ${tabs.length} country/category tabs from data-job-path attributes.`] });
+    if (root && tabs.length === 0) parseFailure(INTERN_LIST_SOURCE_URL, "No country/category tabs were found in the public root page.");
+    await map(tabs, async (tab) => {
+      const response = await get(tab.embeddedUrl);
+      const parsed = response ? parseInternListTab(response.body, tab.category) : null;
+      const ids = new Set(parsed?.jobs.map((job) => job.jobId!) ?? []);
+      tabIds.set(tab.category, ids);
+      for (const job of parsed?.jobs ?? []) addJob(job);
+      const complete = Boolean(parsed && ids.size === parsed.total && parsed.jobs.length === parsed.rowCount);
+      parts.push({ id: tab.category, kind: "tab", url: tab.embeddedUrl, country: tab.country, category: tab.category,
+        inventoryCount: parsed?.total ?? null, retrievedCount: ids.size, complete,
+        notes: parsed ? [complete ? "The SSR page exposed the entire advertised tab inventory." : "Only the server-rendered first page is available; Load More depends on the retired endpoint."] : ["The public tab payload could not be retrieved or validated."] });
+      if (response && !parsed) parseFailure(tab.embeddedUrl, `Invalid SSR tab payload for ${tab.category}.`);
+    });
+    const sitemapQueue = [`${INTERN_LIST_SOURCE_URL}sitemap.xml`];
+    const seenSitemaps = new Set<string>();
+    let sitemapComplete = true;
+    while (sitemapQueue.length > 0 && seenSitemaps.size < 16) {
+      const url = sitemapQueue.shift()!;
+      if (seenSitemaps.has(url)) continue;
+      seenSitemaps.add(url);
+      const response = await get(url);
+      const parsed = response ? parseInternListSitemap(response.body, url) : null;
+      if (!parsed?.valid) { sitemapComplete = false; if (response) parseFailure(url, "Invalid Intern List sitemap XML."); continue; }
+      for (const detail of parsed.details) details.add(detail);
+      for (const child of parsed.sitemaps) if (!seenSitemaps.has(child)) sitemapQueue.push(child);
     }
+    if (sitemapQueue.length > 0) sitemapComplete = false;
+    parts.push({ id: "sitemap", kind: "sitemap", url: `${INTERN_LIST_SOURCE_URL}sitemap.xml`, inventoryCount: details.size,
+      retrievedCount: details.size, complete: sitemapComplete, notes: [`Parsed ${seenSitemaps.size} sitemap document(s); non-job and external URLs were excluded.`] });
+    await map(LISTING_PATHS, async (path) => {
+      const first = `${INTERN_LIST_SOURCE_URL}${path}`;
+      let url: string | null = first;
+      const seen = new Set<string>();
+      const found = new Set<string>();
+      let complete = true;
+      while (url && seen.size < (this.limits.maxListingPages ?? 100)) {
+        if (seen.has(url)) { complete = false; break; }
+        seen.add(url);
+        const response = await get(url);
+        const parsed: ReturnType<typeof parseInternListListing> | null = response ? parseInternListListing(response.body, url) : null;
+        if (!parsed?.valid) { complete = false; if (response) parseFailure(url, "Public listing page did not contain a valid CMS inventory."); break; }
+        const before = found.size;
+        for (const detail of parsed.details) { details.add(detail); found.add(detail); }
+        if (parsed.next && found.size === before) { complete = false; break; }
+        url = parsed.next;
+      }
+      if (url) complete = false;
+      parts.push({ id: path, kind: "listing_pages", url: first, inventoryCount: found.size, retrievedCount: found.size, complete,
+        notes: [`Followed ${seen.size} public listing page(s) using the site's pagination links.${complete ? "" : " Pagination was interrupted, repeated, or exceeded its safety bound."}`] });
+    });
+    const maxDetails = Math.max(0, this.limits.maxDetailPages ?? 10_000);
+    const selectedDetails = [...details].sort().slice(0, maxDetails);
+    let parsedDetails = 0;
+    this.logger.info("INTERNLIST", `Discovered ${tabs.length} tabs and ${details.size} CMS detail pages; fetching ${selectedDetails.length} details through HTTP.`);
+    await map(selectedDetails, async (url) => {
+      const response = await get(url);
+      if (!response) return;
+      const parsed = parseInternListDetail(response.body, url);
+      if (!parsed.job && !parsed.incompleteJob && !parsed.closed) { parseFailure(url, "CMS detail page did not expose a valid public record or an explicit closed banner."); return; }
+      parsedDetails += 1;
+      if (parsed.job?.jobId) detailIds.add(parsed.job.jobId);
+      if (parsed.closed) {
+        closedPages.push({ url, reason: "Intern List explicitly displays 'This job has closed'.", statusCode: response.status });
+        if (parsed.job?.jobId) closedIds.add(parsed.job.jobId);
+      } else if (parsed.job) addJob(parsed.job);
+      else if (parsed.incompleteJob) incompleteJobs.push(parsed.incompleteJob);
+      if (parsedDetails % 100 === 0) this.logger.info("INTERNLIST", `Parsed ${parsedDetails}/${selectedDetails.length} CMS details.`);
+    });
+    for (const id of closedIds) jobs.delete(id);
+    parts.push({ id: "details", kind: "detail_pages", url: INTERN_LIST_SOURCE_URL, inventoryCount: details.size, retrievedCount: parsedDetails,
+      complete: sitemapComplete && parsedDetails === details.size,
+      notes: [`${closedPages.length} explicitly closed pages; ${Math.max(0, details.size - parsedDetails)} detail pages unavailable or outside the configured bound.`,
+        `${incompleteJobs.length} data-science pages expose content but have placeholder titles and broken Apply links; saved separately without inventing missing fields.`] });
+    for (const part of parts.filter((part) => part.kind === "tab")) {
+      const matched = [...(tabIds.get(part.id) ?? [])].filter((id) => detailIds.has(id)).length;
+      part.notes.push(`${matched} first-page job identities also had a full CMS detail page. Other CMS jobs are retained independently; they do not prove coverage of this tab's remaining feed.`);
+    }
+    parts.sort((a, b) => a.id.localeCompare(b.id));
+    const inventoryComplete = parts.every((part) => part.complete) && failures.length === 0 && incompleteJobs.length === 0;
+    const records = [...jobs.values()];
+    return {
+      snapshots: pages > 0 && (records.length > 0 || tabs.length > 0) ? [internListInventorySnapshot(INTERN_LIST_SOURCE_URL, records)] : [],
+      retrievalMethod: "Intern List public HTML, sitemap and SSR tabs", retrievalUrls: [...retrievalUrls], attempts,
+      httpStatus: root?.status ?? null, notes: parts.map((part) => `${part.id}: ${part.retrievedCount}/${part.inventoryCount ?? "unknown"}; ${part.complete ? "complete" : "incomplete"}. ${part.notes.join(" ")}`),
+      failures, strategy: this.strategy, inventoryComplete, inventoryCount: records.length + closedIds.size + incompleteJobs.length,
+      inventoryParts: parts, retrievedPages: pages, detailPagesFetched: selectedDetails.length, closedPages,
+      maxRawListings: INTERN_LIST_MAX_RAW_LISTINGS, browserRequired: false,
+      incompleteJobs,
+    };
   }
 }

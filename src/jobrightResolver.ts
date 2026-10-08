@@ -5,12 +5,15 @@ import { pathToFileURL } from "node:url";
 import { readConfiguredSourcesAtPath } from "./config/sourceCatalog.js";
 import { JOBRIGHT_RESOLVER_MAX_DURATION_MS } from "./config/runLock.js";
 import { resolveSettings } from "./config/settings.js";
+import { isRetiredInternListSource } from "./config/retiredSources.js";
+import { holdSystemAwakeForCrawl } from "./config/wakeLock.js";
 import { InternshipDatabase } from "./database/db.js";
 import { CrawlDeadlineExceededError, isCrawlDeadlineExceededError, throwIfAborted } from "./domain/cancellation.js";
-import { BrowserManager } from "./crawler/browser.js";
-import { InternListAdapter, internListFeeds } from "./crawler/adapters/internList.js";
+import { BrowserManager, JobrightAuthenticationRequiredError } from "./crawler/browser.js";
+import { InternListAdapter } from "./crawler/adapters/internList.js";
+import { INTERN_LIST_SOURCE_URL, isInternListSource } from "./config/internListSource.js";
 import { HttpClient } from "./crawler/http.js";
-import { extractJobrightJobs } from "./extractors/jobright.js";
+import { extractJobs } from "./extractors/index.js";
 import { sleep } from "./utils/async.js";
 import { Logger } from "./utils/logger.js";
 
@@ -53,6 +56,17 @@ export async function runJobrightResolver(): Promise<void> {
     retryCount: 1,
   });
   const logger = new Logger(process.env.SCOUT_LOG_LEVEL === "debug" ? "debug" : "info");
+  const requestedLimit = argumentValue("--max-links");
+  const maxLinks = requestedLimit === undefined ? Infinity : Number(requestedLimit);
+  if (!(maxLinks > 0) || (requestedLimit !== undefined && !Number.isSafeInteger(maxLinks))) {
+    throw new Error("--max-links must be a positive integer.");
+  }
+  const sources = selectJobrightResolverSources(readConfiguredSourcesAtPath(settings.databasePath));
+  if (sources.length === 0) {
+    logger.info("ORIGINAL", "No Intern List source is configured; existing destination history is retained.");
+    return;
+  }
+  const releaseWakeLock = holdSystemAwakeForCrawl(logger);
   const controller = new AbortController();
   const deadlineTimer = setTimeout(() => controller.abort(new CrawlDeadlineExceededError(JOBRIGHT_RESOLVER_MAX_DURATION_MS)), JOBRIGHT_RESOLVER_MAX_DURATION_MS);
   deadlineTimer.unref?.();
@@ -63,36 +77,38 @@ export async function runJobrightResolver(): Promise<void> {
 
   try {
     database = await openDatabaseWithRetry(settings.databasePath, controller.signal, logger);
-    const sources = readConfiguredSourcesAtPath(settings.databasePath)
-      .filter((source) => internListFeeds(source).length > 0)
-      .toSorted((left, right) => internListFeeds(right).length - internListFeeds(left).length);
     const sourceUrl = sources[0];
     if (!sourceUrl) {
       logger.info("ORIGINAL", "No Intern List source is configured; Jobright destination cache is unchanged.");
       return;
     }
 
-    const collected = await adapter.collect(sourceUrl);
-    throwIfAborted(controller.signal);
-    const jobs = [...new Map(
-      collected.snapshots
-        .flatMap((snapshot) => extractJobrightJobs(snapshot))
-        .filter((job) => Boolean(job.jobId))
-        .map((job) => [job.jobId as string, job]),
-    ).values()];
+    const batches = [];
+    let feedFailures = 0;
+    for (const source of sources) {
+      const collected = await adapter.collect(source);
+      throwIfAborted(controller.signal);
+      feedFailures += collected.failures.length;
+      batches.push(collected.snapshots.flatMap(extractJobs).filter((job) => Boolean(job.jobId) && /https:\/\/jobright\.ai\/jobs\/info\//u.test(job.applicationUrl ?? job.postingUrl)));
+    }
+    // Interleave categories before deduplication so a large SWE backlog cannot
+    // prevent AI/ML or engineering links from receiving any resolver time.
+    const jobs = [...new Map(interleaveJobrightBatches(batches).map((job) => [job.jobId as string, job])).values()];
     const activeDatabase = database;
-    const known = activeDatabase.getJobrightDestinations(sourceUrl);
+    const known = new Map(sources.flatMap((source) => [...activeDatabase.getJobrightDestinations(source)]));
     const recentlyAttempted = activeDatabase.getJobrightResolutionKeys();
     const pending = jobs.filter((job) => {
-      const key = job.jobId?.trim() || job.postingUrl;
+      const key = job.jobId?.trim() || job.applicationUrl || job.postingUrl;
       return !known.has(key)
         && !known.has(job.postingUrl)
         && !recentlyAttempted.has(key)
         && !recentlyAttempted.has(job.postingUrl);
-    });
+    }).slice(0, maxLinks);
+    logger.info("ORIGINAL", `Refreshing ${pending.length} pending destination(s) from ${sources.length} distinct Intern List source(s).`);
     let resolved = 0;
     let attempted = 0;
     let nextIndex = 0;
+    let authenticationRequired = false;
     const persistDestination = async (
       jobrightUrl: string,
       destinationUrl: string | null,
@@ -118,23 +134,26 @@ export async function runJobrightResolver(): Promise<void> {
     const worker = async (): Promise<void> => {
       while (true) {
         throwIfAborted(controller.signal);
+        if (authenticationRequired) return;
         const index = nextIndex;
         nextIndex += 1;
         const job = pending[index];
         if (!job) return;
         attempted += 1;
         try {
-          const destination = await browser.resolveOriginalJobPostUrl(job.postingUrl, sourceUrl);
+          const jobrightUrl = job.applicationUrl ?? job.postingUrl;
+          const destination = await browser.resolveOriginalJobPostUrl(jobrightUrl, sourceUrl);
           const persisted = await persistDestination(
-            job.postingUrl,
+            jobrightUrl,
             destination,
             destination ? null : "Original Job Post anchor was not present or did not name an employer/ATS URL.",
           );
           if (destination && persisted) resolved += 1;
         } catch (error) {
           if (controller.signal.aborted) throw error;
+          if (error instanceof JobrightAuthenticationRequiredError) authenticationRequired = true;
           await persistDestination(
-            job.postingUrl,
+            job.applicationUrl ?? job.postingUrl,
             null,
             error instanceof Error ? error.message : String(error),
           );
@@ -143,7 +162,8 @@ export async function runJobrightResolver(): Promise<void> {
     };
     try {
       await Promise.all(Array.from({ length: Math.min(settings.browserConcurrency, Math.max(1, pending.length)) }, () => worker()));
-      logger.info("ORIGINAL", `Jobright cache refresh attempted ${attempted} link(s), resolved ${resolved}; ${collected.failures.length} feed failure(s).`);
+      logger.info("ORIGINAL", `Jobright cache refresh attempted ${attempted} link(s), resolved ${resolved}; ${feedFailures} feed failure(s).`);
+      if (authenticationRequired) logger.warn("ORIGINAL", "Jobright's anonymous Apply Now control requires sign-in. Remaining destinations were deferred; public feeds and existing verified destinations remain usable.");
     } catch (error) {
       const deadlineExceeded = isCrawlDeadlineExceededError(error)
         || isCrawlDeadlineExceededError(controller.signal.reason);
@@ -152,9 +172,29 @@ export async function runJobrightResolver(): Promise<void> {
     }
   } finally {
     clearTimeout(deadlineTimer);
-    await browser.close();
-    database?.close();
+    try {
+      await browser.close();
+      database?.close();
+    } finally {
+      releaseWakeLock();
+    }
   }
+}
+
+/** One inventory refresh discovers all tabs, regardless of old category aliases. */
+export function selectJobrightResolverSources(sources: string[]): string[] {
+  return sources.some((source) => !isRetiredInternListSource(source) && isInternListSource(source)) ? [INTERN_LIST_SOURCE_URL] : [];
+}
+
+export function interleaveJobrightBatches<T>(batches: T[][]): T[] {
+  const result: T[] = [];
+  const longest = Math.max(0, ...batches.map((batch) => batch.length));
+  for (let index = 0; index < longest; index += 1) {
+    for (const batch of batches) {
+      if (index < batch.length) result.push(batch[index]!);
+    }
+  }
+  return result;
 }
 
 const invokedPath = process.argv[1];

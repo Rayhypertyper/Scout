@@ -1,8 +1,47 @@
 # Dashboard fast API
 
 The dashboard read path has a compact, server-filtered contract. The legacy
-`/api/data` snapshot remains available during client migration, but new clients
-should use these routes.
+`/api/data` snapshot is retired and returns `410 Gone` for all methods, without
+reading SQLite, refreshing live sources, or building the full payload. The
+current frontend uses the routes below.
+
+Return visits to the public all-internships view paint a local preview before
+waiting for the network. The browser stores up to six exact filter views, with
+40 public card records per view, for at most seven days. It excludes account
+actions, matching evaluations, account counts, authentication data, descriptions,
+and crawl diagnostics. Matches still require the verified account and are not
+persisted in this preview cache. Applying, hiding, or undoing a role clears the
+previews, and an empty live result removes its old preview.
+
+The UI labels previews `Updating listings…`, replaces them with the live head,
+and resumes pagination only with the live revision. Failed revalidation retains
+the preview with `Showing saved listings`; later visible polls retry. Polling
+does not restart a pending head request. Hidden pages pause polling and check
+immediately when visible again. The public `/jobs?view=all` HTML does not contact
+the authentication provider, and dashboard fonts are served locally.
+
+`tests/returnVisitBrowser.test.ts` checks a four-hour-old preview against a
+ten-second live response, replacement by fresh cards, and failed revalidation.
+Run it with `RUN_BROWSER_E2E=1 npx vitest run tests/returnVisitBrowser.test.ts`.
+
+`/api/applications` is still used by the application tracker. Reads require a
+server-verified, email-confirmed session. `/api/actions` (POST/DELETE) and
+`/api/applications/status` (POST) also require that session, same-origin access,
+and a CSRF token. Applications, action aliases, hidden roles, counts, validators,
+and caches are scoped to the authenticated account. Public role/status reads
+use an empty action scope for anonymous users.
+
+SQLite account actions live in `user_listing_actions` and
+`user_listing_action_identities`, with composite keys including `user_id`.
+Startup copies previously owned rows into this store once. Unowned rows are
+preserved in `legacy_listing_actions_quarantine`; they are never assigned to
+the first user. The original local action store remains available to offline
+tools, but HTTP routes cannot read it. Migration requires a server restart and
+runs inside the existing startup write transaction.
+
+For this installation, Ray has explicitly confirmed ownership of all historical
+applications. The restored records and ongoing ownership instruction are
+documented in [Application ownership and recovery](application-ownership.md).
 
 ## `GET /api/roles`
 
@@ -24,6 +63,7 @@ The response is `dashboard.roles.v1`:
 {
   "contract": "dashboard.roles.v1",
   "version": "...",
+  "contentVersion": "...",
   "filters": { "tab": "canada", "status": "open", "category": null, "season": null, "search": "", "sort": "posted" },
   "filterMeta": { "tabs": [], "tabCounts": {}, "categories": [], "seasons": [], "statuses": [], "sorts": [] },
   "stats": {},
@@ -40,6 +80,26 @@ application/posting/source links, technologies/categories, lifecycle and
 availability, timing, score/reason, and action context. Descriptions,
 qualifications, normalized location structures, crawl diagnostics, and action
 collections are intentionally omitted.
+
+The crawler commits usable listings as soon as each listing's extraction and
+application-link checks finish. Optional facts that cannot be found remain
+unknown. Publication does not wait for sibling detail requests, source
+settlement, or the full crawl. Missing-listing reconciliation still happens
+only after complete source coverage has been established at the end of a run.
+
+Both `/api/roles` and `/api/changes` include `contentVersion`, which identifies
+the catalog and action content independently of crawl heartbeat/progress
+updates. The browser checks every five seconds while visible and reloads the
+head of the list when that content changes, including during an active crawl.
+A temporary cached response retains its own content revision, and the browser
+retries until its rows catch up. Offset pages from different content revisions
+restart from the head instead of leaving newly inserted roles unseen.
+
+Catalog builds use a coherent WAL read snapshot so continuous listing writes
+can advance the visible catalog between polls. Action, identity, verification,
+and database-file changes still invalidate unsafe snapshots. Date-only posting
+dates display calendar precision (`Today`, `1d ago`) instead of inventing an
+hour count from midnight.
 
 Fixed title, relevance, location, eligibility, freshness, content, link, and
 handled policies are applied before the list is constructed. Excluded and
@@ -60,13 +120,23 @@ not equal the list snapshot version.
 
 ## `GET /api/changes` (also `/api/status`)
 
+Both role-list and changes responses include `failures24h`: every individual
+`failed_pages` record from the rolling past 24 hours, newest first (then highest
+ID for matching timestamps), across all crawl runs. Each record includes `id`,
+`run_id`, `source_url`, the failed page `url`, `error_type`, `status_code`,
+`message`, `retry_count`, and `occurred_at`. The list is neither grouped nor
+limited; `errors24h` equals its length. Failure details renders these records.
+The existing `failures` field still contains grouped latest-run diagnostics.
+Response validators include the 24-hour failure IDs so expiration updates the
+list even when no crawl or database write occurs.
+
 Returns `dashboard.changes.v1` with the current opaque `version`, scan/run
 status, and lightweight live-board status. Send the returned `ETag` as
 `If-None-Match` on the next poll; an unchanged version returns `304` with no
 body. Validators are weak semantic ETags so the same logical JSON can be
 revalidated across gzip/Brotli and identity representations. `GET` and `HEAD`
-are supported; responses include `Content-Length` and vary only on
-`Accept-Encoding`. Brotli/gzip are selected using standard wildcard and
+are supported; responses include `Content-Length` and vary on
+`Accept-Encoding` and `Cookie`. Brotli/gzip are selected using standard wildcard and
 quality-value negotiation for bodies at least 1 KiB. A `304` has no payload
 framing headers; `200`/`HEAD` representations carry `Content-Length`.
 Responses are private

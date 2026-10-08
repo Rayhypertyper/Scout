@@ -6,6 +6,8 @@
   "include": [
     "src/resume/drafts.ts",
     "src/resume/openai.ts",
+    "src/resume/profile.ts",
+    "src/resume/profileHttp.ts",
     "src/resume/service.ts",
     "src/resume/tailor.ts"
   ]

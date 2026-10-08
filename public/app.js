@@ -10,6 +10,7 @@ import {
   roleHasSeason,
 } from "./roleSorting.js";
 import { authClient, wireLogoutButton } from "./auth/auth-client.js";
+import { clearListingSnapshots, readListingSnapshot, rememberListingSnapshot } from "./app/listing-snapshot.js";
 
 const SERVER_ROLE_TABS = ["main", "canada", "summer", "internship", "quant", "non-intern"];
 const SAVED_ROLE_TAB = "saved";
@@ -88,6 +89,7 @@ export const PREFETCH_PAGE_SIZE = 20;
 export const BACKGROUND_PAGE_SIZE = 8;
 export const MAX_PAGE_SIZE = 100;
 export const RECENT_RUN_LIMIT = 5;
+const EXPANDED_RUN_LIMIT = 40;
 export const NOTIFICATION_LIMIT = 20;
 const MAX_RENDERED_ROLES = 500;
 const LIST_RENDER_CAP = 5_000;
@@ -277,6 +279,9 @@ const state = {
   version: null,
   statusVersion: null,
   changesEtag: null,
+  rolesContentVersion: null,
+  showingCachedRoles: false,
+  cachedRolesUnavailable: false,
   listController: null,
   detailControllers: new Map(),
   detailCache: new Map(),
@@ -301,6 +306,7 @@ const state = {
   currentSourceTimerStartedAt: null,
   sourceResultMemory: { runKey: null, results: [] },
   runLimit: RECENT_RUN_LIMIT,
+  runHistory: null,
   sourcesExpanded: false,
   loadMoreObserver: null,
   notifications: [],
@@ -1045,6 +1051,30 @@ export function recentRuns(data, limit = RECENT_RUN_LIMIT) {
   return runs.slice(0, limit);
 }
 
+function mergeRunHistoryLists(previousRuns, incomingRuns) {
+  const runsById = new Map();
+  for (const run of [...(previousRuns || []), ...(incomingRuns || [])]) {
+    if (run?.id === undefined || run?.id === null) continue;
+    runsById.set(String(run.id), run);
+  }
+  return [...runsById.values()]
+    .sort((left, right) => Number(right.id) - Number(left.id))
+    .slice(0, EXPANDED_RUN_LIMIT);
+}
+
+function rememberRunHistory(incomingRuns) {
+  if (state.runHistory === null) return incomingRuns;
+  state.runHistory = mergeRunHistoryLists(state.runHistory, incomingRuns);
+  return state.runHistory;
+}
+
+export function recentRunStatus(run, { staleRunning = false } = {}) {
+  if (staleRunning) return "STALE";
+  const status = String(run?.status || "UNKNOWN").toUpperCase();
+  if (status === "FAILED" && /terminated by user/i.test(run?.error_message || "")) return "TERMINATED";
+  return status;
+}
+
 function notificationRunTimestamp(run) {
   return run?.timestamp || run?.finished_at || run?.started_at || "";
 }
@@ -1303,8 +1333,8 @@ function markAllNotificationsRead() {
 }
 
 function recentRunRowHtml(run, { staleRunning = false } = {}) {
-  const status = staleRunning ? "STALE" : String(run.status || "UNKNOWN").toUpperCase();
-  const statusClass = status === "FAILED" || status === "STALE" ? "failed" : status === "RUNNING" ? "running" : "completed";
+  const status = recentRunStatus(run, { staleRunning });
+  const statusClass = status === "FAILED" || status === "STALE" ? "failed" : status === "RUNNING" ? "running" : status === "TERMINATED" ? "terminated" : "completed";
   return `<div class="recent-run"><div class="recent-run-meta"><span class="run-date">#${escapeHtml(run.id)} · ${escapeHtml(relativeDate(run.started_at))}</span><span class="run-duration">${escapeHtml(formatRunDuration(run))}</span></div><div class="run-aside"><span class="run-state ${statusClass}">${escapeHtml(status === "STALE" ? "FAILED" : status)}</span><span class="run-count">${escapeHtml(formatNumber(run.internships_discovered ?? 0))} roles</span></div></div>`;
 }
 
@@ -1580,14 +1610,24 @@ function sourceRowHtml(row) {
   return `<div class="source-row"><div class="source-name"><a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(row.url)}">${escapeHtml(compactSourceUrl(row.url, 36))}</a><span class="source-detail">${escapeHtml(metrics || row.detail)}</span></div><span class="${escapeHtml(row.className)}">${escapeHtml(row.label)}</span></div>`;
 }
 
-function failureRowHtml(failure) {
+export function failureRowHtml(failure) {
   const source = failure.source_url && failure.source_url !== "(unknown)"
     ? linkHtml(compactSourceUrl(failure.source_url), failure.source_url)
     : escapeHtml(failure.source_url || "Unknown source");
   const count = Number(failure.count);
   const countLabel = Number.isFinite(count) && count > 1 ? ` ×${count}` : "";
   const status = failure.status_code != null ? ` HTTP ${escapeHtml(failure.status_code)}` : "";
-  return `<div class="failure-row"><strong>${source}${escapeHtml(countLabel)}</strong><p>${escapeHtml(String(failure.error_type || "error").replace(/_/g, " "))}${status}: ${escapeHtml(failure.message || "Request failed")}</p></div>`;
+  const occurredAt = failure.occurred_at ? new Date(failure.occurred_at) : null;
+  const time = occurredAt && Number.isFinite(occurredAt.valueOf())
+    ? `<time datetime="${escapeHtml(occurredAt.toISOString())}">${escapeHtml(occurredAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" }))}</time>`
+    : "";
+  const metadata = [
+    time,
+    failure.run_id != null ? `Crawl #${escapeHtml(failure.run_id)}` : "",
+    Number(failure.retry_count) > 0 ? `${escapeHtml(failure.retry_count)} ${Number(failure.retry_count) === 1 ? "retry" : "retries"}` : "",
+  ].filter(Boolean).join(" · ");
+  const page = failure.url ? `<a class="failure-url" href="${escapeHtml(safeUrl(failure.url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(failure.url)}</a>` : "";
+  return `<div class="failure-row" role="listitem"><strong>${source}${escapeHtml(countLabel)}</strong>${metadata ? `<div class="failure-meta">${metadata}</div>` : ""}${page}<p>${escapeHtml(String(failure.error_type || "error").replace(/_/g, " "))}${status}: ${escapeHtml(failure.message || "Request failed")}</p></div>`;
 }
 
 function detailBlock(title, body, full = false) {
@@ -1637,19 +1677,11 @@ function crawlStatCount(value) {
   return Number.isFinite(number) && number >= 0 ? number : 0;
 }
 
-function crawlStatWeight(value) {
-  return Math.max(1, crawlStatCount(value));
-}
-
 function crawlStatHtml(className, value, label) {
   return `<div class="crawl-stat ${className}">
     <span class="crawl-stat-value">${escapeHtml(formatNumber(value))}</span>
     <span class="crawl-stat-label">${label}</span>
   </div>`;
-}
-
-function crawlStatRowStyle(values) {
-  return values.map((value, index) => `--stat-col-${index + 1}: ${crawlStatWeight(value)}fr`).join("; ");
 }
 
 function normalizeCompanyName(company) {
@@ -2013,6 +2045,19 @@ export function formatPosted(value, now = Date.now()) {
   if (/^(?:(?:posted|date posted)\s*:?\s*)?(?:today|0\s*d(?:ays?)?(?:\s+ago)?)$/i.test(String(value).trim())) return "Today";
   const parsed = parseSortDate(value, now);
   if (parsed !== null) {
+    // Date-only postings carry calendar precision; midnight is not a posting time.
+    const dateOnly = /^(?:(?:posted|date posted)\s*:?\s*)?\d{4}-\d{2}-\d{2}$/i.test(String(value).trim());
+    if (dateOnly) {
+      const postedDay = new Date(parsed);
+      const currentDay = new Date(now);
+      const days = Math.max(0, Math.round((
+        Date.UTC(currentDay.getFullYear(), currentDay.getMonth(), currentDay.getDate())
+        - Date.UTC(postedDay.getFullYear(), postedDay.getMonth(), postedDay.getDate())
+      ) / 86_400_000));
+      if (days === 0) return "Today";
+      if (days < 28) return `${days}d ago`;
+      return formatDate(new Date(parsed).toISOString());
+    }
     const delta = Math.max(0, now - parsed);
     if (delta < 60_000) return "<1 min ago";
     if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} min ago`;
@@ -3484,12 +3529,12 @@ function renderCrawlStatistics(data) {
     const closed = crawlStatCount(stats.closed);
     const hidden = crawlStatCount(stats.hidden);
     const applied = crawlStatCount(data?.appliedRoleCount);
-    crawlStatistics.innerHTML = `<div class="crawl-stat-row crawl-stat-row-top" style="${crawlStatRowStyle([open, fresh, updated])}">
+    crawlStatistics.innerHTML = `<div class="crawl-stat-row crawl-stat-row-top">
         ${crawlStatHtml("crawl-stat-primary", open, "Open roles")}
         ${crawlStatHtml("crawl-stat-new", fresh, "New")}
         ${crawlStatHtml("crawl-stat-updated", updated, "Updated")}
       </div>
-      <div class="crawl-stat-row crawl-stat-row-bottom" style="${crawlStatRowStyle([closed, hidden, applied])}">
+      <div class="crawl-stat-row crawl-stat-row-bottom">
         ${crawlStatHtml("crawl-stat-closed", closed, "Closed by crawler")}
         ${crawlStatHtml("crawl-stat-hidden", hidden, "Hidden by you")}
         ${crawlStatHtml("crawl-stat-applied", applied, "Applied roles")}
@@ -3987,10 +4032,11 @@ async function updateApplicationStage(button) {
   state.applicationCounts = derivedApplicationCounts();
   renderApplications();
   try {
+    const csrfHeaders = await authClient.csrfHeaders();
     const response = await fetch("/api/applications/status", {
       method: "POST",
       cache: "no-store",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...csrfHeaders },
       body: JSON.stringify({ listingType, listingId, stage }),
     });
     const payload = await readJsonResponse(response);
@@ -4303,7 +4349,10 @@ function updateRoleListChrome() {
   const heading = $("#results-heading");
   const count = $("#jobs-status");
   if (heading) heading.textContent = roleListHeading();
-  if (count) count.innerHTML = `<span>${escapeHtml(roleListCountText())}</span>`;
+  const previewStatus = state.showingCachedRoles
+    ? state.cachedRolesUnavailable ? "Showing saved listings" : "Updating listings…"
+    : "";
+  if (count) count.innerHTML = `<span>${escapeHtml(roleListCountText())}${previewStatus ? ` · ${previewStatus}` : ""}</span>`;
   const sentinel = $("#load-more-sentinel");
   if (sentinel) sentinel.innerHTML = roleListFooterMarkup();
   $("#role-list")?.setAttribute("aria-busy", String(state.loading || state.loadingMore));
@@ -4463,14 +4512,14 @@ function renderCurrentSource(data) {
   const panels = [...document.querySelectorAll("[data-crawl-current]")];
   if (!panels.length) return;
   document.querySelector(".dashboard-crawl-health")?.classList.toggle("is-active", active);
-  const statusLabel = active ? (scan.terminationRequested ? "Terminating" : "Running") : "Idle";
+  const statusLabel = active ? (scan.terminationRequested ? "Terminating" : "Running") : "";
   const elapsedMs = active ? elapsedSince(current?.startedAt || scan.startedAt || state.currentSourceTimerStartedAt) : null;
   const extras = checking.length > 1 ? ` · ${checking.length - 1} other source${checking.length === 2 ? "" : "s"} also in progress` : "";
   const detailText = active
     ? current?.url
       ? `${configuredSourceCount(data)} configured sources${extras}`
       : `${configuredSourceCount(data)} configured sources · waiting for the first source to start.`
-    : `${configuredSourceCount(data)} configured sources · idle.`;
+    : `${configuredSourceCount(data)} configured sources`;
   panels.forEach((panel) => {
     panel.classList.toggle("active", active);
     const name = panel.querySelector('[data-crawl-field="source-name"]');
@@ -4488,6 +4537,7 @@ function renderCurrentSource(data) {
     if (status) {
       status.textContent = statusLabel;
       status.className = active ? (scan.terminationRequested ? "status-stop" : "status-run") : "status-idle";
+      status.hidden = !active;
     }
     if (elapsed) elapsed.textContent = elapsedMs === null ? "—" : formatDurationMs(elapsedMs);
     if (detail) detail.textContent = detailText;
@@ -4574,14 +4624,22 @@ function renderRunHealth(data) {
   });
   document.querySelectorAll('[data-crawl-field="source-status"]').forEach((sourceStatus) => {
     const requested = active && Boolean(scan.terminationRequested || run?.cancel_requested_at);
-    sourceStatus.textContent = active ? (requested ? "Terminating" : "Running") : "Idle";
+    sourceStatus.textContent = active ? (requested ? "Terminating" : "Running") : "";
     sourceStatus.className = active ? (requested ? "status-stop" : "status-run") : "status-idle";
+    sourceStatus.hidden = !active;
   });
   renderCrawlRunSummary(data);
   const runs = recentRuns(data, state.runLimit);
   $("#recent-runs").innerHTML = runs.length
     ? runs.map((item) => recentRunRowHtml(item, { staleRunning: staleRunning && item.id === run.id })).join("")
     : `<div class="empty-state">No crawl data yet.</div>`;
+  const runHistoryButton = $("#view-all-runs");
+  if (runHistoryButton) {
+    const expanded = state.runLimit > RECENT_RUN_LIMIT;
+    runHistoryButton.textContent = expanded ? "Show recent" : "View all";
+    runHistoryButton.setAttribute("aria-expanded", String(expanded));
+    runHistoryButton.hidden = state.runHistory !== null && state.runHistory.length <= RECENT_RUN_LIMIT;
+  }
   renderPlanCard(data);
 }
 
@@ -4656,7 +4714,12 @@ function renderSources(data) {
   list.innerHTML = health.rows.length
     ? health.rows.map(sourceRowHtml).join("")
     : `<div class="empty-state">${escapeHtml(isScanActive(data) ? "Waiting for the first source to start." : boardLabel)}</div>`;
-  const failures = Array.isArray(data?.failures) ? data.failures : [];
+  const hasFailureWindow = Array.isArray(data?.failures24h);
+  const failures = hasFailureWindow ? data.failures24h : Array.isArray(data?.failures) ? data.failures : [];
+  const failureWindow = $("#failure-window");
+  if (failureWindow) failureWindow.textContent = hasFailureWindow
+    ? `${formatNumber(failures.length)} ${failures.length === 1 ? "error" : "errors"} · Past 24 hours`
+    : "Latest run";
   const runFailed = data?.latestRun?.status === "FAILED" || scan.status === "FAILED";
   const runError = scan.error || data?.latestRun?.error_message || "";
   const terminated = runFailed && /terminated by user/i.test(runError);
@@ -4664,11 +4727,11 @@ function renderSources(data) {
   if (failures.length) {
     $("#failure-list").innerHTML = failures.map(failureRowHtml).join("");
   } else if (scanFailure) {
-    $("#failure-list").innerHTML = `<div class="failure-row"><strong>Latest run</strong><p>${escapeHtml(scanFailure)}</p></div>`;
+    $("#failure-list").innerHTML = `<div class="failure-row" role="listitem"><strong>Latest run</strong><p>${escapeHtml(scanFailure)}</p></div>`;
   } else if (terminated) {
     $("#failure-list").innerHTML = `<div class="empty-state">Crawl stopped by you. Results from settled sources were kept.</div>`;
   } else {
-    $("#failure-list").innerHTML = `<div class="empty-state">No failures reported for this run.</div>`;
+    $("#failure-list").innerHTML = `<div class="empty-state">${hasFailureWindow ? "No errors recorded in the past 24 hours." : "No failures reported for this run."}</div>`;
   }
   const recovery = $("#failure-recovery");
   if (recovery) recovery.hidden = !(failures.length || scanFailure);
@@ -4732,6 +4795,7 @@ function updateScanButton() {
   if (connection) {
     const failed = String(state.data?.scan?.status || "").toUpperCase() === "FAILED";
     connection.textContent = requested || state.terminating ? "Stopping crawl" : uiState.active ? "Crawling sources" : terminated ? "Crawl stopped" : failed ? "Crawl needs attention" : "Ready";
+    if (state.showingCachedRoles) connection.textContent = state.cachedRolesUnavailable ? "Showing saved listings" : "Updating listings…";
   }
 }
 
@@ -4990,8 +5054,11 @@ async function readJsonResponse(response) {
 function applyRolesPayload(payload, pageItems, append, expectedIntent, expectedRoleCacheRevision = state.roleCacheRevision) {
   if (!isCurrentIntent(expectedIntent, state.intentRevision) || expectedRoleCacheRevision !== state.roleCacheRevision) return false;
   const previousVersion = state.version;
+  state.showingCachedRoles = false;
+  state.cachedRolesUnavailable = false;
   state.version = payload.version || state.version;
   state.statusVersion = state.version;
+  state.rolesContentVersion = payload.contentVersion || null;
   const pagination = payload.pagination || {
     limit: INITIAL_PAGE_SIZE,
     offset: append ? state.pagination.offset : 0,
@@ -5014,7 +5081,8 @@ function applyRolesPayload(payload, pageItems, append, expectedIntent, expectedR
     state.detailCache.clear();
   }
   const latestRun = payload.latestRun !== undefined ? payload.latestRun : (state.data?.latestRun || null);
-  const runs = Array.isArray(payload.runs) ? payload.runs : (state.data?.runs || (latestRun ? [latestRun] : []));
+  const incomingRuns = Array.isArray(payload.runs) ? payload.runs : (state.data?.runs || (latestRun ? [latestRun] : []));
+  const runs = rememberRunHistory(incomingRuns);
   const hydrated = applyRememberedSourceHealth({ ...payload, latestRun, scan: payload.scan || state.data?.scan || {} }, state.data);
   state.data = { ...(state.data || {}), ...hydrated, items: state.items, internships: state.items, latestRun, latestCompletedRun: payload.latestCompletedRun || (latestRun?.status === "COMPLETED" ? latestRun : state.data?.latestCompletedRun || null), runs, scan: hydrated.scan || payload.scan || state.data?.scan || {} };
   rememberTabSnapshot(state.tabSnapshots, roleFiltersKey(readFilters()), {
@@ -5023,6 +5091,7 @@ function applyRolesPayload(payload, pageItems, append, expectedIntent, expectedR
     version: state.version,
   });
   renderChrome(state.data);
+  if (!append) rememberListingSnapshot(roleFiltersKey(readFilters()), { ...payload, items: state.items });
   return true;
 }
 
@@ -5075,6 +5144,12 @@ async function loadRoles({ append = false, expectedIntent = state.intentRevision
     if (requestRevision !== state.requestRevision
       || !isCurrentIntent(expectedIntent, state.intentRevision)
       || roleCacheRevision !== state.roleCacheRevision) return null;
+    if (append && payload.contentVersion && state.rolesContentVersion
+      && payload.contentVersion !== state.rolesContentVersion) {
+      // Offset pages from a changed sort order cannot update the old head of the list.
+      invalidateRoleListingState();
+      return await ensureRolesLoaded(expectedIntent, { silent: true, skipMotion: true });
+    }
     const rawPageItems = Array.isArray(payload.items) ? payload.items : [];
     const responseTotal = Number(payload.pagination?.total);
     const responseOffset = Number(payload.pagination?.offset ?? offset);
@@ -5091,6 +5166,15 @@ async function loadRoles({ append = false, expectedIntent = state.intentRevision
     // has already succeeded; the next poll or a later retry will reconcile it.
     if (silent && state.data && isTransientDashboardReadError(error)) return null;
     requestFailed = true;
+    if (state.items.length && !append) {
+      // Keep a usable preview on screen through provider/network failures.
+      // The next visible poll retries the live head without mixing old offsets.
+      state.showingCachedRoles = true;
+      state.cachedRolesUnavailable = true;
+      if ($("#connection-label")) $("#connection-label").textContent = "Showing saved listings";
+      updateRoleListChrome();
+      return null;
+    }
     state.listError = error?.message || "Could not load roles";
     if ($("#connection-label")) $("#connection-label").textContent = "Unavailable";
     if (!append && $("#role-list")) $("#role-list").innerHTML = rolesErrorMarkup(state.listError);
@@ -5184,11 +5268,32 @@ async function ensureRolesLoaded(expectedIntent = state.intentRevision, options 
   return payload;
 }
 
+function restoreListingSnapshot() {
+  if (state.roleView !== "all" || isSavedRoleView()) return false;
+  const snapshot = readListingSnapshot(roleFiltersKey(readFilters()));
+  if (!snapshot) return false;
+  state.items = pendingVisibleRoles(snapshot.items);
+  state.pagination = snapshot.pagination;
+  state.loading = false;
+  state.loadingMore = false;
+  state.listError = null;
+  state.showingCachedRoles = true;
+  state.cachedRolesUnavailable = false;
+  state.rolesContentVersion = null;
+  // No cached version, account counts, or status: the server remains the
+  // authority, and this preview cannot suppress a live content refresh.
+  if (!state.data) state.data = { items: state.items, internships: state.items };
+  renderRoles({ animate: false });
+  updateScanButton();
+  return true;
+}
+
 async function loadInitialRoles() {
   const initialIntent = state.intentRevision;
   const savedInitialView = state.activeTab === SAVED_ROLE_TAB || state.activeView === "watchlist";
   if (savedInitialView) state.activeTab = INITIAL_ROLE_TAB;
-  const initialPayload = await ensureRolesLoaded(initialIntent);
+  const restored = !savedInitialView && restoreListingSnapshot();
+  const initialPayload = await ensureRolesLoaded(initialIntent, { silent: restored, skipMotion: restored });
   if (savedInitialView) {
     state.activeTab = SAVED_ROLE_TAB;
     state.items = pendingVisibleRoles(state.watchlistRoles);
@@ -5244,6 +5349,7 @@ async function prefetchRoleTabSnapshot(
     };
     if (shouldReplaceTabSnapshot(state.tabSnapshots.get(key), nextSnapshot)) {
       rememberTabSnapshot(state.tabSnapshots, key, nextSnapshot);
+      rememberListingSnapshot(key, payload);
     }
   }
   snapshot = state.tabSnapshots.get(key);
@@ -5298,7 +5404,16 @@ async function prefetchRoleTabs() {
   }
 }
 
+export function shouldRefreshRoleListings(currentContentVersion, nextContentVersion, currentVersion, nextVersion, scanning) {
+  if (nextContentVersion && currentContentVersion !== nextContentVersion) return true;
+  return hasVersionChanged(currentVersion, nextVersion) && (!scanning || !nextContentVersion);
+}
+
 async function syncChanges({ force = false } = {}) {
+  if (!force && document.visibilityState === "hidden") return false;
+  // A slow session refresh must finish once; polling must not abort and
+  // restart the initial head request every five seconds.
+  if (state.listController && !state.loadingMore) return false;
   if (state.changesRequest) return state.changesRequest;
   const request = (async () => {
     const headers = { Accept: "application/json" };
@@ -5311,7 +5426,8 @@ async function syncChanges({ force = false } = {}) {
     const previousVersion = state.version;
     state.statusVersion = payload.version || state.statusVersion;
     const latestRun = payload.latestRun !== undefined ? payload.latestRun : (state.data?.latestRun || null);
-    const runs = Array.isArray(payload.runs) ? payload.runs : (state.data?.runs || (latestRun ? [latestRun] : []));
+    const incomingRuns = Array.isArray(payload.runs) ? payload.runs : (state.data?.runs || (latestRun ? [latestRun] : []));
+    const runs = rememberRunHistory(incomingRuns);
     const hydrated = applyRememberedSourceHealth({ ...payload, latestRun, scan: payload.scan || payload.status || state.data?.scan || {} }, state.data);
     state.data = {
       ...(state.data || {}),
@@ -5334,25 +5450,22 @@ async function syncChanges({ force = false } = {}) {
     }
     if (state.scanning && !isScanActive(state.data)) state.scanning = false;
     renderChrome(state.data);
-    const versionChanged = hasVersionChanged(previousVersion, payload.version);
-    if (versionChanged) {
-      state.version = payload.version;
+    const refreshListings = shouldRefreshRoleListings(
+      state.rolesContentVersion, payload.contentVersion, previousVersion, payload.version, scanIsActive(payload),
+    );
+    if (payload.version) state.version = payload.version;
+    if (refreshListings) {
       invalidateRoleListingState();
       if (isSavedRoleView()) {
         renderRoles();
         return true;
       }
       const hasRenderedRoles = state.items.length > 0;
-      if (hasRenderedRoles && scanIsActive(payload)) {
-        // A live scan bumps the version every heartbeat; reloading page 0
-        // each time would collapse the list back to the first page and abort
-        // the background stream. Top the list up through the drain instead
-        // and let the idle refresh below do the authoritative reload.
-        maybeDrainRemainingRoles(state.intentRevision);
-      } else {
-        await ensureRolesLoaded(state.intentRevision, { silent: hasRenderedRoles });
-        void prefetchRoleTabs();
-      }
+      await ensureRolesLoaded(state.intentRevision, { silent: hasRenderedRoles, skipMotion: hasRenderedRoles });
+      // A catalog rebuild may serve the prior coherent snapshot once. Keep
+      // polling without its ETag until the displayed rows reach this content revision.
+      if (payload.contentVersion && state.rolesContentVersion !== payload.contentVersion) state.changesEtag = null;
+      void prefetchRoleTabs();
     }
     return true;
   })().catch((error) => {
@@ -5545,6 +5658,7 @@ async function saveListingAction(button) {
   const title = button.dataset.listingTitle;
   const key = listingType && listingId ? listingKey(listingType, listingId) : "";
   if (!listingType || !listingId || !action || !company || !title || !state.data || !key || state.pendingActions.has(key) || state.actionRequests.has(key)) return;
+  clearListingSnapshots();
   const optimisticRoleIndex = state.items.findIndex((role) => listingKey(role.listingType || "internship", role.listingId || role.id) === key);
   const optimisticRole = optimisticRoleIndex >= 0 ? state.items[optimisticRoleIndex] : null;
   const optimisticFiltersKey = roleFiltersKey(readFilters());
@@ -5574,8 +5688,9 @@ async function saveListingAction(button) {
   showListingActionToast(actionRecord, successMessage);
   let requestPromise = null;
   try {
+    const csrfHeaders = await authClient.csrfHeaders();
     requestPromise = fetch("/api/actions", {
-      method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "POST", headers: { Accept: "application/json", "Content-Type": "application/json", ...csrfHeaders },
       body: JSON.stringify({ listingType, listingId, action, company, title, applicationUrl: button.dataset.listingApplicationUrl || "", postingUrl: button.dataset.listingPostingUrl || "", jobId: button.dataset.listingJobId || "", location: button.dataset.listingLocation || "" }),
     }).then((response) => readJsonResponse(response));
     state.actionRequests.set(key, requestPromise);
@@ -5625,6 +5740,7 @@ function undoListingAction(listingKeyToUndo = null) {
     ? state.undoStack.find((candidate) => candidate.listingKey === listingKeyToUndo)
     : state.undoStack.at(-1);
   if (!action) return;
+  clearListingSnapshots();
   forgetListingAction(action.listingKey);
   action.undoRequested = true;
   const saveRequest = state.actionRequests.get(action.listingKey);
@@ -5653,7 +5769,8 @@ async function reconcileUndoneListingAction(action, saveRequest, restoredLocally
       try { await saveRequest; } catch { /* DELETE is still safe if POST failed. */ }
     }
     const query = new URLSearchParams({ listingType: action.listingType, listingId: action.listingId });
-    const response = await fetch(`/api/actions?${query.toString()}`, { method: "DELETE", headers: { Accept: "application/json" } });
+    const csrfHeaders = await authClient.csrfHeaders();
+    const response = await fetch(`/api/actions?${query.toString()}`, { method: "DELETE", headers: { Accept: "application/json", ...csrfHeaders } });
     const payload = await readJsonResponse(response);
     if (state.actionRequests.get(action.listingKey) === saveRequest) state.actionRequests.delete(action.listingKey);
     applyListingActionPayload(payload);
@@ -5777,6 +5894,11 @@ function handleFilterChange() {
     void prefetchRoleTabs();
     return;
   }
+  if (restoreListingSnapshot()) {
+    void ensureRolesLoaded(state.intentRevision, { silent: true, skipMotion: true });
+    return;
+  }
+  state.showingCachedRoles = false;
   state.items = [];
   state.pagination = freshPagination();
   state.loading = true;
@@ -5982,9 +6104,42 @@ function bindEvents() {
   }
   $("#upgrade-plan")?.addEventListener("click", () => showToast("Plan billing is not connected in this workspace."));
   $("#need-help")?.addEventListener("click", () => showToast("Use crawl status and source rows to diagnose a run. ⌘/Ctrl+Z undoes Applied / Can't fit."));
-  $("#view-all-runs")?.addEventListener("click", () => {
-    state.runLimit = state.runLimit === RECENT_RUN_LIMIT ? 40 : RECENT_RUN_LIMIT;
-    if (state.data) renderRunHealth(state.data);
+  $("#view-all-runs")?.addEventListener("click", async (event) => {
+    const button = event.currentTarget;
+    if (state.runLimit > RECENT_RUN_LIMIT) {
+      state.runLimit = RECENT_RUN_LIMIT;
+      if (state.data) renderRunHealth(state.data);
+      return;
+    }
+    if (state.runHistory !== null) {
+      state.runLimit = EXPANDED_RUN_LIMIT;
+      if (state.data) {
+        state.data = { ...state.data, runs: state.runHistory };
+        renderRunHealth(state.data);
+      }
+      return;
+    }
+
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    try {
+      const response = await fetch(`/api/runs?limit=${EXPANDED_RUN_LIMIT}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+      const payload = await readJsonResponse(response);
+      if (!Array.isArray(payload.runs)) throw new Error("Run history was unavailable");
+      state.runHistory = mergeRunHistoryLists(state.data?.runs, payload.runs);
+      state.runLimit = EXPANDED_RUN_LIMIT;
+      state.data = { ...(state.data || {}), runs: state.runHistory };
+      renderRunHealth(state.data);
+    } catch {
+      state.runLimit = RECENT_RUN_LIMIT;
+      showToast("Could not load crawl run history. Try again.");
+    } finally {
+      button.disabled = false;
+      button.removeAttribute("aria-busy");
+    }
   });
   $("#view-all-sources")?.addEventListener("click", () => {
     state.sourcesExpanded = !state.sourcesExpanded;
@@ -6341,7 +6496,7 @@ async function initialLoad() {
     state.watchlistRoles = readWatchlistRoles();
     renderWatchlistCount();
     await loadInitialRoles();
-    await syncChanges({ force: true });
+    void syncChanges({ force: true }).catch(() => undefined);
     void prefetchRoleTabs();
     const initialView = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
     if (initialView === "applications" || state.activeView === "applications") openApplicationsView({ updateLocation: false });
@@ -6368,6 +6523,9 @@ if (typeof document !== "undefined") {
   authClient.subscribe((authState) => renderAccountIdentity(authState));
   void initialLoad();
   setInterval(() => { void syncChanges(); }, POLL_INTERVAL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void syncChanges({ force: true }).catch(() => undefined);
+  });
   setInterval(() => {
     if (scanIsActive() && state.data) {
       renderCurrentSource(state.data);

@@ -5,12 +5,13 @@ import { load } from "cheerio";
 import type { LinkCandidate, NetworkResponseSnapshot, PageSnapshot } from "../domain/types.js";
 import type { ScoutSettings } from "../domain/schemas.js";
 import { directApplicationOverride } from "../config/directApplicationOverrides.js";
+import { isRetiredInternListSource, RETIRED_INTERN_LIST_MESSAGE } from "../config/retiredSources.js";
 import { Semaphore, sleep } from "../utils/async.js";
 import type { Logger } from "../utils/logger.js";
 import { canonicalizeUrl, isAggregatorUrl, isJobrightJobUrl, isJobrightUrl, isLinkedInJobUrl, redactSensitiveText, redactSensitiveUrl, safeCanonicalizeUrl, sameSite } from "../utils/url.js";
 import { classifyLinkResponse } from "../verification/linkStatus.js";
 import { HostRateLimiter, HostRateLimitTimeoutError } from "./rateLimiter.js";
-import { isEarlyCareerRadarSource } from "./publicSources.js";
+import { isEarlyCareerRadarNotFoundPage, isEarlyCareerRadarPage, isEarlyCareerRadarSource } from "./publicSources.js";
 import { earlyCareerRadarDetailUrl, parseEarlyCareerRadarJobs, selectEarlyCareerRadarJobs } from "./adapters/earlyCareerRadar.js";
 import type { Profiler } from "../observability/profiler.js";
 import { cancellationError, composeAbortSignals, currentSourceAbortSignal, throwIfAborted } from "../domain/cancellation.js";
@@ -49,6 +50,23 @@ export function extractJobrightOriginalPostHref(html: string, baseUrl: string): 
   } catch {
     return null;
   }
+}
+
+export class JobrightAuthenticationRequiredError extends Error {
+  public constructor() {
+    super("Jobright requires sign-in to reveal this employer application destination.");
+    this.name = "JobrightAuthenticationRequiredError";
+  }
+}
+
+/** Current anonymous Jobright pages replace the original link with a signup-gated control. */
+export function isJobrightAuthenticationRequiredPage(html: string, baseUrl: string): boolean {
+  if (extractJobrightOriginalPostHref(html, baseUrl)) return false;
+  const document = load(html);
+  const buttons = document("button").map((_, element) => document(element).text().replace(/\s+/gu, " ").trim()).get();
+  return buttons.some((label) => /^apply now\b/i.test(label))
+    && /sign\s+in/i.test(document("body").text())
+    && /join\s+now/i.test(document("body").text());
 }
 
 /** Recover filtered Early Career Radar detail links from its embedded feed. */
@@ -202,6 +220,7 @@ export class BrowserManager {
   public get navigations(): number { return this.navigationCount; }
 
   public async fetchPage(url: string, robotsDelayMs: number | null = null, sourceKey = url): Promise<PageSnapshot> {
+    if (isRetiredInternListSource(url)) throw new Error(RETIRED_INTERN_LIST_MESSAGE);
     return this.withSourceActivity(sourceKey, () => this.withOperation(async () => {
       throwIfAborted(this.activeSignal());
       await this.start();
@@ -435,6 +454,9 @@ export class BrowserManager {
       if (typeof (page as Page & { content?: unknown }).content === "function") {
         const html = await this.withPageDeadline(page.content(), `Reading Jobright detail ${redactSensitiveUrl(value)}`, pageDeadlineMs);
         href = extractJobrightOriginalPostHref(html, page.url());
+        if (!href && isJobrightAuthenticationRequiredPage(html, page.url())) {
+          throw new JobrightAuthenticationRequiredError();
+        }
       }
       // Keep a DOM fallback for environments where page.content() is not
       // available. It uses the same exact anchor lookup and never clicks.
@@ -443,12 +465,12 @@ export class BrowserManager {
           .locator("a[href]")
           .filter({ hasText: /^\s*original\s+job\s+post\s*$/i })
           .first();
-        await this.withPageDeadline(
+        const attached = await this.withPageDeadline(
           control.waitFor({ state: "attached", timeout: Math.min(5_000, pageDeadlineMs) }),
           `Waiting for Jobright Original job post anchor ${redactSensitiveUrl(value)}`,
           Math.min(5_000, pageDeadlineMs),
-        ).catch(() => undefined);
-        href = await control.getAttribute("href").catch(() => null);
+        ).then(() => true, () => false);
+        if (attached) href = await control.getAttribute("href").catch(() => null);
       }
       const normalized = href?.trim() ? safeCanonicalizeUrl(href, page.url()) : null;
       if (!normalized || sameSite(value, normalized) || isAggregatorUrl(normalized)) return null;
@@ -457,6 +479,7 @@ export class BrowserManager {
       return normalized;
     } catch (error) {
       this.throwIfCrawlAborted();
+      if (error instanceof JobrightAuthenticationRequiredError) throw error;
       this.logger.debug("ORIGINAL", `Could not read Jobright Original job post href for ${redactSensitiveUrl(value)}: ${redactSensitiveText(error instanceof Error ? error.message : String(error))}`);
       return null;
     } finally {
@@ -631,6 +654,10 @@ export class BrowserManager {
     context.setDefaultNavigationTimeout?.(this.settings.navigationTimeoutMs);
     this.contexts.add(context);
     await context.route("**/*", async (route) => {
+      if (isRetiredInternListSource(route.request().url())) {
+        await route.abort();
+        return;
+      }
       const request = route.request();
       if (BLOCKED_RESOURCE_TYPES.has(request.resourceType()) || BLOCKED_HOSTS.test(request.url())) {
         await route.abort();
@@ -723,10 +750,21 @@ export class BrowserManager {
         throw new PageFetchError(error instanceof Error ? error.message : String(error), null, 0, "navigation_error");
       }
       const status = response?.status() ?? 200;
+      const radarUrl = isEarlyCareerRadarPage(page.url()) ? page.url() : requestedUrl;
+      if (isEarlyCareerRadarNotFoundPage(radarUrl, status)) {
+        throw new PageFetchError("Early Career Radar page not found; skipped without retry.", 404, 0, "not_found");
+      }
       if ([401, 403, 407, 451].includes(status)) throw new PageFetchError(`HTTP ${status} access denied`, status, 0, "access_denied");
       if (status === 429 || status >= 500) {
         const retryAfterMs = status === 429 ? parseRetryAfter(response?.headers()["retry-after"]) : null;
         throw new PageFetchError(`HTTP ${status}`, status, 0, "http_error", retryAfterMs);
+      }
+
+      if (isEarlyCareerRadarPage(radarUrl) && status >= 200 && status < 300) {
+        const initialText = await page.locator("body").innerText({ timeout: 1_000 }).catch(() => "");
+        if (isEarlyCareerRadarNotFoundPage(radarUrl, status, initialText)) {
+          throw new PageFetchError("Early Career Radar page not found; skipped without retry.", 404, 0, "not_found");
+        }
       }
 
       const renderStartedAt = performance.now();
@@ -759,6 +797,9 @@ export class BrowserManager {
         [...internListLinks, ...currentLinks, ...embeddedLinks].map((link) => [link.url, link]),
       ).values()];
       const finalUrl = safeCanonicalizeUrl(page.url()) ?? canonicalizeUrl(requestedUrl);
+      if (isEarlyCareerRadarNotFoundPage(finalUrl, status, text)) {
+        throw new PageFetchError("Early Career Radar page not found; skipped without retry.", 404, 0, "not_found");
+      }
       return {
         requestedUrl: canonicalizeUrl(requestedUrl),
         url: finalUrl,

@@ -214,6 +214,20 @@ export type SourceStatus =
   | "source_unavailable"
   | "no_internships_found";
 
+export type SourceInventoryStatus = "trusted" | "incomplete" | "unknown" | "quarantined" | "stale" | "excluded";
+
+export interface SourceInventoryPart {
+  id: string;
+  kind: "tab" | "listing_pages" | "sitemap" | "detail_pages";
+  url: string;
+  country?: "us" | "ca";
+  category?: string;
+  inventoryCount: number | null;
+  retrievedCount: number;
+  complete: boolean;
+  notes: string[];
+}
+
 export interface SourceCrawlResult {
   sourceUrl: string;
   /** Wall-clock timestamp when this source's crawl began. */
@@ -229,6 +243,16 @@ export interface SourceCrawlResult {
   closedPages: ClosedPage[];
   completed: boolean;
   coverageComplete: boolean;
+  /** Exact selected source inventory size when a retrieval adapter measured it. */
+  inventoryCount?: number;
+  inventoryParts?: SourceInventoryPart[];
+  /** True only when the retrieval path positively proved the inventory complete. */
+  trustedInventory?: boolean;
+  suspiciousInventory?: boolean;
+  inventoryStatus?: SourceInventoryStatus;
+  /** Source outcome flags consumed by the durable health ledger. */
+  stale?: boolean;
+  healthExcluded?: boolean;
   status?: SourceStatus;
   retrievalMethod?: string;
   attempts?: number;

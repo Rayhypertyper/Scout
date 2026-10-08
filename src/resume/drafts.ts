@@ -4,6 +4,7 @@ import { ResumeError } from "./service.js";
 import { tailorResume, type Resume, type ResumeRole, type ResumeTailoringOrder } from "./tailor.js";
 
 const MAX_DRAFT_ITEMS = 40;
+const MIN_DRAFT_RELEVANCE_SCORE = 3;
 const MAX_COVER_PARAGRAPHS = 5;
 const DRAFT_TIMEOUT_MS = 90_000;
 const MAX_DRAFT_ATTEMPTS = 3;
@@ -252,7 +253,9 @@ function coverSources(base: Resume): SourceRecord[] {
 }
 
 function normalizeToken(token: string): string {
-  const lower = token.toLowerCase();
+  // The tokenizer retains dots for terms such as Node.js and .NET. Drop a
+  // terminal sentence period while preserving dots inside or before the term.
+  const lower = token.toLowerCase().replace(/\.+$/u, "");
   if (lower.length > 5 && lower.endsWith("ies")) return `${lower.slice(0, -3)}y`;
   if (lower.length > 5 && lower.endsWith("ing")) return lower.slice(0, -3);
   if (lower.length > 4 && lower.endsWith("ed")) return lower.slice(0, -2);
@@ -309,7 +312,13 @@ function resumeRoleKeywords(role: ResumeRole): string[] {
   return [...scored.values()].sort((a, b) => b.score - a.score).slice(0, 32).map(({ text }) => text);
 }
 
-function selectRelevantBullets(sources: ResumeBulletRecord[], role: ResumeRole): ResumeBulletRecord[] {
+interface ScoredResumeBullet {
+  source: ResumeBulletRecord;
+  score: number;
+  originalIndex: number;
+}
+
+function selectRelevantBullets(sources: ResumeBulletRecord[], role: ResumeRole): ScoredResumeBullet[] {
   const priorities = resumeRoleRequirements(role).map(({ text, weight }) => ({ tokens: informativeTokens(text), weight }));
   return sources.map((source, originalIndex) => {
     const tokens = informativeTokens(source.text);
@@ -319,8 +328,8 @@ function selectRelevantBullets(sources: ResumeBulletRecord[], role: ResumeRole):
       if (containsTerm(source.text, technology)) score += 3;
     }
     return { source, score, originalIndex };
-  }).sort((a, b) => b.score - a.score || a.originalIndex - b.originalIndex)
-    .map(({ source }) => source);
+  }).filter(({ score }) => score >= MIN_DRAFT_RELEVANCE_SCORE)
+    .sort((a, b) => b.score - a.score || a.originalIndex - b.originalIndex);
 }
 
 function tokenCoverage(text: string, sourceTexts: string[]): number {
@@ -755,7 +764,12 @@ export async function createApplicationDraft(
         throw new ResumeError(422, "Your saved resume has no experience or project bullets to tailor. Add them to your resume profile, then generate the resume again.");
       }
       const selectedBullets = selectRelevantBullets(sources, role).slice(0, MAX_DRAFT_ITEMS);
-      const bullets = await generateGroundedResumeBullets(selectedBullets, role, signal);
+      if (selectedBullets.length === 0 && signal.aborted) {
+        throw new ResumeError(504, "Draft generation was cancelled or exceeded its time limit. Please retry.");
+      }
+      const bullets = selectedBullets.length > 0
+        ? await generateGroundedResumeBullets(selectedBullets.map(({ source }) => source), role, signal)
+        : [];
       const evidence: DraftEvidence[] = bullets.map((bullet) => ({
         draftLocation: `resume:${bullet.sourceRef}`,
         sourceRef: bullet.sourceRef,
@@ -770,7 +784,11 @@ export async function createApplicationDraft(
         warnings: [
           "Rewritten bullets cite only their original source bullet. All identity, education, employer, title, date, award, and skill fields were kept from the uploaded resume.",
           `${bullets.length} role-specific bullet ${bullets.length === 1 ? "edit was" : "edits were"} made; ${sources.length - bullets.length} bullets kept their original wording.`,
-          ...(selectedBullets.length < sources.length ? [`The ${selectedBullets.length} highest-relevance source bullets were considered for wording changes; remaining bullets kept their original wording.`] : []),
+          ...(selectedBullets.length === 0
+            ? ["No source bullets matched the role closely enough; all bullets kept their original wording."]
+            : selectedBullets.length < sources.length
+              ? [`The ${selectedBullets.length} highest-relevance source bullets were considered for wording changes; remaining bullets kept their original wording.`]
+              : []),
           reviewWarning(),
         ],
         evidence,

@@ -6,9 +6,41 @@ import {
   listingActionIdentityMatches,
 } from "../src/database/actions.js";
 import { deduplicateJobs, deduplicateListings, ListingIdentityIndex, listingIdentityKey, listingIdentityMatches, mergeInternships } from "../src/deduplication/deduplicate.js";
-import { analyzed, makeInternship } from "./helpers.js";
+import { analyzed, makeCmpaInternship, makeInternship } from "./helpers.js";
+import { normalizeCompanyIdentity } from "../src/utils/text.js";
 
 describe("deduplication", () => {
+  it("merges CMPA careers aliases with distinct Dreamwork IDs before and after detail retrieval", () => {
+    const first = makeCmpaInternship();
+    const second = makeCmpaInternship({ id: "cmpa-copy", company: "**Cmpa/Acpm**", jobId: "7e531699-916d-480c-b208-b824dab0c658" });
+    expect(normalizeCompanyIdentity(first.company)).toBe(normalizeCompanyIdentity(second.company));
+    expect(listingIdentityMatches(first, second)).toBe(true);
+    expect(deduplicateListings([first, second])).toHaveLength(1);
+    expect(deduplicateJobs([analyzed(first), analyzed(second)])).toHaveLength(1);
+
+    const differentCity = makeCmpaInternship({ location: ["Vancouver, BC, Canada"], normalizedLocations: [], jobId: "other-source-id" });
+    const differentTitle = { ...second, title: "Co-Op Student - Software Developer" };
+    expect(listingIdentityMatches(first, differentCity)).toBe(false);
+    expect(listingIdentityMatches(first, differentTitle)).toBe(false);
+  });
+
+  it("prefers the CMPA employer posting over its source copy and recognizes decisions on either alias", () => {
+    const source = makeCmpaInternship();
+    const employer = makeCmpaInternship({
+      id: "cmpa-direct", company: "CMPA/ACPM", jobId: "12345",
+      applicationUrl: "https://careers.cmpa-acpm.ca/jobs/12345/apply?utm_source=feed",
+      postingUrl: "https://careers.cmpa-acpm.ca/jobs/12345",
+      sources: ["https://careers.cmpa-acpm.ca"],
+    });
+    const [merged] = deduplicateJobs([analyzed(source), analyzed(employer)]);
+    expect(merged?.internship.applicationUrl).toBe(employer.applicationUrl);
+    expect(merged?.internship.sources).toEqual(expect.arrayContaining([...source.sources, ...employer.sources]));
+    const identities = internshipListingActionIdentities(source).map((identity) => ({ listingKey: "internship:cmpa-careers", ...identity }));
+    const otherCopy = makeCmpaInternship({ company: "Cmpa/Acpm", jobId: "7e531699-916d-480c-b208-b824dab0c658" });
+    expect(listingActionIdentityMatches(otherCopy, identities)).toBe(true);
+    expect(compileListingActionMatcher(identities).matches(otherCopy)).toBe(true);
+  });
+
   it("indexes final-state matches while preserving first eligible record order", () => {
     const index = new ListingIdentityIndex<number>();
     const identity = { company: "Acme", title: "Software Intern", locations: ["Toronto, ON"] };

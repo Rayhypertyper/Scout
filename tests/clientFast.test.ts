@@ -4,13 +4,39 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 // @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
-import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, fetchRolesPage, filterListingRoles, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, isTransientDashboardReadError, isUndoShortcut, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, sponsorshipOfferHtml, sponsorshipOfferPresentation, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
+import { failureRowHtml } from "../public/app.js";
+
+// @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
+import { adaptiveListLimit, applyListingActionCounts, BACKGROUND_PAGE_SIZE, buildNotifications, buildRolesQuery, canLoadMoreRoles, companyLogoDomains, companyLogoSources, companyLogoUrl, compactSourceUrl, createWatchlistEntry, crawlProgressMessage, DEFAULT_ROLE_SEASONS, DEFAULT_ROLE_VIEW, eligibilityPresentation, FALLBACK_ROLE_TAB, fetchRolesPage, filterListingRoles, filterWatchlistRoles, formatRunDuration, getCachedDetail, getTabSnapshot, hasVersionChanged, inProgressSources, INITIAL_PAGE_SIZE, INITIAL_ROLE_TAB, insertRoleForUndo, invalidateRoleListingCaches, isCurrentIntent, isDetailCacheValid, isDetailResponseCurrent, isRoleFeedView, isScanActive, isTransientDashboardReadError, isUndoShortcut, MAX_PAGE_SIZE, mergeDashboardStats, mergeNotificationHistory, mergeRolePage, NOTIFICATION_LIMIT, normalizeRolePagination, normalizeRoleView, normalizeSeasonFilters, notificationIdForRun, PREFETCH_PAGE_SIZE, prefetchBackgroundReady, prefetchLookaheadReady, provenanceSourceRows, readRoleUrlState, recentRunStatus, recentRuns, RECENT_RUN_LIMIT, rememberDetailCache, rememberSourceResults, rememberTabSnapshot, removeWatchlistRole, remainingRolePageSize, ROLE_SEASONS, ROLE_VIEWS, ROLE_WORK_MODES, roleDisplayLocation, roleFiltersKey, roleQueueHead, scanUiState, settleListRequest, shouldFallbackToCanada, shouldPrefetchRoleTab, shouldPrefetchTabLookahead, shouldReplaceTabSnapshot, sourceCheckStatus, sourceHealthCounts, sourceRunKey, sponsorshipOfferHtml, sponsorshipOfferPresentation, upsertWatchlistRole, watchlistRoleKey } from "../public/app.js";
 
 function role(listingId: string) {
   return { listingType: "internship", listingId, id: listingId };
 }
 
 describe("fast dashboard client state helpers", () => {
+  it("shows individual failure URLs, timestamps, crawl IDs, retries, and escaped full messages", () => {
+    const html = failureRowHtml({
+      id: 117,
+      source_url: "https://example.com/careers",
+      url: "https://example.com/jobs/117?position=0&count=50",
+      run_id: 706,
+      error_type: "http_error",
+      status_code: 404,
+      message: 'Not found <script>alert("error")</script>\nRequest failed',
+      retry_count: 2,
+      occurred_at: "2026-10-05T00:28:23.150Z",
+    }) as string;
+    expect(html).toContain('role="listitem"');
+    expect(html).toContain('datetime="2026-10-05T00:28:23.150Z"');
+    expect(html).toContain("Crawl #706");
+    expect(html).toContain("2 retries");
+    expect(html).toContain("https://example.com/jobs/117?position=0&amp;count=50");
+    expect(html).toContain("http error HTTP 404: Not found &lt;script&gt;");
+    expect(html).toContain("\nRequest failed");
+    expect(html).not.toContain("<script>");
+    expect(html).not.toContain("×");
+  });
+
   it("normalizes the preference-aware role view and keeps it in server queries and cache keys", () => {
     expect(ROLE_VIEWS).toEqual(["matches", "all"]);
     expect(ROLE_WORK_MODES).toEqual(["all", "onsite", "hybrid", "remote"]);
@@ -733,6 +759,12 @@ describe("fast dashboard client state helpers", () => {
     expect(recentRuns({ latestRun: { id: 9 } }).map((run: { id: number }) => run.id)).toEqual([9]);
     expect(recentRuns({ runs: [], latestRun: { id: 8 } }).map((run: { id: number }) => run.id)).toEqual([8]);
     expect(recentRuns({})).toEqual([]);
+  });
+
+  it("labels user-terminated runs separately from failures", () => {
+    expect(recentRunStatus({ status: "FAILED", error_message: "Terminated by user." })).toBe("TERMINATED");
+    expect(recentRunStatus({ status: "FAILED", error_message: "Source timed out" })).toBe("FAILED");
+    expect(recentRunStatus({ status: "RUNNING" }, { staleRunning: true })).toBe("STALE");
   });
 
   it("formats elapsed time for completed historical runs", () => {

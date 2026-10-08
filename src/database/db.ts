@@ -21,8 +21,10 @@ import {
   replaceListingActionIdentities,
 } from "./actions.js";
 import { activeRunMaxDurationMs, RUNNING_SCAN_MAX_AGE_MS } from "../config/runLock.js";
-import { MIN_LISTING_SCORE } from "../config/thresholds.js";
+import { isRetiredInternListSource, RETIRED_INTERN_LIST_MESSAGE } from "../config/retiredSources.js";
+import { normalizeCatalogSourceUrl, readConfiguredSources } from "../config/sourceCatalog.js";
 import type {
+  AnalyzedJob,
   CrawlMetrics,
   CrawlProgress,
   CrawlResult,
@@ -39,10 +41,12 @@ import type {
 import { InternshipSchema, normalizeCategory, type Internship, type LifecycleStatus } from "../domain/schemas.js";
 import { normalizeCompanyIdentity, normalizeIdentity, normalizeRoleIdentity, uniqueStrings } from "../utils/text.js";
 import { canonicalizeUrl, isAggregatorUrl, isCompanyLandingUrl, isJobrightUrl, normalizedJobUrl } from "../utils/url.js";
+import { internListSourceUrl, isInternListSource } from "../config/internListSource.js";
 import { DATABASE_SCHEMA } from "./schema.js";
 import { ensureDashboardRevisionSchema } from "./dashboardRevisions.js";
 import { CrawlCancelledError } from "../domain/cancellation.js";
 import { alignFieldEvidence } from "../llm/evidence.js";
+import type { UsenoApplicationCandidate } from "../crawler/usenoApplications.js";
 
 interface InternshipRow {
   id: string;
@@ -172,8 +176,8 @@ export class InternshipDatabase {
       this.database.exec(DATABASE_SCHEMA);
       this.migrateSchema();
       this.normalizeLegacyCategoryPayloads();
+      this.normalizeLegacyCompanyIdentities();
       ensureListingActionSchema(this.database);
-      this.purgeBelowMinimumScore();
       backfillListingActionIdentities(this.database);
       ensureDashboardRevisionSchema(this.database);
       this.database.exec("COMMIT");
@@ -252,7 +256,8 @@ export class InternshipDatabase {
 
   /** Add a URL to the durable dashboard crawl catalog without crawling it yet. */
   public configureSource(url: string): ConfiguredSourceRecord {
-    const canonical = canonicalizeUrl(url);
+    const canonical = canonicalizeUrl(internListSourceUrl(url));
+    if (isRetiredInternListSource(canonical)) throw new Error(RETIRED_INTERN_LIST_MESSAGE);
     const now = new Date().toISOString();
     let created: boolean;
     this.database.exec("BEGIN IMMEDIATE");
@@ -471,6 +476,12 @@ export class InternshipDatabase {
     return result;
   }
 
+  /** A bounded URL-only inventory lets Useno recover exact ATS requisitions across sources. */
+  public getUsenoApplications(): UsenoApplicationCandidate[] {
+    return (this.database.prepare("SELECT company, application_url, availability_status FROM internships ORDER BY last_seen_at DESC LIMIT 100000").all() as unknown as Array<{ company: string; application_url: string; availability_status: string }>)
+      .map((row) => ({ company: row.company, applicationUrl: row.application_url, availabilityStatus: row.availability_status }));
+  }
+
   /**
    * Return indexed listing state for a source without requiring the crawler to
    * parse every stored payload. Payloads are parsed only for rows that are
@@ -514,8 +525,13 @@ export class InternshipDatabase {
       FROM sources s
       JOIN internship_sources link ON link.source_id = s.id
       JOIN internships i ON i.id = link.internship_id
-      WHERE s.url = @source
-    `).all({ source: canonicalizeUrl(source) }) as unknown as Array<{
+      WHERE s.url = @source OR (@internList = 1 AND (
+        s.url IN ('https://www.intern-list.com/', 'https://intern-list.com/')
+        OR s.url LIKE 'https://www.intern-list.com/?%'
+        OR s.url LIKE 'https://intern-list.com/?%'
+        OR s.url LIKE 'https://jobright.ai/minisites-jobs/intern/%'
+      ))
+    `).all({ source: canonicalizeUrl(source), internList: isInternListSource(source) ? 1 : 0 }) as unknown as Array<{
       external_job_id: string | null;
       job_id: string | null;
       application_url: string;
@@ -1232,6 +1248,21 @@ export class InternshipDatabase {
     }
   }
 
+  /** Publish fully analyzed listings without settling their source or reconciling missing jobs. */
+  public persistReadyJobs(runId: number, jobs: readonly AnalyzedJob[]): void {
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.assertRunOwnership(runId);
+      for (const analyzed of jobs) {
+        this.upsertInternship(runId, analyzed.internship, analyzed.cacheMetadata);
+      }
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   /**
    * Commit one settled source while the crawl is still running. This keeps a
    * successful source durable even if a later source crashes or the process is
@@ -1247,7 +1278,6 @@ export class InternshipDatabase {
       this.persistSourceMetadata(runId, result);
       const seenInternshipIds = new Set<string>();
       for (const analyzed of result.jobs) {
-        if (analyzed.internship.relevanceScore < MIN_LISTING_SCORE) continue;
         seenInternshipIds.add(this.upsertInternship(runId, analyzed.internship, analyzed.cacheMetadata));
       }
       const now = new Date().toISOString();
@@ -1274,7 +1304,20 @@ export class InternshipDatabase {
       this.assertRunOwnership(runId);
       const incrementallyPersisted = this.incrementallyPersistedSources.get(runId) ?? new Set<string>();
       this.persistFailures(runId, crawl.failures.filter((failure) => !incrementallyPersisted.has(canonicalizeUrl(failure.sourceUrl))));
-      const completed = new Set(crawl.completedSourceUrls.map((value) => canonicalizeUrl(value)));
+      const safelyCoveredSourceKeys = new Set(crawl.sourceResults
+        .filter((result) => result.completed
+          && result.coverageComplete
+          // Legacy crawl producers predate the optional trust flag. Preserve
+          // their completed-coverage lifecycle behavior, while explicit
+          // untrusted and suspicious/stale/excluded results remain vetoed.
+          && result.trustedInventory !== false
+          && result.suspiciousInventory !== true
+          && result.stale !== true
+          && result.healthExcluded !== true)
+        .map(({ sourceUrl }) => normalizeCatalogSourceUrl(sourceUrl)));
+      const completed = new Set(crawl.completedSourceUrls
+        .map(normalizeCatalogSourceUrl)
+        .filter((sourceKey) => safelyCoveredSourceKeys.has(sourceKey)));
       const now = new Date().toISOString();
       for (const result of crawl.sourceResults) {
         if (!incrementallyPersisted.has(canonicalizeUrl(result.sourceUrl))) this.persistSourceMetadata(runId, result);
@@ -1284,7 +1327,7 @@ export class InternshipDatabase {
       for (const analyzed of crawl.jobs) {
         const allSourcesWerePersisted = analyzed.internship.sources.length > 0
           && analyzed.internship.sources.every((source) => incrementallyPersisted.has(canonicalizeUrl(source)));
-        if (!allSourcesWerePersisted && analyzed.internship.relevanceScore >= MIN_LISTING_SCORE) {
+        if (!allSourcesWerePersisted) {
           seenInternshipIds.add(this.upsertInternship(runId, analyzed.internship, analyzed.cacheMetadata));
         }
       }
@@ -1292,7 +1335,14 @@ export class InternshipDatabase {
       for (const closed of crawl.closedPages) {
         if (!incrementallyPersistedClosed.has(canonicalizeUrl(closed.url))) this.markClosedByUrl(runId, closed.url, now, seenInternshipIds);
       }
-      this.markMissing(runId, [...completed], closedAfterMisses, now, seenInternshipIds);
+      this.markMissing(
+        runId,
+        [...completed],
+        crawl.sourceResults.map(({ sourceUrl }) => sourceUrl),
+        closedAfterMisses,
+        now,
+        seenInternshipIds,
+      );
       const runCounts = this.database.prepare(`
         SELECT
           COALESCE(SUM(CASE WHEN lifecycle_status = 'NEW' THEN 1 ELSE 0 END), 0) AS new_count,
@@ -1353,16 +1403,16 @@ export class InternshipDatabase {
 
   public getRunInternships(runId: number): Internship[] {
     const rows = this.database.prepare(`
-      SELECT i.id, i.payload_json
+      SELECT i.id, i.payload_json, run.lifecycle_status
       FROM run_internships run
       JOIN internships i ON i.id = run.internship_id
       WHERE run.run_id = @runId
       ORDER BY CASE run.lifecycle_status WHEN 'NEW' THEN 1 WHEN 'UPDATED' THEN 2 WHEN 'UNCHANGED' THEN 3 ELSE 4 END,
                i.company COLLATE NOCASE, i.title COLLATE NOCASE
-    `).all({ runId }) as unknown as Array<{ id: string; payload_json: string }>;
-    return rows.flatMap(({ payload_json: payload }) => {
+    `).all({ runId }) as unknown as Array<{ id: string; payload_json: string; lifecycle_status: LifecycleStatus }>;
+    return rows.flatMap(({ payload_json: payload, lifecycle_status: lifecycleStatus }) => {
       try {
-        const internship = InternshipSchema.parse(JSON.parse(payload));
+        const internship = InternshipSchema.parse({ ...JSON.parse(payload) as Record<string, unknown>, lifecycleStatus });
         return [internship];
       } catch {
         return [];
@@ -1392,6 +1442,42 @@ export class InternshipDatabase {
   private persistSourceMetadata(runId: number, result: CrawlResult["sourceResults"][number]): void {
     const source = this.ensureSource(result.sourceUrl);
     const now = new Date().toISOString();
+    const completed = result.completed ? 1 : 0;
+    const coverageComplete = result.coverageComplete ? 1 : 0;
+    const stale = result.stale === true ? 1 : 0;
+    const healthExcluded = result.healthExcluded === true ? 1 : 0;
+    const suspiciousInventory = result.suspiciousInventory === true ? 1 : 0;
+    const rawInventoryCount = result.inventoryCount;
+    const inventoryCount = typeof rawInventoryCount === "number"
+      && Number.isSafeInteger(rawInventoryCount)
+      && rawInventoryCount >= 0
+      ? rawInventoryCount
+      : null;
+    const trustedInventory = result.trustedInventory === true
+      && completed === 1
+      && coverageComplete === 1
+      && inventoryCount !== null
+      && stale === 0
+      && healthExcluded === 0
+      && suspiciousInventory === 0
+      && (result.inventoryStatus === undefined || result.inventoryStatus === "trusted")
+      ? 1
+      : 0;
+    const inventoryStatus = suspiciousInventory === 1
+      ? "quarantined"
+      : trustedInventory === 1
+        ? "trusted"
+        : result.inventoryStatus && result.inventoryStatus !== "trusted"
+          ? result.inventoryStatus
+          : inventoryCount === null ? "unknown" : "incomplete";
+    const status = result.status ?? (result.completed ? "success" : "source_unavailable");
+    const metricCount = (value: number | undefined): number => Number.isFinite(value) ? Math.max(0, Math.floor(value ?? 0)) : 0;
+    const rateLimitCount = Math.max(
+      metricCount(result.metrics?.rateLimitCount),
+      status === "rate_limited" || result.httpStatus === 429 ? 1 : 0,
+    );
+    const responseLatencyMs = result.metrics?.responseLatencyMs;
+    const lastError = result.failures.at(-1)?.message ?? null;
     this.database.prepare(`
       UPDATE sources SET last_crawled_at = @now, last_run_id = @runId, last_status = @status WHERE id = @id
     `).run({ now, runId, status: result.completed ? "COMPLETED" : "FAILED", id: source.id });
@@ -1399,11 +1485,15 @@ export class InternshipDatabase {
       INSERT INTO source_run_results (
         run_id, source_id, settled, completed, pages_visited, potential_postings_inspected, jobs_discovered, failure_count,
         started_at, duration_ms, retrieval_mode, retrieval_urls_json, coverage_notes_json, status, retrieval_method, attempts,
-        http_status, direct_application_links
+        http_status, direct_application_links, coverage_complete, stale, health_excluded, inventory_count, trusted_inventory,
+        suspicious_inventory, inventory_status, rate_limit_count, browser_fallbacks, browser_fallback_successes,
+        response_latency_ms, settled_at, last_error
       ) VALUES (
         @runId, @sourceId, 1, @completed, @pagesVisited, @potentialPostingsInspected, @jobsDiscovered, @failureCount,
         @startedAt, @durationMs, @retrievalMode, @retrievalUrls, @coverageNotes, @status, @retrievalMethod, @attempts,
-        @httpStatus, @directApplicationLinks
+        @httpStatus, @directApplicationLinks, @coverageComplete, @stale, @healthExcluded, @inventoryCount, @trustedInventory,
+        @suspiciousInventory, @inventoryStatus, @rateLimitCount, @browserFallbacks, @browserFallbackSuccesses,
+        @responseLatencyMs, @settledAt, @lastError
       )
       ON CONFLICT(run_id, source_id) DO UPDATE SET
         settled = 1,
@@ -1421,11 +1511,24 @@ export class InternshipDatabase {
         retrieval_method = excluded.retrieval_method,
         attempts = excluded.attempts,
         http_status = excluded.http_status,
-        direct_application_links = excluded.direct_application_links
+        direct_application_links = excluded.direct_application_links,
+        coverage_complete = excluded.coverage_complete,
+        stale = excluded.stale,
+        health_excluded = excluded.health_excluded,
+        inventory_count = excluded.inventory_count,
+        trusted_inventory = excluded.trusted_inventory,
+        suspicious_inventory = excluded.suspicious_inventory,
+        inventory_status = excluded.inventory_status,
+        rate_limit_count = excluded.rate_limit_count,
+        browser_fallbacks = excluded.browser_fallbacks,
+        browser_fallback_successes = excluded.browser_fallback_successes,
+        response_latency_ms = excluded.response_latency_ms,
+        settled_at = COALESCE(source_run_results.settled_at, excluded.settled_at),
+        last_error = excluded.last_error
     `).run({
       runId,
       sourceId: source.id,
-      completed: result.completed ? 1 : 0,
+      completed,
       pagesVisited: result.pagesVisited,
       potentialPostingsInspected: result.potentialPostingsInspected,
       jobsDiscovered: result.jobsDiscovered ?? result.jobs.length,
@@ -1435,11 +1538,28 @@ export class InternshipDatabase {
       retrievalMode: result.retrievalMode ?? "configured_url",
       retrievalUrls: JSON.stringify(result.retrievalUrls ?? [result.sourceUrl]),
       coverageNotes: JSON.stringify(result.coverageNotes ?? []),
-      status: result.status ?? (result.completed ? "success" : "source_unavailable"),
+      status,
       retrievalMethod: result.retrievalMethod ?? "configured_url",
       attempts: result.attempts ?? 0,
       httpStatus: result.httpStatus ?? null,
       directApplicationLinks: result.directApplicationLinks ?? 0,
+      coverageComplete,
+      stale,
+      healthExcluded,
+      inventoryCount: inventoryCount ?? 0,
+      trustedInventory,
+      suspiciousInventory,
+      inventoryStatus,
+      rateLimitCount,
+      browserFallbacks: metricCount(result.metrics?.browserFallbacks),
+      browserFallbackSuccesses: metricCount(result.metrics?.browserFallbackSuccesses),
+      responseLatencyMs: typeof responseLatencyMs === "number"
+        && Number.isFinite(responseLatencyMs)
+        && responseLatencyMs >= 0
+        ? responseLatencyMs
+        : null,
+      settledAt: now,
+      lastError,
     });
   }
 
@@ -1447,11 +1567,15 @@ export class InternshipDatabase {
     this.database.close();
   }
 
-  private purgeBelowMinimumScore(): void {
-    this.database.prepare(`
-      DELETE FROM internships
-      WHERE CAST(json_extract(payload_json, '$.relevanceScore') AS INTEGER) < @minimumScore
-    `).run({ minimumScore: MIN_LISTING_SCORE });
+  /** Refresh persisted keys when employer alias normalization changes. */
+  private normalizeLegacyCompanyIdentities(): void {
+    const rows = this.database.prepare("SELECT id, company, normalized_company FROM internships")
+      .iterate() as Iterable<{ id: string; company: string; normalized_company: string }>;
+    const update = this.database.prepare("UPDATE internships SET normalized_company = @company WHERE id = @id");
+    for (const row of rows) {
+      const company = normalizeCompanyIdentity(row.company);
+      if (company !== row.normalized_company) update.run({ id: row.id, company });
+    }
   }
 
   /**
@@ -1563,6 +1687,19 @@ export class InternshipDatabase {
       ["attempts", "INTEGER"],
       ["http_status", "INTEGER"],
       ["direct_application_links", "INTEGER"],
+      ["coverage_complete", "INTEGER NOT NULL DEFAULT 0"],
+      ["stale", "INTEGER NOT NULL DEFAULT 0"],
+      ["health_excluded", "INTEGER NOT NULL DEFAULT 0"],
+      ["inventory_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["trusted_inventory", "INTEGER NOT NULL DEFAULT 0"],
+      ["suspicious_inventory", "INTEGER NOT NULL DEFAULT 0"],
+      ["inventory_status", "TEXT NOT NULL DEFAULT 'unknown'"],
+      ["rate_limit_count", "INTEGER NOT NULL DEFAULT 0"],
+      ["browser_fallbacks", "INTEGER NOT NULL DEFAULT 0"],
+      ["browser_fallback_successes", "INTEGER NOT NULL DEFAULT 0"],
+      ["response_latency_ms", "REAL"],
+      ["settled_at", "TEXT"],
+      ["last_error", "TEXT"],
     ] as const;
     for (const [name, definition] of sourceRunMigrations) {
       if (sourceRunColumns.some((column) => column.name === name)) continue;
@@ -1884,13 +2021,26 @@ export class InternshipDatabase {
     const firstSeenAt = [existing?.first_seen_at, ...duplicateMatches.map((row) => row.first_seen_at), candidate.discoveredAt]
       .filter((value): value is string => Boolean(value))
       .sort()[0] ?? candidate.discoveredAt;
+    const availabilityStatus = candidate.availabilityStatus === "unknown" ? "unknown" : "open";
+    const priorVerifiedAt = [existingPayload, ...duplicatePayloads]
+      .filter((payload): payload is Internship => payload !== null)
+      .map(({ lastVerifiedAt }) => lastVerifiedAt)
+      .toSorted((left, right) => Date.parse(right) - Date.parse(left))[0];
+    const lastVerifiedAt = availabilityStatus === "unknown"
+      ? priorVerifiedAt ?? mergedCandidateBase.lastVerifiedAt
+      : mergedCandidateBase.lastVerifiedAt;
+    // A Radar row is a fresh source sighting, but it does not verify the
+    // employer's posting. Keep those timestamps separate when availability
+    // remains unknown; ordinary verified listings retain their prior timing.
+    const observedAt = availabilityStatus === "unknown" ? new Date().toISOString() : lastVerifiedAt;
     const internshipBase = InternshipSchema.parse({
       ...mergedCandidate,
       id,
       sourceUrl: existingPayload?.sourceUrl ?? candidate.sourceUrl,
       sources,
       lifecycleStatus: "UNCHANGED",
-      availabilityStatus: "open",
+      availabilityStatus,
+      lastVerifiedAt,
       discoveredAt: firstSeenAt,
     });
     const internship = InternshipSchema.parse({
@@ -1902,11 +2052,16 @@ export class InternshipDatabase {
       ]),
     });
     const finalHash = internshipContentHash(internship);
-    const lifecycleStatus: LifecycleStatus = !existing
+    const observedLifecycleStatus: LifecycleStatus = !existing
       ? "NEW"
       : existing.content_hash !== finalHash || existing.availability_status === "closed"
         ? "UPDATED"
         : "UNCHANGED";
+    const lifecycleStatus: LifecycleStatus = existing?.status_run_id === runId && existing.lifecycle_status === "NEW"
+      ? "NEW"
+      : existing?.status_run_id === runId && existing.lifecycle_status === "UPDATED" && observedLifecycleStatus === "UNCHANGED"
+        ? "UPDATED"
+        : observedLifecycleStatus;
     const persistedInternship = InternshipSchema.parse({ ...internship, lifecycleStatus });
     const canonicalApplicationUrl = normalizedJobUrl(persistedInternship.applicationUrl);
     const canonicalPostingUrl = normalizedJobUrl(persistedInternship.postingUrl);
@@ -1923,7 +2078,7 @@ export class InternshipDatabase {
         last_checked_at, etag, last_modified, failure_state, failure_count, last_failure_at, last_failure_message
       ) VALUES (
         @id, @jobId, @company, @normalizedCompany, @title, @normalizedTitle, @locationKey,
-        @applicationUrl, @postingUrl, @payload, @contentHash, @lifecycleStatus, 'open',
+        @applicationUrl, @postingUrl, @payload, @contentHash, @lifecycleStatus, @availabilityStatus,
         @firstSeenAt, @lastSeenAt, @lastVerifiedAt, @runId, @runId, 0,
         @canonicalUrl, @canonicalApplicationUrl, @canonicalPostingUrl, @externalJobId, @providerIdentity,
         @lastCheckedAt, @etag, @lastModified, 'none', 0, NULL, NULL
@@ -1932,7 +2087,7 @@ export class InternshipDatabase {
         job_id = excluded.job_id, company = excluded.company, normalized_company = excluded.normalized_company,
         title = excluded.title, normalized_title = excluded.normalized_title, location_key = excluded.location_key,
         application_url = excluded.application_url, posting_url = excluded.posting_url, payload_json = excluded.payload_json,
-        content_hash = excluded.content_hash, lifecycle_status = excluded.lifecycle_status, availability_status = 'open',
+        content_hash = excluded.content_hash, lifecycle_status = excluded.lifecycle_status, availability_status = excluded.availability_status,
         last_seen_at = excluded.last_seen_at, last_verified_at = excluded.last_verified_at,
         last_seen_run_id = excluded.last_seen_run_id, status_run_id = excluded.status_run_id, miss_count = 0,
         canonical_application_url = excluded.canonical_application_url,
@@ -1957,8 +2112,9 @@ export class InternshipDatabase {
       payload: JSON.stringify(persistedInternship),
       contentHash: finalHash,
       lifecycleStatus,
+      availabilityStatus,
       firstSeenAt: persistedInternship.discoveredAt,
-      lastSeenAt: persistedInternship.lastVerifiedAt,
+      lastSeenAt: observedAt,
       lastVerifiedAt: persistedInternship.lastVerifiedAt,
       runId,
       canonicalApplicationUrl,
@@ -1966,7 +2122,7 @@ export class InternshipDatabase {
       canonicalUrl,
       externalJobId: persistedInternship.jobId,
       providerIdentity,
-      lastCheckedAt: persistedInternship.lastVerifiedAt,
+      lastCheckedAt: observedAt,
       etag,
       lastModified,
     });
@@ -1977,7 +2133,7 @@ export class InternshipDatabase {
         INSERT INTO internship_sources (internship_id, source_id, first_seen_at, last_seen_at, last_seen_run_id)
         VALUES (@internshipId, @sourceId, @now, @now, @runId)
         ON CONFLICT(internship_id, source_id) DO UPDATE SET last_seen_at = excluded.last_seen_at, last_seen_run_id = excluded.last_seen_run_id
-      `).run({ internshipId: id, sourceId: source.id, now: internship.lastVerifiedAt, runId });
+      `).run({ internshipId: id, sourceId: source.id, now: observedAt, runId });
     }
     for (const duplicate of duplicateMatches.filter((row) => row.id !== id)) {
       this.mergeDuplicateRelations(id, duplicate.id);
@@ -2021,24 +2177,62 @@ export class InternshipDatabase {
   private markMissing(
     runId: number,
     completedSourceUrls: string[],
+    relevantSourceUrls: string[],
     threshold: number,
     now: string,
     protectedIds: Set<string>,
   ): void {
     if (completedSourceUrls.length === 0) return;
-    const candidates = new Map<string, InternshipRow>();
-    const statement = this.database.prepare(`
-      SELECT i.* FROM internships i
+    const completedSourceKeys = new Set(completedSourceUrls.map(normalizeCatalogSourceUrl));
+    const relevantSourceKeys = new Set([
+      ...readConfiguredSources(this.database),
+      ...relevantSourceUrls,
+      ...completedSourceUrls,
+    ].map(normalizeCatalogSourceUrl));
+    // The current run's sources are relevant even for a deliberate one-off
+    // crawl; configured aliases are added so disabled or retired historical
+    // source links do not freeze lifecycle aging indefinitely.
+
+    const sourceRows = this.database.prepare("SELECT id, url FROM sources").all() as unknown as SourceRow[];
+    const completedSourceIds = sourceRows
+      .filter(({ url }) => {
+        const sourceKey = normalizeCatalogSourceUrl(url);
+        return relevantSourceKeys.has(sourceKey) && completedSourceKeys.has(sourceKey);
+      })
+      .map(({ id }) => id);
+    if (completedSourceIds.length === 0) return;
+
+    const sourceParameters = Object.fromEntries(completedSourceIds.map((sourceId, index) => [`source${index}`, sourceId]));
+    const sourcePlaceholders = completedSourceIds.map((_, index) => `@source${index}`).join(", ");
+    const linkedRows = this.database.prepare(`
+      WITH candidates AS (
+        SELECT DISTINCT internship_id
+        FROM internship_sources
+        WHERE source_id IN (${sourcePlaceholders})
+      )
+      SELECT i.*, s.url AS linked_source_url
+      FROM candidates c
+      JOIN internships i ON i.id = c.internship_id
       JOIN internship_sources link ON link.internship_id = i.id
       JOIN sources s ON s.id = link.source_id
-      WHERE s.url = @sourceUrl AND i.availability_status != 'closed' AND i.last_seen_run_id != @runId
-    `);
-    for (const sourceUrl of completedSourceUrls) {
-      const rows = statement.all({ sourceUrl, runId }) as unknown as InternshipRow[];
-      for (const row of rows) candidates.set(row.id, row);
+      WHERE i.availability_status != 'closed' AND i.last_seen_run_id != @runId
+    `).all({ ...sourceParameters, runId }) as unknown as Array<InternshipRow & { linked_source_url: string }>;
+
+    const candidates = new Map<string, { row: InternshipRow; sourceKeys: Set<string> }>();
+    for (const linked of linkedRows) {
+      const sourceKey = normalizeCatalogSourceUrl(linked.linked_source_url);
+      if (!relevantSourceKeys.has(sourceKey)) continue;
+      const candidate = candidates.get(linked.id) ?? { row: linked, sourceKeys: new Set<string>() };
+      candidate.sourceKeys.add(sourceKey);
+      candidates.set(linked.id, candidate);
     }
-    for (const row of candidates.values()) {
+
+    for (const { row, sourceKeys } of candidates.values()) {
       if (protectedIds.has(row.id)) continue;
+      // A role may be shared by several active sources. A complete snapshot
+      // from only one association cannot prove the role disappeared from all
+      // of them, so wait for coverage of every relevant association.
+      if (sourceKeys.size === 0 || [...sourceKeys].some((sourceKey) => !completedSourceKeys.has(sourceKey))) continue;
       if (row.miss_count + 1 >= threshold) this.markClosed(runId, row, now);
       else this.database.prepare("UPDATE internships SET miss_count = miss_count + 1, last_verified_at = @now WHERE id = @id").run({ now, id: row.id });
     }

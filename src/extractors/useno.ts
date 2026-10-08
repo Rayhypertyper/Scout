@@ -6,8 +6,8 @@ import { sha256 } from "../utils/hash.js";
 import { safeCanonicalizeUrl } from "../utils/url.js";
 
 export const USENO_SUMMER_2027_URL = "https://www.useno.app/summer-2027-internships";
-export const USENO_INTERNSHIP_MASTERLIST_URL = "https://www.useno.app/internship-masterlist";
-export const USENO_MASTERLIST_PARSER_VERSION = "useno-internship-masterlist-v1";
+export const USENO_INTERNSHIP_MASTERLIST_URL = "https://www.useno.app/resources/internship-masterlist";
+export const USENO_MASTERLIST_PARSER_VERSION = "useno-internship-masterlist-v2";
 
 const USENO_MASTERLIST_CATEGORY_IDS = ["software", "data"] as const;
 type UsenoMasterlistCategoryId = typeof USENO_MASTERLIST_CATEGORY_IDS[number];
@@ -64,6 +64,8 @@ export interface UsenoSummer2027Page {
 
 export interface UsenoMasterlistListing {
   id: string;
+  sourceJobId?: string;
+  postingUrl?: string;
   rowOrder: number;
   categoryId: UsenoMasterlistCategoryId;
   category: string;
@@ -167,7 +169,7 @@ export function isUsenoInternshipMasterlistUrl(sourceUrl: string): boolean {
     const url = new URL(sourceUrl);
     const host = url.hostname.replace(/^www\./iu, "");
     const path = url.pathname.replace(/\/+$/u, "") || "/";
-    return host === "useno.app" && path === "/internship-masterlist";
+    return host === "useno.app" && ["/internship-masterlist", "/resources/internship-masterlist"].includes(path);
   } catch {
     return false;
   }
@@ -238,9 +240,34 @@ export function validateUsenoSummer2027(page: UsenoSummer2027Page): void {
   if (missingFields.length > 0) throw new Error(`Useno page contained ${missingFields.length} incomplete internship row(s).`);
 }
 
-interface UsenoMasterlistPayload {
+export interface UsenoMasterlistPayload {
   roles?: unknown;
   sections?: unknown;
+  page?: unknown;
+  pageCount?: unknown;
+  pageSize?: unknown;
+  total?: unknown;
+  previewCapped?: unknown;
+  stats?: unknown;
+}
+
+export function readUsenoMasterlistPayload(html: string): UsenoMasterlistPayload {
+  const payloadText = load(html)("script#ml-data").first().text().trim();
+  if (!payloadText) throw new Error("Useno masterlist data payload was not found.");
+  const payload: unknown = JSON.parse(payloadText);
+  if (!payload || typeof payload !== "object" || !Array.isArray((payload as UsenoMasterlistPayload).roles)) {
+    throw new Error("Useno masterlist roles payload was not an array.");
+  }
+  return payload;
+}
+
+function masterlistApplication(row: unknown[], sourceUrl: string): { applicationUrl: string; postingUrl?: string; sourceJobId?: string } | null {
+  const value = payloadString(row[4]);
+  const sourceJobId = payloadString(row[12]);
+  const postingUrl = sourceJobId ? new URL(`/internship/${encodeURIComponent(sourceJobId)}`, sourceUrl).href : undefined;
+  const applicationUrl = value ? safeCanonicalizeUrl(value, sourceUrl) : postingUrl;
+  if (!applicationUrl) return null;
+  return { applicationUrl, ...(postingUrl ? { postingUrl, sourceJobId } : {}) };
 }
 
 function payloadString(value: unknown): string {
@@ -276,16 +303,15 @@ function masterlistRoleListing(
   const company = payloadString(row[1]);
   const location = payloadString(row[2]);
   const workModel = payloadString(row[3]);
-  const applicationValue = payloadString(row[4]);
-  const applicationUrl = safeCanonicalizeUrl(applicationValue, sourceUrl);
+  const application = masterlistApplication(row, sourceUrl);
   const country = payloadString(row[7]);
   const region = payloadString(row[8]);
-  if (!title || !company || !location || !applicationUrl) return null;
+  if (!title || !company || !location || !application) return null;
   if (!hasAllowedMasterlistLocation(location, region, country)) return null;
   const isSummer2027 = payloadBoolean(row[10]);
   const earlyCareer = payloadBoolean(row[11]);
   return {
-    id: `useno-${sha256(`${company}|${title}|${location}|${applicationUrl}`).slice(0, 24)}`,
+    id: `useno-${sha256(application.sourceJobId ?? `${company}|${title}|${location}|${application.applicationUrl}`).slice(0, 24)}`,
     rowOrder,
     categoryId: category,
     category: categoryName,
@@ -293,7 +319,7 @@ function masterlistRoleListing(
     title,
     location,
     workModel,
-    applicationUrl,
+    ...application,
     postedAt: payloadString(row[5]),
     type: payloadString(row[6]),
     country,
@@ -306,23 +332,17 @@ function masterlistRoleListing(
 /**
  * Parse the public masterlist payload behind the Software Engineering &
  * Technology and Data, AI & Analytics tabs. The page ships all rows in one
- * JSON script; the default UI hides early-career rows, so the same default is
+ * JSON script or its paginated public feed; the default UI hides early-career rows, so the same default is
  * applied here before the requested category and location filters.
  */
 export function extractUsenoInternshipMasterlist(
   html: string,
   sourceUrl = USENO_INTERNSHIP_MASTERLIST_URL,
   retrievedAt = new Date().toISOString(),
+  payloadOverride?: UsenoMasterlistPayload,
 ): UsenoInternshipMasterlistPage {
   const $ = load(html);
-  const payloadText = $("script#ml-data").first().text().trim();
-  if (!payloadText) throw new Error("Useno masterlist data payload was not found.");
-  let payload: UsenoMasterlistPayload;
-  try {
-    payload = JSON.parse(payloadText) as UsenoMasterlistPayload;
-  } catch (error) {
-    throw new Error(`Useno masterlist data payload was invalid JSON: ${error instanceof Error ? error.message : "unknown parse error"}`, { cause: error });
-  }
+  const payload = payloadOverride ?? readUsenoMasterlistPayload(html);
   if (!Array.isArray(payload.roles)) throw new Error("Useno masterlist roles payload was not an array.");
 
   const sectionNames = new Map<UsenoMasterlistCategoryId, string>();
@@ -363,10 +383,9 @@ export function extractUsenoInternshipMasterlist(
     const title = payloadString(candidate[0]);
     const company = payloadString(candidate[1]);
     const location = payloadString(candidate[2]);
-    const applicationValue = payloadString(candidate[4]);
     const country = payloadString(candidate[7]);
     const region = payloadString(candidate[8]);
-    if (!title || !company || !location || !safeCanonicalizeUrl(applicationValue, sourceUrl)) {
+    if (!title || !company || !location || !masterlistApplication(candidate, sourceUrl)) {
       skippedIncompleteCount += 1;
       continue;
     }

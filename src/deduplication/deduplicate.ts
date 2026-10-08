@@ -134,6 +134,16 @@ function listingExternalIds(input: ListingIdentityInput, urls: string[]): string
   return uniqueStrings([...explicit, ...extracted]).filter(Boolean);
 }
 
+function listingDirectJobIds(input: ListingIdentityInput): string[] {
+  const urls = listingUrls(input);
+  const directUrls = urls.filter((url) => !isAggregatorUrl(url) && !isCompanyLandingUrl(url));
+  // With an aggregator surface, the structured ID may belong to the source.
+  // Only IDs from employer URLs can establish conflicting requisitions.
+  const directInput = urls.some(isAggregatorUrl)
+    ? {} : { externalJobId: input.externalJobId ?? null, externalId: input.externalId ?? null, jobId: input.jobId ?? null };
+  return listingExternalIds(directInput, directUrls);
+}
+
 function listingDescriptor(input: ListingIdentityInput): Omit<ListingIdentity, "key" | "kind"> {
   const urls = listingUrls(input);
   return {
@@ -237,7 +247,9 @@ export function listingIdentityMatches(left: ListingIdentityInput, right: Listin
   // Two direct records with different requisition IDs are never merged by a
   // title/location fallback. This is the key guard against collapsing Workday
   // requisitions that happen to share a title and city.
-  if (aIds.size > 0 && bIds.size > 0) return false;
+  const aDirectIds = listingDirectJobIds(left);
+  const bDirectIds = new Set(listingDirectJobIds(right));
+  if (aDirectIds.length > 0 && bDirectIds.size > 0 && !aDirectIds.some((id) => bDirectIds.has(id))) return false;
   if (!sameCompany || !a.title || !b.title || a.title !== b.title) return false;
   return sameLocation(a.locations, b.locations);
 }

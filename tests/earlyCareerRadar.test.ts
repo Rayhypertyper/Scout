@@ -67,6 +67,16 @@ function response(body: string, url = sourceUrl): HttpResponseSnapshot {
 }
 
 describe("Early Career Radar feed adapter", () => {
+  it("retains a 5,500-record inventory including jobs after the old limit", async () => {
+    const jobs = Array.from({ length: 5_500 }, (_, index) => ({ ...feedJobs[0], id: `role-${index}` }));
+    const get = vi.fn(async () => response(embeddedHtml(jobs), EARLY_CAREER_RADAR_LISTING_URL));
+    const adapter = new EarlyCareerRadarAdapter({ get } as unknown as HttpClient, new Logger("error"));
+    const result = await adapter.collect(EARLY_CAREER_RADAR_LISTING_URL);
+    expect(result.snapshots[0]?.links).toHaveLength(5_500);
+    expect(result.snapshots[0]?.links.at(-1)?.url).toContain("role-5499");
+    expect(result.inventoryComplete).toBe(true);
+    expect(result.failures).toEqual([]);
+  });
   it("matches the page country classifier for Canada and US locations", () => {
     expect(normalizeEarlyCareerRadarCountry("Toronto, Canada")).toBe("Canada");
     expect(normalizeEarlyCareerRadarCountry("US, California, San Francisco")).toBe("United States");
@@ -84,6 +94,30 @@ describe("Early Career Radar feed adapter", () => {
       { id: "closed-role", company: "Acme", title: "Closed Intern", location: "Seattle, WA", hub: "Seattle" },
       { id: "applied-role", company: "Acme", title: "Applied Intern", location: "Seattle, WA", hub: "Seattle" },
     ]);
+  });
+
+  it("retains first-party application metadata and distinguishes absent status from false", () => {
+    const parsed = parseEarlyCareerRadarJobs({ jobs: [
+      { ...feedJobs[0], closed: false, applyUrl: " https://jobs.example.com/acme/us-eligible ", description: "First-party summary", postedAt: "2026-08-16", deadlineAt: "2026-09-01" },
+      { id: "status-unknown", company: "Example", title: "Intern", location: "Toronto, Canada", hub: "International" },
+    ] });
+
+    expect(parsed?.[0]).toMatchObject({
+      applyUrl: " https://jobs.example.com/acme/us-eligible ",
+      description: "First-party summary",
+      postedAt: "2026-08-16",
+      deadlineAt: "2026-09-01",
+      closed: false,
+      rawRecord: { track: "SWE", mode: "Hybrid" },
+    });
+    expect(parsed?.[1]).not.toHaveProperty("closed");
+    expect(parsed?.[1]?.rawRecord).toEqual({
+      id: "status-unknown",
+      company: "Example",
+      title: "Intern",
+      location: "Toronto, Canada",
+      hub: "International",
+    });
   });
 
   it("applies explicit location/year filters while retaining source status flags", () => {
@@ -142,6 +176,7 @@ describe("Early Career Radar feed adapter", () => {
     expect(result.snapshots).toHaveLength(1);
     expect(result.snapshots[0]?.links).toHaveLength(EARLY_CAREER_RADAR_MAX_FEED_JOBS);
     expect(result.failures[0]?.errorType).toBe("source_limit");
+    expect(result.inventoryComplete).toBe(false);
     expect(result.notes[1]).toContain("bounded prefix");
     expect(result.snapshots[0]?.html).not.toContain("initialJobs");
   });
@@ -197,6 +232,6 @@ describe("Early Career Radar feed adapter", () => {
   });
 
   it("keeps the discovered first-party page route explicit", () => {
-    expect(EARLY_CAREER_RADAR_LISTING_URL).toBe("https://earlycareerradar.com/summer-internships");
+    expect(EARLY_CAREER_RADAR_LISTING_URL).toBe("https://earlycareerradar.com/summer-internships?locations=all");
   });
 });

@@ -5,6 +5,7 @@ import { setImmediate as yieldToEventLoop } from "node:timers/promises";
 import { analyzeRawJob, internshipContentHash, type AnalyzeResult } from "../classification/analyzeJob.js";
 import { isExcludedJobTitle } from "../classification/titlePolicy.js";
 import { directApplicationOverride, knownClosedAggregatorPosting } from "../config/directApplicationOverrides.js";
+import { resolveScoutEditionConfig, type ScoutEditionConfig } from "../config/edition.js";
 import { SOURCE_RETRY_MAX_DURATION_MS, SOURCE_MAX_DURATION_MS } from "../config/runLock.js";
 import { isKnownNonProductionJobBoard } from "../config/nonProductionSources.js";
 import { deduplicateJobs } from "../deduplication/deduplicate.js";
@@ -38,18 +39,30 @@ import { snapshotFromHttp, StaticHttpAdapter } from "./staticAdapters.js";
 import { looksLikeRecruitingLink, scoreLink } from "./linkScorer.js";
 import { PriorityQueue } from "./queue.js";
 import { RobotsManager } from "./robots.js";
-import { earlyCareerRadarSameSite, isCsJobsTorontoSource, isEarlyCareerRadarSource, isHiringCafeSource, largeListingSourcePageFloor, publicSourceFallbacks } from "./publicSources.js";
+import { earlyCareerRadarSameSite, isCsJobsTorontoSource, isEarlyCareerRadarNotFoundPage, isEarlyCareerRadarPage, isEarlyCareerRadarSource, isHiringCafeSource, largeListingSourcePageFloor, publicSourceFallbacks } from "./publicSources.js";
 import { classifyPageContent } from "../verification/pageContent.js";
 import { SourceAdapterRouter } from "./adapters/router.js";
+import { browserFallbackSuppressedResult, isBrowserFallbackSuppressed, type SourceHealthForOrchestration } from "./sourceOrchestration.js";
 import type { SourceAdapterResult } from "./adapters/types.js";
-import { INTERN_LIST_API_URL, internListFeeds } from "./adapters/internList.js";
+import { isInternListSource } from "../config/internListSource.js";
+import { isRetiredInternListSource } from "../config/retiredSources.js";
 import { scoreListingRelevance } from "../classification/listingRelevance.js";
 import { deduplicateListings, ListingIdentityIndex, type ListingIdentityInput } from "../deduplication/deduplicate.js";
 import { BoundedAsyncQueue } from "../utils/async.js";
 import { Profiler } from "../observability/profiler.js";
 import { isUsenoInternshipMasterlistUrl, isUsenoSummer2027Url, type UsenoMasterlistListing } from "../extractors/useno.js";
+import {
+  canonicalEarlyCareerRadarApplyUrl,
+  earlyCareerRadarDetailToRawJob,
+  earlyCareerRadarFeedDetailUrl,
+  earlyCareerRadarInventoryFromSnapshot,
+  mergeEarlyCareerRadarMetadataWithPrior,
+  preferEarlyCareerRadarDetailDescriptions,
+  type EarlyCareerRadarRecoveryInventory,
+} from "./earlyCareerRadarRecovery.js";
 import { parseLocations } from "../parsing/locations.js";
 import { collectUsenoInternshipMasterlist, collectUsenoSummer2027 } from "./useno.js";
+import type { UsenoApplicationCandidate } from "./usenoApplications.js";
 import { cancellationError, composeAbortSignals, currentSourceAbortSignal, isSourceStalledError, runWithSourceAbortSignal, SourceStalledError, throwIfAborted } from "../domain/cancellation.js";
 import {
   GrindJobBoardClient,
@@ -146,7 +159,12 @@ function sourceLimitFailure(sourceUrl: string, url: string, kind: string, observ
 }
 
 function earlyCareerRadarOwnerUrl(sourceUrl: string, targetUrl: string): boolean {
-  return isEarlyCareerRadarSource(sourceUrl) && earlyCareerRadarSameSite(sourceUrl, targetUrl);
+  if (!isEarlyCareerRadarSource(sourceUrl) || !earlyCareerRadarSameSite(sourceUrl, targetUrl)) return false;
+  const url = new URL(targetUrl);
+  const path = url.pathname.replace(/\/+$/, "") || "/";
+  // The API fallback is an explicit source-adapter route. Public /jobs/{id}
+  // details remain subject to the site's normal robots check.
+  return url.hostname === "earlycareerradar.com" && path === "/api/jobs";
 }
 
 function hasDirectApplicationUrl(sourceUrl: string, applicationUrl: string): boolean {
@@ -170,7 +188,7 @@ function usenoCountryLabel(value: string): string | null {
  * and state explicitly that the public feed did not include the employer
  * description or qualifications.
  */
-function usenoMasterlistJob(listing: UsenoMasterlistListing, sourceUrl: string, now: string): AnalyzedJob {
+export function usenoMasterlistJob(listing: UsenoMasterlistListing, sourceUrl: string, now: string): AnalyzedJob {
   const locationResult = parseLocations([listing.location, listing.region].filter(Boolean));
   const metadataCountry = usenoCountryLabel(listing.country);
   const normalizedLocations = locationResult.normalized.map((location) => (
@@ -191,7 +209,9 @@ function usenoMasterlistJob(listing: UsenoMasterlistListing, sourceUrl: string, 
     `Employer description and qualifications were not included in the public masterlist for ${listing.company}'s ${listing.title} listing.`,
     `The source lists it under ${listing.category}, as ${listing.type || "an unspecified student role"}, at ${listing.location}, with a ${listing.workModel || "not stated"} work model.`,
     listing.postedAt ? `The source posted it on ${listing.postedAt}.` : "",
-    `Review the employer posting for the complete role details: ${listing.applicationUrl}`,
+    sameSite(listing.applicationUrl, sourceUrl)
+      ? `Employer application link was not exposed publicly. Review the Useno listing: ${listing.applicationUrl}`
+      : `Review the employer posting for the complete role details: ${listing.applicationUrl}`,
   ].filter(Boolean).join(" ");
   const internship = InternshipSchema.parse({
     id: listing.id,
@@ -202,7 +222,7 @@ function usenoMasterlistJob(listing: UsenoMasterlistListing, sourceUrl: string, 
     normalizedLocations,
     remoteStatus,
     applicationUrl: listing.applicationUrl,
-    postingUrl: listing.applicationUrl,
+    postingUrl: listing.postingUrl ?? listing.applicationUrl,
     sourceUrl: canonicalizeUrl(sourceUrl),
     sources: [canonicalizeUrl(sourceUrl)],
     description,
@@ -316,6 +336,9 @@ export interface CrawlPersistence {
   classifyListing?: (source: string, hint: ListingIdentityHint) => CrawlStateDecision;
   /** Bulk cache for structured Jobright records; avoids one SQLite join per record. */
   getJobrightDestinations?: (source: string) => Map<string, string>;
+  getUsenoApplications?: () => UsenoApplicationCandidate[];
+  /** Commit each usable listing as soon as its own extraction has finished. */
+  recordReadyJobs?: (runId: number, jobs: AnalyzedJob[]) => Promise<void> | void;
   recordLightweightSightings?: (runId: number, sightings: LightweightSighting[]) => Promise<void> | void;
   recordCrawlMetrics?: (runId: number, metrics: CrawlMetrics) => Promise<void> | void;
   recordSourceStart?: (source: string, startedAt: string) => Promise<void> | void;
@@ -330,6 +353,7 @@ export interface CrawlPersistence {
     metadata?: Record<string, unknown>;
   }) => Promise<void> | void;
   getSourceStrategy?: (source: string) => SourceStrategyState | null;
+  getSourceHealth?: (source: string) => SourceHealthForOrchestration | null;
 }
 
 interface CrawlMetricsCounters extends CrawlMetrics {
@@ -389,6 +413,7 @@ export class InternshipCrawler {
   private readonly profiler: Profiler;
   private readonly grindJobBoardClient: GrindJobBoardClient;
   private readonly openaiJobFallback: Pick<OpenAIJobFallback, "recover">;
+  private readonly editionConfig: ScoutEditionConfig;
 
   public constructor(
     private readonly settings: ScoutSettings,
@@ -399,6 +424,9 @@ export class InternshipCrawler {
     } = {},
     private readonly cancellationSignal?: AbortSignal,
   ) {
+    // Capture one immutable profile per crawl. A dashboard edition switch can
+    // replace settings for queued/future runs without changing this run.
+    this.editionConfig = resolveScoutEditionConfig(settings.edition);
     this.profiler = new Profiler();
     this.http = new HttpClient(settings, logger, this.profiler, cancellationSignal);
     this.browser = new BrowserManager(settings, logger, undefined, this.profiler, cancellationSignal);
@@ -622,19 +650,16 @@ export class InternshipCrawler {
           }
         }
       };
-      // Structured Intern List feeds are complete API snapshots and should not
-      // compete with browser-heavy sources for the event loop or HTTP lane.
-      // Finish them first; the small phase boundary adds only their retrieval
-      // time while preventing a large rendering source from making an API
-      // source appear to hang or hit a page deadline.
+      // Finish Intern List's HTTP inventory before browser-heavy sources
+      // compete for the event loop and transport lane.
       const sourceEntries = sources.map((source, index) => ({ source, index }));
-      const internListEntries = sourceEntries.filter(({ source }) => internListFeeds(source).length > 0);
+      const internListEntries = sourceEntries.filter(({ source }) => isInternListSource(source));
       // CSJobs and HiringCafe sit behind shared edges and time out when they
       // compete with the broad multi-source HTTP lane. Isolate each so a large
       // feed cannot make the listing/sitemap request look dead.
       const csJobsEntries = sourceEntries.filter(({ source }) => isCsJobsTorontoSource(source));
       const hiringCafeEntries = sourceEntries.filter(({ source }) => isHiringCafeSource(source));
-      const remainingEntries = sourceEntries.filter(({ source }) => internListFeeds(source).length === 0 && !isCsJobsTorontoSource(source) && !isHiringCafeSource(source));
+      const remainingEntries = sourceEntries.filter(({ source }) => !isInternListSource(source) && !isCsJobsTorontoSource(source) && !isHiringCafeSource(source));
       // Every phase gets the same inactivity budget. A source that keeps
       // emitting progress is allowed to finish, while a source that stops
       // producing work is isolated and retried at the end.
@@ -753,6 +778,9 @@ export class InternshipCrawler {
   private async crawlSource(sourceUrl: string, knownUrls: string[], onProgress?: SourceProgressCallback, persistence?: CrawlPersistence): Promise<SourceCrawlResult> {
     this.throwIfCancelled(persistence);
     this.logger.info("SOURCE", `Scanning ${redactSensitiveUrl(sourceUrl)}`);
+    if (isRetiredInternListSource(sourceUrl)) {
+      return this.structuredAdapterUnavailableSource(sourceUrl, await this.adapterRouter.collect(sourceUrl), 0);
+    }
     if (isGrindJobBoardSource(sourceUrl)) return this.crawlGrindJobBoardSource(sourceUrl, onProgress, persistence);
     if (isUsenoInternshipMasterlistUrl(sourceUrl)) return this.crawlUsenoMasterlistSource(sourceUrl, onProgress, persistence);
     if (isUsenoSummer2027Url(sourceUrl)) return this.crawlUsenoSource(sourceUrl, onProgress, persistence);
@@ -772,12 +800,12 @@ export class InternshipCrawler {
       this.logger.warn("ROBOTS", `Configured ${redactSensitiveUrl(sourceUrl)} is disallowed; no static alternate was attempted.`);
       return this.robotsDisallowedSource(sourceUrl);
     }
-    const internListSource = internListFeeds(sourceUrl).length > 0;
+    const internListSource = isInternListSource(sourceUrl);
     // The owner-authorized Early Career Radar route is a first-party public
     // feed whose own page calls /api/jobs even though robots.txt disallows
     // generic crawlers there. Its source-specific adapter is the explicit
     // exception; all other sources continue through the normal robots gate.
-    if (!staticProfile && this.settings.respectRobotsTxt && !internListSource && !isEarlyCareerRadarSource(sourceUrl)) {
+    if (!staticProfile && this.settings.respectRobotsTxt && !isEarlyCareerRadarSource(sourceUrl)) {
       const robots = await this.robots.check(sourceUrl);
       if (!robots.allowed) return this.robotsDisallowedSource(sourceUrl);
     }
@@ -792,29 +820,28 @@ export class InternshipCrawler {
     // the feed adapter gets a chance to run.
     const knownJsRequired = Boolean(
       !internListSource
-      && !isEarlyCareerRadarSource(sourceUrl)
+      && !isEarlyCareerRadarPage(sourceUrl)
       && knownStrategy?.requiresJs
       && knownStrategy.lastSuccessAt
       && Date.now() - Date.parse(knownStrategy.lastSuccessAt) <= this.settings.cacheTtlMs,
     );
     let adapterResult: Awaited<ReturnType<SourceAdapterRouter["collect"]>> | null = null;
     try {
-      // The Intern List page delegates its visible table to the public
-      // Jobright API. Its HTML shell is disallowed by intern-list.com's
-      // robots.txt, so check the actual structured feed origin and avoid
-      // fetching the blocked shell. Other configured sources retain the normal
-      // root robots gate above.
-      if (internListSource && this.settings.respectRobotsTxt) {
-        const apiRobots = await this.robots.check(INTERN_LIST_API_URL);
-        if (!apiRobots.allowed) return this.robotsDisallowedSource(sourceUrl);
-      }
       if (knownJsRequired) {
         this.logger.debug("STRATEGY", `Reusing persisted browser strategy for ${redactSensitiveUrl(sourceUrl)}.`);
       } else {
-        adapterResult = await this.adapterRouter.collect(sourceUrl);
+        adapterResult = await this.adapterRouter.collect(sourceUrl, { onProgress: async () => {
+          this.throwIfCancelled(persistence);
+          await onProgress?.({ pagesVisited: 0, potentialPostingsInspected: 0, internshipsDiscovered: 0, completed: false });
+        } });
         this.throwIfCancelled(persistence);
-        const terminalAdapterFailure = (internListSource && adapterResult.snapshots.length === 0 && adapterResult.failures.length > 0)
-          || (isEarlyCareerRadarSource(sourceUrl) && adapterResult.snapshots.length === 0 && sourceAdapterAccessDenied(adapterResult));
+        if (isEarlyCareerRadarPage(sourceUrl) && (isEarlyCareerRadarNotFoundPage(sourceUrl, adapterResult.httpStatus)
+          || adapterResult.snapshots.some((snapshot) => isEarlyCareerRadarNotFoundPage(snapshot.url, snapshot.status, snapshot.text)))) {
+          return this.skippedEarlyCareerRadarSource(sourceUrl, adapterResult.attempts, adapterResult.retrievalMethod, adapterResult.retrievalUrls);
+        }
+        const terminalAdapterFailure = adapterResult.failures.some((failure) => failure.errorType === "source_retired")
+          || (internListSource && adapterResult.snapshots.length === 0 && adapterResult.failures.length > 0)
+          || (isEarlyCareerRadarSource(sourceUrl) && adapterResult.snapshots.length === 0 && adapterResult.failures.length > 0);
         if (terminalAdapterFailure) {
           const runtimeMs = Math.max(0, Math.round(performance.now() - httpStartedAt));
           const result = this.structuredAdapterUnavailableSource(sourceUrl, adapterResult, runtimeMs);
@@ -826,6 +853,7 @@ export class InternshipCrawler {
             status: result.status ?? "source_unavailable",
             httpStatus: result.httpStatus ?? null,
             error: adapterResult.notes.join(" ") || null,
+            ...(adapterResult.inventoryParts ? { metadata: { inventoryParts: adapterResult.inventoryParts, inventoryCount: adapterResult.inventoryCount, inventoryComplete: false } } : {}),
           });
           await onProgress?.({ pagesVisited: 0, potentialPostingsInspected: 0, internshipsDiscovered: 0, completed: false });
           return result;
@@ -837,11 +865,11 @@ export class InternshipCrawler {
         });
         const httpUsable = adapterResult.snapshots.length > 0
           && adapterResult.strategy !== "browser_required"
-          && hasJobEvidence;
+          && (hasJobEvidence || (internListSource && adapterResult.strategy === "structured_endpoint"));
         if (httpUsable) {
           let effectiveAdapterResult = adapterResult;
           const hasDynamicListingControl = adapterResult.snapshots.some((snapshot) => /\b(?:load|show|view)\s+more(?:\s+jobs?|\s+positions?)?|view all jobs?\b/i.test(snapshot.text));
-          if (hasDynamicListingControl) {
+          if (hasDynamicListingControl && !internListSource) {
             // Preserve dynamic load-more coverage without converting every
             // detail request to browser work: render the listing once, merge
             // discovered links, then keep the detail lane on shared HTTP.
@@ -862,23 +890,27 @@ export class InternshipCrawler {
             latencyMs: Math.round(performance.now() - httpStartedAt),
             status: result.status ?? null,
             httpStatus: result.httpStatus ?? null,
+            ...(adapterResult.inventoryParts ? { metadata: { inventoryParts: adapterResult.inventoryParts, inventoryCount: adapterResult.inventoryCount, inventoryComplete: adapterResult.inventoryComplete } } : {}),
           });
           return result;
         }
       }
     } catch (error) {
       this.propagateIfAbort(error, persistence);
-      if (isEarlyCareerRadarSource(sourceUrl) && error instanceof HttpRequestError && error.statusCode === 403) {
+      if (error instanceof HttpRequestError && isEarlyCareerRadarNotFoundPage(sourceUrl, error.statusCode)) {
+        return this.skippedEarlyCareerRadarSource(sourceUrl, error.attempts + 1, "first-party HTTP", [sourceUrl]);
+      }
+      if (isEarlyCareerRadarSource(sourceUrl) || internListSource) {
         const runtimeMs = Math.max(0, Math.round(performance.now() - httpStartedAt));
         const result = this.restrictedHttpSource(sourceUrl, error);
         await this.recordStrategy(persistence, sourceUrl, {
-          adapter: adapterResult ? this.adapterName(adapterResult) : "Early Career Radar",
+          adapter: adapterResult ? this.adapterName(adapterResult) : internListSource ? "Intern List" : "Early Career Radar",
           requiresJs: false,
           success: false,
           latencyMs: runtimeMs,
-          status: result.status ?? "access_denied",
-          httpStatus: result.httpStatus ?? 403,
-          error: error.message,
+          status: result.status ?? "source_unavailable",
+          httpStatus: result.httpStatus ?? null,
+          error: error instanceof Error ? error.message : String(error),
         });
         await onProgress?.({ pagesVisited: 0, potentialPostingsInspected: 0, internshipsDiscovered: 0, completed: false });
         return result;
@@ -916,6 +948,8 @@ export class InternshipCrawler {
     let rawListingLimitReported = false;
     let candidateLimitReported = false;
     let rootSucceeded = false;
+    let radarNotFoundRoot = false;
+    let radarNotFoundPagesSkipped = 0;
     let retrievalMode: "configured_url" | "public_alternate" = "configured_url";
     let retrievalUrls = [sourceUrl];
     const coverageNotes: string[] = [];
@@ -929,7 +963,7 @@ export class InternshipCrawler {
       queue.push(item);
       this.profiler.increment("urlsDiscovered");
     };
-    const fallbacks = publicSourceFallbacks(sourceUrl);
+    const fallbacks = isEarlyCareerRadarSource(sourceUrl) ? [] : publicSourceFallbacks(sourceUrl);
     const allowedFallbacks = [];
     for (const fallback of fallbacks) {
       const fallbackRobots = this.settings.respectRobotsTxt
@@ -976,6 +1010,7 @@ export class InternshipCrawler {
     for (const knownUrl of knownUrls) {
       const canonical = safeCanonicalizeUrl(knownUrl);
       if (!canonical) continue;
+      if (isEarlyCareerRadarSource(sourceUrl) && !earlyCareerRadarSameSite(sourceUrl, canonical)) continue;
       const hint: ListingIdentityHint = { canonicalUrl: canonical, postingUrl: canonical };
       const decision = persistence?.classifyListing?.(sourceUrl, hint);
       const requiresOriginalPost = isJobrightUrl(canonical);
@@ -987,8 +1022,20 @@ export class InternshipCrawler {
         && decision.record.failureState === "none"
         && this.settings.detailRecheckTtlMs > 0
         && Date.now() - Date.parse(decision.record.lastCheckedAt) <= this.settings.detailRecheckTtlMs;
-      if (!requiresOriginalPost && ((decision?.disposition === "unchanged" && decision.validatorsMatch) || recentRecord)) {
-        if (decision?.record?.internship) jobs.push({ internship: { ...decision.record.internship, lifecycleStatus: "UNCHANGED" }, contentHash: decision.record.contentHash });
+      const refreshRadarDetail = isEarlyCareerRadarSource(sourceUrl)
+        && earlyCareerRadarSameSite(sourceUrl, canonical);
+      if (!refreshRadarDetail && !requiresOriginalPost
+        && ((decision?.disposition === "unchanged" && decision.validatorsMatch) || recentRecord)) {
+        if (decision?.record?.internship) {
+          jobs.push({
+            internship: {
+              ...decision.record.internship,
+              lifecycleStatus: "UNCHANGED",
+              ...(isEarlyCareerRadarSource(sourceUrl) ? { availabilityStatus: "unknown" as const } : {}),
+            },
+            contentHash: decision.record.contentHash,
+          });
+        }
         browserUnchangedSkips += 1;
         if (decision?.validatorsMatch) browserCacheHits += 1;
         browserSightings.push({ sourceUrl, ...hint, state: "unchanged", observedOpen: true, provenance: { reason: recentRecord ? "recent_identity_recheck" : "validator_match" } });
@@ -1011,6 +1058,7 @@ export class InternshipCrawler {
       if (batch.length === 0) continue;
       pagesVisited += batch.length;
       await Promise.allSettled(batch.map(async (item) => {
+        if (isEarlyCareerRadarSource(sourceUrl) && !earlyCareerRadarSameSite(sourceUrl, item.url)) return;
         if (knownClosedAggregatorPosting(item.url)) {
           if (item.url === sourceUrl || retrievalUrls.includes(item.url)) rootSucceeded = true;
           const reason = "Original company posting removed";
@@ -1028,6 +1076,11 @@ export class InternshipCrawler {
             return;
           }
           const snapshot = await this.browser.fetchPage(item.url, robots.crawlDelayMs, sourceUrl);
+          if (isEarlyCareerRadarNotFoundPage(snapshot.url, snapshot.status, snapshot.text)) {
+            radarNotFoundPagesSkipped += 1;
+            if (item.url === sourceUrl) radarNotFoundRoot = true;
+            return;
+          }
           if (item.depth > 0) browserDetailPagesFetched += 1;
           if (item.url === sourceUrl || retrievalUrls.includes(item.url)) rootSucceeded = true;
           this.logger.debug("PAGE", `${snapshot.status} attempt ${snapshot.attempts ?? 1} ${snapshot.browserContextId ?? ""} ${redactSensitiveUrl(snapshot.url)} (${snapshot.links.length} links)`);
@@ -1067,14 +1120,20 @@ export class InternshipCrawler {
             const resolver = this.resolverForRawJob(
               rawJob,
               sourceUrl,
-              (url: string) => this.browser.resolveApplicationUrl(url, sourceUrl),
+              isEarlyCareerRadarSource(sourceUrl)
+                ? async (url: string) => canonicalEarlyCareerRadarApplyUrl(url, rawJob.postingUrl) ?? url
+                : (url: string) => this.browser.resolveApplicationUrl(url, sourceUrl),
               knownJobrightDestination,
               Boolean(persistence?.getJobrightDestinations),
             );
             const analyzed = await this.analyzeJobWithProfile(rawJob, sourceUrl, resolver, snapshot.fetchedAt);
             if (analyzed.accepted) {
-              jobs.push(analyzed.value);
-              this.logger.info("JOB", `${analyzed.value.internship.company} — ${analyzed.value.internship.title}`);
+              const acceptedJob = isEarlyCareerRadarSource(sourceUrl)
+                ? { ...analyzed.value, internship: { ...analyzed.value.internship, availabilityStatus: "unknown" as const } }
+                : analyzed.value;
+              jobs.push(acceptedJob);
+              await this.publishReadyJobs([acceptedJob], persistence);
+              this.logger.info("JOB", `${acceptedJob.internship.company} — ${acceptedJob.internship.title}`);
               if (analyzed.value.internship.applicationUrl !== analyzed.value.internship.postingUrl) {
                 this.logger.debug("APPLY", `Resolved ${analyzed.value.internship.applicationUrl}`);
               }
@@ -1091,7 +1150,7 @@ export class InternshipCrawler {
             }
           }
 
-          if (item.depth >= this.settings.maxDepth) return;
+          if (item.depth >= this.settings.maxDepth || isEarlyCareerRadarSource(sourceUrl) && item.depth > 0) return;
           const publicBoardLinks = snapshot.links.length < MAX_ACCEPTED_JOBS_PER_SOURCE
             ? discoverPublicBoardLinks(snapshot)
             : [];
@@ -1115,6 +1174,7 @@ export class InternshipCrawler {
           let relevantLinks = 0;
           for (const candidate of candidates) {
             if (candidate.score <= -1000 || visited.has(candidate.link.url) || enqueued.has(candidate.link.url) || skippedKnownUrls.has(candidate.link.url)) continue;
+            if (isEarlyCareerRadarSource(sourceUrl) && !earlyCareerRadarSameSite(sourceUrl, candidate.link.url)) continue;
             if (Boolean(persistence?.getJobrightDestinations) && isJobrightJobUrl(candidate.link.url)
               && !directApplicationOverride(candidate.link.url)
               && !preloadedJobrightDestinations?.has(candidate.link.url)) continue;
@@ -1135,6 +1195,11 @@ export class InternshipCrawler {
           const fetchError = error instanceof PageFetchError
             ? error
             : new PageFetchError(error instanceof Error ? error.message : String(error), null, 0, "unexpected_error");
+          if (isEarlyCareerRadarNotFoundPage(item.url, fetchError.statusCode)) {
+            radarNotFoundPagesSkipped += 1;
+            if (item.url === sourceUrl) radarNotFoundRoot = true;
+            return;
+          }
           failures.push(this.failure(item, fetchError.errorType, fetchError.message, fetchError.statusCode, fetchError.retryCount));
           this.logger.error("ERROR", `${redactSensitiveUrl(item.url)}: ${fetchError.message}`);
           if (item.url === sourceUrl || retrievalUrls.includes(item.url)) rootSucceeded = false;
@@ -1153,7 +1218,18 @@ export class InternshipCrawler {
       await persistence.recordLightweightSightings(persistence.runId, browserSightings);
       this.throwIfCancelled(persistence);
     }
-    const status = sourceStatus(rootSucceeded, jobs.length, failures);
+    if (radarNotFoundRoot && !rootSucceeded) {
+      return this.skippedEarlyCareerRadarSource(sourceUrl, 1, "Playwright browser", retrievalUrls);
+    }
+    if (radarNotFoundPagesSkipped > 0) coverageNotes.push(`${radarNotFoundPagesSkipped} Early Career Radar not-found page(s) skipped without retry.`);
+    const interpretedBrowserStatus = sourceStatus(rootSucceeded, jobs.length, failures);
+    const status = isEarlyCareerRadarSource(sourceUrl)
+      && (interpretedBrowserStatus === "success" || interpretedBrowserStatus === "no_internships_found")
+      ? "partial"
+      : interpretedBrowserStatus;
+    if (isEarlyCareerRadarSource(sourceUrl)) {
+      coverageNotes.push("The structured listing feed was unavailable. This bounded browser pass could not prove a complete inventory; it followed only first-party Radar pages and did not verify employer availability.");
+    }
     const browserMetrics: CrawlMetrics = {
       browserNavigations: Math.max(0, this.browser.navigations - browserNavigationsStart),
       detailPagesFetched: browserDetailPagesFetched,
@@ -1177,7 +1253,8 @@ export class InternshipCrawler {
       failures,
       closedPages,
       completed: rootSucceeded,
-      coverageComplete: status === "success",
+      coverageComplete: !isEarlyCareerRadarSource(sourceUrl) && status === "success",
+      ...(isEarlyCareerRadarSource(sourceUrl) ? { trustedInventory: false, inventoryStatus: "unknown" as const } : {}),
       status,
       retrievalMethod: "Playwright browser",
       attempts: failures.reduce((total, failure) => total + failure.retryCount + 1, 0) + (rootSucceeded ? 1 : 0),
@@ -1219,6 +1296,31 @@ export class InternshipCrawler {
     };
   }
 
+  private skippedEarlyCareerRadarSource(sourceUrl: string, attempts: number, retrievalMethod: string, retrievalUrls: string[]): SourceCrawlResult {
+    return {
+      sourceUrl,
+      pagesVisited: 0,
+      potentialPostingsInspected: 0,
+      jobs: [],
+      failures: [],
+      closedPages: [],
+      completed: false,
+      coverageComplete: false,
+      trustedInventory: false,
+      inventoryStatus: "excluded",
+      healthExcluded: true,
+      status: "source_unavailable",
+      retrievalMethod,
+      retrievalUrls,
+      retrievalMode: "configured_url",
+      attempts,
+      httpStatus: 404,
+      directApplicationLinks: 0,
+      coverageNotes: ["Early Career Radar returned a 404/not-found page; skipped without retry or alternate retrieval. Previous listings were not treated as closed."],
+      metrics: { retryableFailures: 0 },
+    };
+  }
+
   private structuredAdapterUnavailableSource(sourceUrl: string, result: SourceAdapterResult, durationMs: number): SourceCrawlResult {
     const httpStatus = sourceAdapterStatusCode(result);
     const status: SourceStatus = httpStatus === 429
@@ -1238,12 +1340,15 @@ export class InternshipCrawler {
       coverageComplete: false,
       status,
       retrievalMethod: result.retrievalMethod,
+      ...(result.inventoryParts ? { inventoryParts: result.inventoryParts, inventoryCount: result.inventoryCount, trustedInventory: false, inventoryStatus: "incomplete" as const } : {}),
       attempts: result.attempts,
       httpStatus,
       directApplicationLinks: 0,
       retrievalMode: "configured_url",
       retrievalUrls: uniqueUrls(result.retrievalUrls.length > 0 ? result.retrievalUrls : [sourceUrl]),
-      coverageNotes: ["Structured feed retrieval failed; the blocked page shell was not sent to the browser fallback.", ...result.notes],
+      coverageNotes: [result.failures.some((failure) => failure.errorType === "source_retired")
+        ? "This source is retired. Previous listings remain in history; missing-listing reconciliation was skipped."
+        : "Public inventory retrieval failed; browser fallback was skipped for this source.", ...result.notes],
       metrics: { retryableFailures: result.failures.filter(isRetryableFailure).length },
     };
   }
@@ -1277,6 +1382,7 @@ export class InternshipCrawler {
         occurredAt: new Date().toISOString(),
       }));
       const irrelevantListingsSkipped = Math.max(0, snapshot.jobs.length - jobs.length);
+      await this.publishReadyJobs(jobs, persistence);
       const httpStatus = snapshot.failures.find(({ statusCode }) => statusCode !== null)?.statusCode
         ?? (snapshot.status === "ready" ? 200 : null);
       const status: SourceCrawlResult["status"] = snapshot.status === "ready"
@@ -1423,7 +1529,14 @@ export class InternshipCrawler {
     now: string,
   ): Promise<AnalyzeResult> {
     const startedAt = performance.now();
-    const result = await analyzeRawJob(raw, sourceUrl, this.settings.minRelevanceScore, resolver, now);
+    const result = await analyzeRawJob(
+      raw,
+      sourceUrl,
+      this.settings.minRelevanceScore,
+      resolver,
+      now,
+      this.editionConfig.canonicalAdmission,
+    );
     const duration = Math.max(0, performance.now() - startedAt);
     this.profiler.recordSpan("parsing", duration, { source: sourceUrl, url: raw.postingUrl });
     this.profiler.recordSpan("qualification", duration, { source: sourceUrl, url: raw.postingUrl });
@@ -1438,7 +1551,25 @@ export class InternshipCrawler {
     return result;
   }
 
+  private async publishReadyJobs(jobs: AnalyzedJob[], persistence?: CrawlPersistence): Promise<void> {
+    if (persistence?.runId === undefined || !persistence.recordReadyJobs || jobs.length === 0) return;
+    this.throwIfCancelled(persistence);
+    try {
+      await persistence.recordReadyJobs(persistence.runId, jobs);
+    } catch (error) {
+      this.propagateIfAbort(error, persistence);
+      // Retain the analyzed jobs for source/final persistence if this early write fails.
+      this.logger.error("PERSIST", `Could not publish ready listings: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    this.throwIfCancelled(persistence);
+  }
+
   private async resolveApplicationUrlHttp(value: string): Promise<string | null> {
+    // InternInsider's submission flow requires the applicant's session. It
+    // cannot provide an anonymous redirect and repeatedly probing it triggers
+    // rate limits. Preserve the public Apply URL for the applicant.
+    const application = new URL(value);
+    if (/(?:^|\.)interninsider\.me$/i.test(application.hostname) && /\/apply(?:\/|$)/i.test(application.pathname)) return value;
     try {
       const response = await this.http.get(value, { cache: true, perHostDelayMs: Math.min(this.settings.perHostDelayMs, 100) });
       if (response.status < 200 || response.status >= 400) return null;
@@ -1554,6 +1685,19 @@ export class InternshipCrawler {
   ): Promise<SourceCrawlResult> {
     const startedAt = performance.now();
     const httpMetricsStart = this.http.metrics;
+    const radarInventories = new Map<string, EarlyCareerRadarRecoveryInventory>();
+    const radarRecordsByDetailUrl = new Map<string, EarlyCareerRadarRecoveryInventory["records"][number]>();
+    if (isEarlyCareerRadarSource(sourceUrl)) {
+      for (const snapshot of collected.snapshots) {
+        const inventory = earlyCareerRadarInventoryFromSnapshot(snapshot, sourceUrl);
+        if (!inventory) continue;
+        radarInventories.set(snapshot.url, inventory);
+        for (const record of inventory.records) {
+          if (record.closed !== true) radarRecordsByDetailUrl.set(earlyCareerRadarFeedDetailUrl(record), record);
+        }
+      }
+    }
+    const hasRadarFeedInventory = radarInventories.size > 0;
     const structuredSnapshotFloor = collected.strategy === "structured_endpoint"
       ? collected.snapshots.length
       : 0;
@@ -1566,6 +1710,12 @@ export class InternshipCrawler {
       largeListingSourcePageFloor(sourceUrl) ?? 0,
       structuredSnapshotFloor,
       structuredLinkFloor,
+      // Keep optional first-party detail enrichment inside the complete feed
+      // bound. With maxDepth 0, the metadata feed is still fully inventoried
+      // and no detail URL is requested.
+      isEarlyCareerRadarSource(sourceUrl)
+        ? collected.snapshots.reduce((largest, snapshot) => Math.max(largest, snapshot.links.length + 1), 0)
+        : 0,
     );
     // Capacity is bounded by the crawl's own admission ceiling. This avoids
     // a producer deadlock when every worker fans out links while retaining
@@ -1578,7 +1728,7 @@ export class InternshipCrawler {
     );
     const jobs: AnalyzedJob[] = [];
     const failures: FetchFailure[] = [...collected.failures];
-    const closedPages: ClosedPage[] = [];
+    const closedPages: ClosedPage[] = [...(collected.closedPages ?? [])];
     const visited = new Set<string>();
     const enqueued = new Set<string>();
     const approvedHosts = new Set<string>([hostname(sourceUrl)]);
@@ -1595,9 +1745,9 @@ export class InternshipCrawler {
     // Structured adapters return one snapshot per posting payload rather than
     // a listing page followed by detail requests. Count those payloads as
     // detail work up front; dynamic HTTP links below are counted when fetched.
-    let detailPagesFetched = collected.strategy === "structured_endpoint"
+    let detailPagesFetched = collected.detailPagesFetched ?? (collected.strategy === "structured_endpoint"
       ? collected.snapshots.filter(({ status }) => status >= 200 && status < 400).length
-      : 0;
+      : 0);
     let duplicateListingsSkipped = 0;
     const irrelevantListingsSkipped = 0;
     let unchangedSkips = 0;
@@ -1616,10 +1766,15 @@ export class InternshipCrawler {
     const preloadedJobrightDestinations = persistence?.getJobrightDestinations?.(sourceUrl) ?? null;
     const jobrightCacheOnly = Boolean(persistence?.getJobrightDestinations);
     const failedDetailIdentities = new Set<string>();
+    let unresolvedJobrightListings = 0;
     const retryableSightedIdentities = new Set<string>();
     let attempts = collected.attempts;
     let httpStatus = collected.httpStatus;
     let rootSucceeded = collected.snapshots.some(({ status }) => status >= 200 && status < 400);
+    let radarSourceRecordsObserved = 0;
+    let radarSourceRecordsClosed = 0;
+    let radarDetailFailures = 0;
+    let radarNotFoundPagesSkipped = 0;
     const add = async (item: CrawlQueueItem): Promise<boolean> => {
       this.throwIfCancelled(persistence);
       if (enqueued.has(item.url) || enqueued.size >= admissionLimit || item.depth > this.settings.maxDepth) return false;
@@ -1655,12 +1810,19 @@ export class InternshipCrawler {
             : { allowed: true, crawlDelayMs: null };
           if (!robots.allowed) {
             failures.push(this.failure(item, "robots_disallowed", "Disallowed by robots.txt", null, 0));
+            if (isEarlyCareerRadarSource(sourceUrl) && item.depth > 0 && hasRadarFeedInventory) radarDetailFailures += 1;
             return;
           }
           const response = await this.http.get(item.url, {
-            cache: true,
+            // An explicit ECR refresh must actually attempt every active
+            // first-party detail URL instead of reusing stale cached HTML.
+            cache: !(isEarlyCareerRadarSource(sourceUrl) && item.depth > 0),
+            ...(isEarlyCareerRadarSource(sourceUrl) ? { timeoutMs: 30_000 } : {}),
             perHostDelayMs: Math.max(Math.min(this.settings.perHostDelayMs, 150), robots.crawlDelayMs ?? 0),
             respectRobots: !earlyCareerRadarOwnerUrl(sourceUrl, item.url),
+            ...(isEarlyCareerRadarSource(sourceUrl)
+              ? { allowedRedirectOrigins: ["https://earlycareerradar.com"] }
+              : {}),
           });
           attempts += response.attempts;
           httpStatus = response.status;
@@ -1668,22 +1830,78 @@ export class InternshipCrawler {
           snapshotsByUrl.set(snapshot.url, snapshot);
           if (item.depth > 0 && !response.fromCache) detailPagesFetched += 1;
         }
+        if (isEarlyCareerRadarNotFoundPage(snapshot.url, snapshot.status, snapshot.text)) {
+          radarNotFoundPagesSkipped += 1;
+          if (item.depth === 0) {
+            rootSucceeded = false;
+            httpStatus = 404;
+          }
+          return;
+        }
         if (item.depth === 0 && snapshot.status >= 200 && snapshot.status < 400) rootSucceeded = true;
         const closure = detectClosedPage(snapshot.text, snapshot.status, snapshot.url, item.reason === "known job verification", snapshot.html);
         if (closure) {
-          closedPages.push({ url: item.url, reason: closure, statusCode: snapshot.status });
+          if (isEarlyCareerRadarSource(sourceUrl) && item.depth > 0 && snapshot.status === 410) {
+            radarDetailFailures += 1;
+            failures.push(this.failure(
+              item,
+              "not_found",
+              `Early Career Radar detail route returned HTTP ${snapshot.status}; the listing-feed record remains retained and employer availability is unknown.`,
+              snapshot.status,
+              0,
+            ));
+          } else {
+            closedPages.push({ url: item.url, reason: closure, statusCode: snapshot.status });
+          }
           return;
         }
-        const rawJobs = await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
-        potentialPostingsInspected += rawJobs.length;
-        rawListingsObserved += rawJobs.length;
-        const rawJobBudget = Math.max(0, rawListingLimit - (rawListingsObserved - rawJobs.length));
+        const radarInventory = radarInventories.get(snapshot.url) ?? null;
+        const radarFeedRecord = isEarlyCareerRadarSource(sourceUrl) && item.depth > 0
+          ? radarRecordsByDetailUrl.get(item.url) ?? null
+          : null;
+        const extractedJobs = radarInventory
+          ? radarInventory.rawJobs
+          : await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
+        const rawJobs = radarFeedRecord && extractedJobs.length > 0
+          ? [earlyCareerRadarDetailToRawJob(
+            radarFeedRecord,
+            extractedJobs.toSorted((left, right) => (right.description?.length ?? 0) - (left.description?.length ?? 0))[0]!,
+            sourceUrl,
+          )]
+          : extractedJobs;
+        const observedListingCount = radarInventory?.records.length
+          ?? (hasRadarFeedInventory && isEarlyCareerRadarSource(sourceUrl) && item.depth > 0 ? 0 : rawJobs.length);
+        potentialPostingsInspected += observedListingCount;
+        rawListingsObserved += observedListingCount;
+        if (radarInventory) {
+          radarSourceRecordsObserved += radarInventory.records.length;
+          const closedRecords = radarInventory.records.filter((job) => job.closed === true);
+          radarSourceRecordsClosed += closedRecords.length;
+          for (const job of closedRecords) {
+            closedPages.push({
+              url: earlyCareerRadarFeedDetailUrl(job),
+              reason: "Early Career Radar marks the source record closed",
+              statusCode: null,
+            });
+          }
+        }
         if (rawListingsObserved > rawListingLimit && !rawListingLimitReported) {
           failures.push(sourceLimitFailure(sourceUrl, snapshot.url, "Raw listings", rawListingsObserved, rawListingLimit));
           rawListingLimitReported = true;
         }
-        for (const rawJob of rawJobs.slice(0, rawJobBudget)) {
+        const rawJobBudget = radarFeedRecord && extractedJobs.length > 0
+          ? rawJobs.length
+          : Math.max(0, rawListingLimit - (rawListingsObserved - observedListingCount));
+        for (const [jobIndex, extractedRawJob] of rawJobs.slice(0, rawJobBudget).entries()) {
+          if (jobIndex % 32 === 0) await yieldToEventLoop();
           this.throwIfCancelled(persistence);
+          const rawJob = isEarlyCareerRadarSource(sourceUrl) && item.depth > 0 && extractedRawJob.applicationUrl
+            ? {
+              ...extractedRawJob,
+              applicationUrl: canonicalEarlyCareerRadarApplyUrl(extractedRawJob.applicationUrl, extractedRawJob.postingUrl)
+                ?? extractedRawJob.applicationUrl,
+            }
+            : extractedRawJob;
           const knownJobrightDestination = this.cachedJobrightDestination(
             sourceUrl,
             rawJob,
@@ -1700,27 +1918,74 @@ export class InternshipCrawler {
             knownJobrightDestination,
             Boolean(persistence?.getJobrightDestinations),
           );
+          const radarPriorRecord = isEarlyCareerRadarSource(sourceUrl)
+            && rawJob.sourceProvider === "early-career-radar"
+            ? persistence?.classifyListing?.(sourceUrl, {
+              canonicalUrl: radarFeedRecord?.id ? earlyCareerRadarFeedDetailUrl(radarFeedRecord) : rawJob.postingUrl,
+              postingUrl: radarFeedRecord?.id ? earlyCareerRadarFeedDetailUrl(radarFeedRecord) : rawJob.postingUrl,
+              ...(rawJob.applicationUrl ? { applicationUrl: rawJob.applicationUrl } : {}),
+              externalJobId: rawJob.jobId ?? null,
+              providerIdentity: rawJob.sourceProvider,
+            }).record?.internship ?? null
+            : null;
           const analyzed = await this.analyzeJobWithProfile(rawJob, sourceUrl, resolver, snapshot.fetchedAt);
+          if (!analyzed.accepted && jobrightCacheOnly && analyzed.reason.includes("Original job post")) unresolvedJobrightListings += 1;
           if (analyzed.accepted) {
-            const enriched: AnalyzedJob = { ...analyzed.value };
+            const enriched: AnalyzedJob = isEarlyCareerRadarSource(sourceUrl)
+              ? {
+                ...analyzed.value,
+                internship: { ...analyzed.value.internship, availabilityStatus: "unknown" },
+              }
+              : { ...analyzed.value };
+            if (radarPriorRecord && rawJob.sourceProvider === "early-career-radar") {
+              const preserved = mergeEarlyCareerRadarMetadataWithPrior(enriched, radarPriorRecord);
+              enriched.internship = preserved.internship;
+              enriched.contentHash = preserved.contentHash;
+            }
             if (snapshot.cacheMetadata) enriched.cacheMetadata = snapshot.cacheMetadata;
             jobs.push(enriched);
+            await this.publishReadyJobs([enriched], persistence);
             if (item.depth > 0) {
               const disposition = scheduledStates.get(item.url);
               if (disposition) acceptedDetailStates.push({ job: enriched, disposition });
             }
           }
         }
+        // A Radar detail page may enrich the source record, but employer links
+        // are outbound destinations rather than mandatory crawl steps. The
+        // complete feed row was already analyzed, so a blocked or removed
+        // detail route cannot erase its observed listing identity.
+        if (isEarlyCareerRadarSource(sourceUrl) && item.depth > 0) return;
         if (item.depth >= this.settings.maxDepth) return;
-        const publicBoardLinks = snapshot.links.length < MAX_ACCEPTED_JOBS_PER_SOURCE
-          ? discoverPublicBoardLinks(snapshot)
-          : [];
-        const candidatePool = [
-          ...snapshot.links.slice(0, MAX_ACCEPTED_JOBS_PER_SOURCE),
-          ...publicBoardLinks.slice(0, Math.max(0, MAX_ACCEPTED_JOBS_PER_SOURCE - snapshot.links.length)),
-        ];
-        if (snapshot.links.length + publicBoardLinks.length > candidatePool.length && !candidateLimitReported) {
-          failures.push(sourceLimitFailure(sourceUrl, snapshot.url, "Candidate links", snapshot.links.length + publicBoardLinks.length));
+        // A Radar detail page already supplies the role and its employer Apply
+        // destination. Do not fan out into that employer's board, login pages,
+        // and unrelated openings after successfully extracting the source role.
+        if (isEarlyCareerRadarSource(sourceUrl) && item.depth > 0 && rawJobs.length > 0) return;
+        const candidateLinkLimit = isEarlyCareerRadarSource(sourceUrl) ? rawListingLimit : MAX_ACCEPTED_JOBS_PER_SOURCE;
+        const publicBoardLinks = radarInventory
+          ? []
+          : snapshot.links.length < candidateLinkLimit
+            ? discoverPublicBoardLinks(snapshot)
+            : [];
+        // For Radar, optional enrichment targets are derived only from active
+        // first-party feed identities. This avoids following employer links
+        // surfaced by a detail parser and avoids counting deliberately omitted
+        // closed rows as lost candidate capacity.
+        const allCandidateLinks = radarInventory
+          ? radarInventory.records
+            .filter((job) => job.closed !== true)
+            .map((job) => ({
+              url: earlyCareerRadarFeedDetailUrl(job),
+              text: `${job.company} — ${job.title}`,
+              rel: "early-career-radar-feed-detail",
+            }))
+          : [
+            ...snapshot.links.slice(0, candidateLinkLimit),
+            ...publicBoardLinks.slice(0, Math.max(0, candidateLinkLimit - snapshot.links.length)),
+          ];
+        const candidatePool = allCandidateLinks.slice(0, candidateLinkLimit);
+        if (allCandidateLinks.length > candidateLinkLimit && !candidateLimitReported) {
+          failures.push(sourceLimitFailure(sourceUrl, snapshot.url, "Candidate links", allCandidateLinks.length, candidateLinkLimit));
           candidateLimitReported = true;
         }
         const candidates = candidatePool
@@ -1779,7 +2044,11 @@ export class InternshipCrawler {
             && this.settings.detailRecheckTtlMs > 0
             && Date.now() - Date.parse(decision.record.lastCheckedAt) <= this.settings.detailRecheckTtlMs;
           const requiresOriginalPost = isJobrightUrl(candidate.link.url);
-          if (!requiresOriginalPost && ((decision?.disposition === "unchanged" && decision.validatorsMatch) || recentRecord)) {
+          const refreshRadarDetail = isEarlyCareerRadarSource(sourceUrl)
+            && item.depth === 0
+            && radarRecordsByDetailUrl.has(candidate.link.url);
+          if (!refreshRadarDetail && !requiresOriginalPost
+            && ((decision?.disposition === "unchanged" && decision.validatorsMatch) || recentRecord)) {
             if (decision?.record?.internship) {
               const cachedJob: AnalyzedJob = { internship: { ...decision.record.internship, lifecycleStatus: "UNCHANGED" }, contentHash: decision.record.contentHash };
               jobs.push(cachedJob);
@@ -1812,6 +2081,31 @@ export class InternshipCrawler {
         const requestError = error instanceof HttpRequestError
           ? error
           : new HttpRequestError(error instanceof Error ? error.message : String(error), null, 0, "http_error");
+        if (isEarlyCareerRadarNotFoundPage(item.url, requestError.statusCode)) {
+          radarNotFoundPagesSkipped += 1;
+          attempts += requestError.attempts + 1;
+          if (item.depth === 0) {
+            rootSucceeded = false;
+            httpStatus = 404;
+          }
+          return;
+        }
+        if (isEarlyCareerRadarSource(sourceUrl) && item.depth > 0 && requestError.statusCode === 410) {
+          radarDetailFailures += 1;
+          failures.push(this.failure(
+            item,
+            "not_found",
+            `Early Career Radar detail route returned HTTP ${requestError.statusCode}; the listing-feed record remains retained and employer availability is unknown.`,
+            requestError.statusCode,
+            requestError.attempts,
+          ));
+          return;
+        }
+        if (isEarlyCareerRadarSource(sourceUrl) && item.depth > 0 && hasRadarFeedInventory) radarDetailFailures += 1;
+        if (item.depth > 0 && scheduledHints.has(item.url) && [404, 410].includes(requestError.statusCode ?? 0)) {
+          closedPages.push({ url: item.url, reason: `Posting removed (HTTP ${requestError.statusCode})`, statusCode: requestError.statusCode });
+          return;
+        }
         failures.push(this.failure(item, requestError.errorType, requestError.message, requestError.statusCode, requestError.attempts));
         const scheduledHint = scheduledHints.get(item.url);
         if (item.depth > 0 && scheduledHint && isRetryableFailure(requestError) && !failedDetailIdentities.has(item.url)) {
@@ -1838,7 +2132,13 @@ export class InternshipCrawler {
     };
     const workerCount = Math.max(1, this.settings.httpConcurrency);
     await Promise.all(Array.from({ length: workerCount }, () => worker()));
-    const deduplicatedJobs = this.deduplicateJobsWithProfile(jobs, sourceUrl);
+    if (enqueued.size > visited.size) {
+      failures.push(sourceLimitFailure(sourceUrl, sourceUrl, "Queued pages", enqueued.size, pageLimit));
+    }
+    const genericDeduplicatedJobs = this.deduplicateJobsWithProfile(jobs, sourceUrl);
+    const deduplicatedJobs = isEarlyCareerRadarSource(sourceUrl)
+      ? preferEarlyCareerRadarDetailDescriptions(genericDeduplicatedJobs, jobs)
+      : genericDeduplicatedJobs;
     const cachedIdentityIndex = new ListingIdentityIndex<AnalyzedJob>();
     for (const job of cachedUnchangedJobs) cachedIdentityIndex.add(job, job.internship);
     const acceptedIdentityIndex = new ListingIdentityIndex<(typeof acceptedDetailStates)[number]>();
@@ -1854,7 +2154,35 @@ export class InternshipCrawler {
       if (accepted.disposition === "new") newListings += 1;
       else changedListings += 1;
     }
-    const status = sourceStatus(rootSucceeded, deduplicatedJobs.length, failures);
+    const interpretedStatus = sourceStatus(rootSucceeded, deduplicatedJobs.length, failures);
+    let status = interpretedStatus;
+    const isRadarSource = isEarlyCareerRadarSource(sourceUrl);
+    const radarInventoryComplete = hasRadarFeedInventory && rootSucceeded && collected.inventoryComplete === true;
+    if (radarInventoryComplete && (failures.length > 0 || radarDetailFailures > 0)) status = "partial";
+    else if (unresolvedJobrightListings > 0 && failures.length === 0) status = "partial";
+    else if (
+      collected.inventoryComplete === false
+      && rootSucceeded
+      && (interpretedStatus === "success" || interpretedStatus === "no_internships_found")
+    ) status = "partial";
+    else if (
+      isRadarSource
+      && !radarInventoryComplete
+      && rootSucceeded
+      && (interpretedStatus === "success" || interpretedStatus === "no_internships_found")
+    ) status = "partial";
+    const coverageNotes = [...collected.notes];
+    if (radarNotFoundPagesSkipped > 0) coverageNotes.push(`${radarNotFoundPagesSkipped} Early Career Radar not-found page(s) skipped without retry; listing-feed records retained with employer availability unknown.`);
+    if (hasRadarFeedInventory) {
+      const imported = deduplicatedJobs.length;
+      coverageNotes.push(
+        `Parsed all ${radarSourceRecordsObserved} selected first-party Radar records${radarSourceRecordsClosed > 0 ? `, including ${radarSourceRecordsClosed} explicitly marked closed` : ""}; ${imported} passed the existing relevance and location policy. When an employer description is absent from both the feed and the optional first-party detail page, the imported metadata-only record states that missing content. Employer destinations were retained without verification, so availability remains unknown.`,
+      );
+    }
+    if (collected.inventoryComplete === true && unresolvedJobrightListings > 0) {
+      coverageNotes.push("The source inventory was fetched completely; partial status reflects qualifying listings without verified employer application destinations.");
+    }
+    if (unresolvedJobrightListings > 0) coverageNotes.push(`${unresolvedJobrightListings} qualifying Jobright listing(s) lack a verified employer destination in the resolver cache. Jobright's anonymous Apply Now flow currently requires sign-in; these listings were not counted as usable jobs.`);
     const metrics: CrawlMetrics = {
       ...metricDelta(this.http.metrics, httpMetricsStart),
       detailPagesFetched,
@@ -1875,15 +2203,30 @@ export class InternshipCrawler {
     // every retained page before returning so a large source does not keep
     // HTML/text/link graphs alive while its result is handed to the writer.
     snapshotsByUrl.clear();
+    const radarInventoryCount = Number.isSafeInteger(collected.inventoryCount) && (collected.inventoryCount ?? -1) >= 0
+      ? collected.inventoryCount
+      : hasRadarFeedInventory ? radarSourceRecordsObserved : undefined;
     return {
       sourceUrl,
-      pagesVisited,
+      pagesVisited: Math.max(pagesVisited, collected.retrievedPages ?? 0),
       potentialPostingsInspected,
       jobs: deduplicatedJobs,
       failures,
       closedPages,
       completed: rootSucceeded,
-      coverageComplete: status === "success",
+      coverageComplete: isRadarSource
+        ? radarInventoryComplete
+        : status === "success" || (status === "no_internships_found" && collected.inventoryComplete !== false),
+      ...(isRadarSource || collected.inventoryParts ? {
+        ...(radarInventoryCount === undefined ? {} : { inventoryCount: radarInventoryCount }),
+        trustedInventory: isRadarSource ? radarInventoryComplete : collected.inventoryComplete === true,
+        inventoryStatus: (isRadarSource ? radarInventoryComplete : collected.inventoryComplete === true)
+          ? "trusted" as const
+          : radarInventoryCount !== undefined || hasRadarFeedInventory || collected.inventoryComplete === false
+            ? "incomplete" as const
+            : "unknown" as const,
+      } : {}),
+      ...(collected.inventoryParts ? { inventoryParts: collected.inventoryParts } : {}),
       status,
       retrievalMethod: collected.retrievalMethod,
       attempts,
@@ -1891,7 +2234,7 @@ export class InternshipCrawler {
       directApplicationLinks: deduplicatedJobs.filter(({ internship }) => hasDirectApplicationUrl(sourceUrl, internship.applicationUrl)).length,
       retrievalMode: "configured_url",
       retrievalUrls: uniqueUrls(collected.retrievalUrls),
-      ...(collected.notes.length > 0 ? { coverageNotes: collected.notes } : {}),
+      ...(coverageNotes.length > 0 ? { coverageNotes } : {}),
       metrics,
     };
   }
@@ -2011,9 +2354,12 @@ export class InternshipCrawler {
         http: this.http,
         robots: this.robots,
         logger: this.logger,
+        knownApplications: persistence?.getUsenoApplications?.() ?? [],
+        onProgress: () => onProgress?.({ pagesVisited: 1, potentialPostingsInspected: 0, internshipsDiscovered: 0, completed: false }),
       });
       const now = new Date().toISOString();
       const jobs = collected.artifact.listings.map((listing) => usenoMasterlistJob(listing, sourceUrl, now));
+      await this.publishReadyJobs(jobs, persistence);
       const runtimeMs = Math.max(0, Math.round(performance.now() - startedAt));
       const metrics: CrawlMetrics = {
         ...metricDelta(this.http.metrics, httpMetricsStart),
@@ -2033,7 +2379,7 @@ export class InternshipCrawler {
         },
       });
       await onProgress?.({
-        pagesVisited: 1,
+        pagesVisited: collected.artifact.inventory?.retrievalUrls.length ?? 1,
         potentialPostingsInspected: collected.artifact.totalRecords,
         internshipsDiscovered: jobs.length,
         completed: false,
@@ -2041,24 +2387,26 @@ export class InternshipCrawler {
       });
       return {
         sourceUrl,
-        pagesVisited: 1,
+        pagesVisited: collected.artifact.inventory?.retrievalUrls.length ?? 1,
         potentialPostingsInspected: collected.artifact.totalRecords,
         jobs,
         failures: [],
         closedPages: [],
         completed: true,
-        coverageComplete: true,
+        coverageComplete: collected.artifact.inventory?.coverageComplete ?? true,
         status: "success",
-        retrievalMethod: "Useno internship masterlist HTTP",
+        retrievalMethod: "Useno paginated public index and employer ATS recovery",
         attempts: collected.response.attempts,
         httpStatus: collected.response.status,
-        directApplicationLinks: jobs.length,
+        directApplicationLinks: collected.artifact.inventory?.directApplicationLinks ?? jobs.filter(({ internship }) => !sameSite(internship.applicationUrl, sourceUrl)).length,
         retrievalMode: "configured_url",
-        retrievalUrls: [collected.response.url],
+        retrievalUrls: collected.artifact.inventory?.retrievalUrls ?? [collected.response.url],
         coverageNotes: [
           `Parsed ${collected.artifact.totalRecords} eligible rows from the Software Engineering & Technology and Data, AI & Analytics tabs.`,
           `Skipped ${collected.artifact.skippedLocationCount} rows without Canada/U.S. location evidence.`,
-          `Raw snapshot saved to ${collected.outputPath}. Employer detail pages were not requested; records explicitly retain unknown employer descriptions and qualifications.`,
+          `Retrieved ${collected.artifact.inventory?.rawRoleCount ?? collected.artifact.totalRecords} public source rows; ${collected.artifact.inventory?.unresolvedApplicationLinks ?? 0} eligible rows retain their Useno detail link.`,
+          ...(collected.artifact.inventory?.previewCapped ? ["Useno limits the anonymous feed; missing historical rows are retained because full-corpus coverage is unavailable."] : []),
+          `Raw snapshot saved to ${collected.artifact.rawSnapshotPath ?? collected.outputPath}. Employer descriptions and qualifications remain unknown unless another board source supplied them.`,
         ],
         metrics,
       };
@@ -2131,7 +2479,8 @@ export class InternshipCrawler {
       try {
         const rawJobs = await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
         potentialPostingsInspected += rawJobs.length;
-        for (const rawJob of rawJobs) {
+        for (const [jobIndex, rawJob] of rawJobs.entries()) {
+          if (jobIndex % 32 === 0) await yieldToEventLoop();
           const knownJobrightDestination = this.cachedJobrightDestination(
             sourceUrl,
             rawJob,
@@ -2148,7 +2497,10 @@ export class InternshipCrawler {
             resolver,
             snapshot.fetchedAt,
           );
-          if (analyzed.accepted) jobs.push(analyzed.value);
+          if (analyzed.accepted) {
+            jobs.push(analyzed.value);
+            await this.publishReadyJobs([analyzed.value], persistence);
+          }
         }
       } catch (error) {
         this.propagateIfAbort(error, persistence);
@@ -2216,7 +2568,7 @@ export class InternshipCrawler {
       failures,
       closedPages: [],
       completed: collected.snapshots.length > 0,
-      coverageComplete: status === "success",
+      coverageComplete: status === "success" && collected.inventoryComplete !== false,
       status,
       retrievalMethod: collected.retrievalMethod,
       attempts: collected.attempts,
@@ -2241,13 +2593,21 @@ export class InternshipCrawler {
       // Deliberately stop after collectListing. Expensive detail requests are
       // scheduled only after global dedupe and indexed-state classification;
       // relevance is retained as a priority/diagnostic signal, not a gate.
-      let listing = await this.staticAdapters.collectListing(sourceUrl);
+      let listing = await this.staticAdapters.collectListing(sourceUrl, async (pagesVisited) => {
+        await onProgress?.({ pagesVisited, potentialPostingsInspected: 0, internshipsDiscovered: 0, completed: false });
+      });
       const staticProfile = this.staticAdapters.profile(sourceUrl);
       const needsBrowserListing = listing.listingSnapshots.some((snapshot) =>
         /\b(?:load|show|view)\s+more(?:\s+jobs?|\s+positions?)?|view all jobs?\b/i.test(snapshot.text)
         || (snapshot.links.length === 0 && snapshot.text.trim().length < 180 && /(?:__next|react-root|id=["']app["']|id=["']root["'])/i.test(snapshot.html)),
       );
+      let browserFallbacks = 0;
+      let browserFallbackSuccesses = 0;
       if (needsBrowserListing && staticProfile) {
+        if (isBrowserFallbackSuppressed(persistence?.getSourceHealth?.(sourceUrl))) {
+          return browserFallbackSuppressedResult(sourceUrl);
+        }
+        browserFallbacks = 1;
         const dynamicSnapshot = await this.browser.fetchPage(sourceUrl, robotsDelayMs, sourceUrl);
         const dynamicCandidates = dynamicSnapshot.links.flatMap((link) => {
           const url = safeCanonicalizeUrl(link.url, dynamicSnapshot.url);
@@ -2260,6 +2620,7 @@ export class InternshipCrawler {
           const id = new URL(url).pathname.split("/").filter(Boolean).at(-1)?.replace(/\.(?:html?|php)$/iu, "");
           return [{ url, title: link.text.trim(), snippet: link.text.trim(), sourceUrl, ...(id && /\d{3,}|[A-Za-z]{2,}[\w-]*\d/.test(id) ? { externalJobId: id } : {}) }];
         });
+        browserFallbackSuccesses = dynamicCandidates.length > 0 ? 1 : 0;
         listing = {
           ...listing,
           listingSnapshots: [...listing.listingSnapshots, dynamicSnapshot],
@@ -2325,7 +2686,15 @@ export class InternshipCrawler {
         if (!requiresOriginalPost && (decision?.disposition === "unchanged" && decision.validatorsMatch || recentRecord)) {
           const record = decision?.record;
           if (record?.internship) {
-            const cachedJob: AnalyzedJob = { internship: { ...record.internship, lifecycleStatus: "UNCHANGED" }, contentHash: record.contentHash, cacheMetadata: { etag: record.etag, lastModified: record.lastModified, canonicalUrl: record.canonicalUrl, externalJobId: record.externalJobId, providerIdentity: record.providerIdentity } };
+            const cachedJob: AnalyzedJob = {
+              internship: {
+                ...record.internship,
+                lifecycleStatus: "UNCHANGED",
+                ...(isEarlyCareerRadarSource(sourceUrl) ? { availabilityStatus: "unknown" as const } : {}),
+              },
+              contentHash: record.contentHash,
+              cacheMetadata: { etag: record.etag, lastModified: record.lastModified, canonicalUrl: record.canonicalUrl, externalJobId: record.externalJobId, providerIdentity: record.providerIdentity },
+            };
             jobs.push(cachedJob);
             cachedUnchangedJobs.push(cachedJob);
           }
@@ -2342,17 +2711,21 @@ export class InternshipCrawler {
         selectedStates.set(item.candidate.url, disposition);
         selected.push(item.candidate);
       }
-      const details = await this.staticAdapters.fetchDetails(sourceUrl, selected);
-      const allSnapshots = details.snapshots;
-      for (const snapshot of allSnapshots) {
+      const processedSnapshots = new Set<PageSnapshot>();
+      const processDetailSnapshot = async (snapshot: PageSnapshot): Promise<void> => {
+        this.throwIfCancelled(persistence);
+        processedSnapshots.add(snapshot);
         try {
           const closure = detectClosedPage(snapshot.text, snapshot.status, snapshot.url, false, snapshot.html);
           if (closure) {
             closedSnapshotObservations.push({ url: snapshot.url, reason: closure, statusCode: snapshot.status });
-            continue;
+            return;
           }
-          if (snapshot.status < 200 || snapshot.status >= 400) continue;
+          if (snapshot.status < 200 || snapshot.status >= 400) return;
           const rawJobs = await this.extractJobsWithFallback(snapshot, sourceUrl, persistence);
+          if (staticProfile?.name === "ApplyBolt" && rawJobs.length === 0) {
+            failures.push({ sourceUrl, url: snapshot.url, errorType: "parse_error", message: "ApplyBolt detail contained no complete job record; prior records were retained.", statusCode: snapshot.status, retryCount: 0, occurredAt: new Date().toISOString() });
+          }
           potentialPostingsInspected += rawJobs.length;
           for (const rawJob of rawJobs) {
             const knownJobrightDestination = this.cachedJobrightDestination(
@@ -2365,7 +2738,7 @@ export class InternshipCrawler {
             const resolver = this.resolverForRawJob(
               rawJob,
               sourceUrl,
-            isEarlyCareerRadarSource(sourceUrl)
+            isEarlyCareerRadarSource(sourceUrl) || (staticProfile?.name === "ApplyBolt" && rawJob.applicationUrl && !isAggregatorUrl(rawJob.applicationUrl) && hasDirectApplicationUrl(sourceUrl, rawJob.applicationUrl))
               ? async (url: string) => url
               : (url: string) => this.resolveApplicationUrlHttp(url),
             knownJobrightDestination,
@@ -2376,6 +2749,7 @@ export class InternshipCrawler {
               const enriched: AnalyzedJob = { ...analyzed.value };
               if (snapshot.cacheMetadata) enriched.cacheMetadata = snapshot.cacheMetadata;
               jobs.push(enriched);
+              await this.publishReadyJobs([enriched], persistence);
               this.logger.info("JOB", `${analyzed.value.internship.company} — ${analyzed.value.internship.title}`);
               const selectedIdentity = selected.find(({ url }) => url === snapshot.requestedUrl || url === snapshot.url)?.url;
               const disposition = selectedIdentity ? selectedStates.get(selectedIdentity) : undefined;
@@ -2383,8 +2757,23 @@ export class InternshipCrawler {
             }
           }
         } catch (error) {
+          this.propagateIfAbort(error, persistence);
           failures.push({ sourceUrl, url: snapshot.url, errorType: "parse_error", message: error instanceof Error ? error.message : String(error), statusCode: snapshot.status, retryCount: 0, occurredAt: new Date().toISOString() });
         }
+        await onProgress?.({
+          pagesVisited: listing.listingSnapshots.length + processedSnapshots.size,
+          potentialPostingsInspected,
+          internshipsDiscovered: jobs.length,
+          completed: false,
+          detailPagesFetched: processedSnapshots.size,
+        });
+      };
+      // Analyze and publish each response while sibling detail requests are still in flight.
+      const details = await this.staticAdapters.fetchDetails(sourceUrl, selected, processDetailSnapshot);
+      this.throwIfCancelled(persistence);
+      const allSnapshots = details.snapshots;
+      for (const snapshot of allSnapshots) {
+        if (!processedSnapshots.has(snapshot)) await processDetailSnapshot(snapshot);
       }
       // A detail URL returning 404 is an explicit posting-closure signal, not
       // a source failure. Treating every stale listing link as a failed page
@@ -2433,9 +2822,13 @@ export class InternshipCrawler {
       const authenticationRequired = profile?.name === "InternInsider" && deduplicatedJobs.length > 0 && deduplicatedJobs.every(({ internship }) => {
         try { return sameSite(sourceUrl, internship.applicationUrl) && /\/apply(?:\/|$)/i.test(new URL(internship.applicationUrl).pathname); } catch { return false; }
       });
-      const status = authenticationRequired ? "authentication_required" : sourceStatus(listing.listingSnapshots.length > 0, deduplicatedJobs.length, failures);
+      const parsedStatus = sourceStatus(listing.listingSnapshots.length > 0, deduplicatedJobs.length, failures);
+      const status = authenticationRequired ? "authentication_required"
+        : listing.coverageComplete === false && parsedStatus === "success" ? "partial" : parsedStatus;
       const metrics: CrawlMetrics = {
         ...metricDelta(this.http.metrics, httpMetricsStart),
+        browserFallbacks,
+        browserFallbackSuccesses,
         cacheHits: cacheHits + metricDelta(this.http.metrics, httpMetricsStart).cacheHits,
         unchangedSkips,
         detailPagesFetched: details.snapshots.filter((snapshot) => !snapshot.fromCache).length,
@@ -2463,12 +2856,13 @@ export class InternshipCrawler {
         failures,
         closedPages,
         completed: listing.listingSnapshots.length > 0,
-        coverageComplete: status === "success",
+        coverageComplete: status === "success" && listing.coverageComplete !== false,
         status,
         retrievalMethod: listing.retrievalMethod,
         attempts: listing.attempts + details.attempts,
         httpStatus: details.httpStatus ?? listing.httpStatus,
-        directApplicationLinks: deduplicatedJobs.filter(({ internship }) => hasDirectApplicationUrl(sourceUrl, internship.applicationUrl)).length,
+        directApplicationLinks: deduplicatedJobs.filter(({ internship }) => hasDirectApplicationUrl(sourceUrl, internship.applicationUrl)
+          && (profile?.name !== "ApplyBolt" || !isAggregatorUrl(internship.applicationUrl))).length,
         retrievalMode: "configured_url",
         retrievalUrls: uniqueUrls([...listing.retrievalUrls, ...details.retrievalUrls]),
         ...(listing.notes.length > 0 || closedPages.length > 0 || authenticationRequired
@@ -2507,6 +2901,7 @@ export class InternshipCrawler {
               const enriched: AnalyzedJob = { ...analyzed.value };
               if (snapshot.cacheMetadata) enriched.cacheMetadata = snapshot.cacheMetadata;
               jobs.push(enriched);
+              await this.publishReadyJobs([enriched], persistence);
             }
           }
           const deduplicatedJobs = this.deduplicateJobsWithProfile(jobs, sourceUrl);

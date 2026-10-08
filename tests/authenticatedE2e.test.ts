@@ -29,6 +29,8 @@ interface PreferenceResponse extends ErrorResponse {
 
 interface MatchItem {
   id: string;
+  company: string;
+  matchScore: number;
   eligibility?: unknown;
   eligibilityStatus: string;
   eligibilityVersion: string;
@@ -281,6 +283,16 @@ describe("authenticated onboarding and matches harness", () => {
     }
     const repeatedMatches = payload<RolesResponse>(await harness.request("/api/roles?view=matches&tab=main&sort=relevance&limit=10"));
     expect(repeatedMatches.items.map((item) => item.id)).toEqual(matchPayload.items.map((item) => item.id));
+
+    const companySorted = payload<RolesResponse>(await harness.request("/api/roles?view=matches&tab=main&sort=company&limit=10"));
+    expect(companySorted.items.map((item) => item.company)).toEqual(
+      companySorted.items.map((item) => item.company).toSorted((left, right) => left.localeCompare(right)),
+    );
+
+    const byScore = payload<RolesResponse>(await harness.request("/api/roles?view=matches&tab=main&sort=relevance&limit=10"));
+    expect(byScore.items.map((item) => item.matchScore)).toEqual(
+      byScore.items.map((item) => item.matchScore).toSorted((left, right) => right - left),
+    );
   });
 
   it("keeps a completed profile complete while editing, and exposes the zero-match state", async () => {

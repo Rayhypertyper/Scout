@@ -1,3 +1,60 @@
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
+
+export interface PublicResolvedAddress { address: string; family: 4 | 6 }
+export type PublicHostnameResolver = (hostname: string) => Promise<PublicResolvedAddress[]>;
+export class UnsafeUrlError extends Error {
+  public constructor(message: string) { super(message); this.name = "UnsafeUrlError"; }
+}
+
+export function isAllowedPublicHttpPort(port: number): boolean {
+  return port === 80 || port === 443;
+}
+
+function publicAddress(address: string): boolean {
+  if (isIP(address) === 4) {
+    const [a, b, c] = address.split(".").map(Number) as [number, number, number];
+    return !(a === 0 || a === 10 || a === 127 || a >= 224
+      || (a === 100 && b >= 64 && b <= 127)
+      || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31)
+      || (a === 192 && (b === 168 || b === 0 || (b === 88 && c === 99)))
+      || (a === 198 && (b === 18 || b === 19 || (b === 51 && c === 100)))
+      || (a === 203 && b === 0 && c === 113));
+  }
+  // IPv6 global unicast only. Reject documentation, transition, mapped,
+  // local, multicast, and unspecified ranges rather than tunnelling them.
+  return isIP(address) === 6 && /^[23]/i.test(address)
+    && !/^2001:(?:db8|0|0000)(?::|$)/i.test(address)
+    && !/^2002:/i.test(address);
+}
+
+export function validatePublicResolvedAddresses(addresses: PublicResolvedAddress[]): PublicResolvedAddress[] {
+  if (addresses.length === 0 || addresses.some(({ address, family }) => isIP(address) !== family || !publicAddress(address))) {
+    throw new UnsafeUrlError("URL host must resolve exclusively to public IP addresses");
+  }
+  return addresses;
+}
+
+export function assertSafeHttpUrl(value: string): URL {
+  let url: URL;
+  try { url = new URL(value); } catch { throw new UnsafeUrlError("Invalid HTTP URL"); }
+  const host = url.hostname.replace(/^\[|\]$/g, "").replace(/\.$/, "").toLowerCase();
+  if (!/^https?:$/.test(url.protocol) || url.username || url.password
+    || !isAllowedPublicHttpPort(Number(url.port || (url.protocol === "https:" ? 443 : 80)))
+    || /(?:^|\.)(?:localhost|local|internal)$/.test(host) || !host
+    || (isIP(host) !== 0 && !publicAddress(host))) throw new UnsafeUrlError("URL is not a public HTTP destination");
+  return url;
+}
+
+export async function resolvePublicHostname(hostname: string, resolver?: PublicHostnameResolver): Promise<PublicResolvedAddress[]> {
+  const host = hostname.replace(/^\[|\]$/g, "");
+  const literalFamily = isIP(host);
+  if (literalFamily) return validatePublicResolvedAddresses([{ address: host, family: literalFamily as 4 | 6 }]);
+  const addresses = resolver ? await resolver(host) : (await lookup(host, { all: true, verbatim: true }))
+    .map(({ address, family }) => ({ address, family: family as 4 | 6 }));
+  return validatePublicResolvedAddresses(addresses);
+}
+
 const TRACKING_PARAMETERS = new Set([
   "utm_source",
   "utm_medium",
@@ -79,10 +136,13 @@ const ATS_HOST_PATTERNS = [
 
 const AGGREGATOR_HOST_PATTERNS = [
   /(^|\.)applybolt\.app$/i,
+  /(^|\.)dreamworkhq\.com$/i,
   /(^|\.)hiringcafe\.com$/i,
   /(^|\.)interninsider\.me$/i,
+  /(^|\.)intern-list\.com$/i,
   /(^|\.)jobright\.ai$/i,
   /(^|\.)simplify\.jobs$/i,
+  /(^|\.)useno\.app$/i,
   /(^|\.)wellfound\.com$/i,
 ];
 

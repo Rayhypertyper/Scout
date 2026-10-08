@@ -7,6 +7,18 @@ import { resumeSchema, renderLatex, tailorResume, type Resume, type ResumeRole }
 
 const exec = promisify(execFile);
 let compiling = false;
+const tectonicEnvironmentKeys = ["PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "XDG_CACHE_HOME", "TMPDIR"] as const;
+
+function tectonicEnvironment(): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = {};
+  for (const key of tectonicEnvironmentKeys) {
+    const value = process.env[key];
+    if (value !== undefined) environment[key] = value;
+  }
+  environment.TECTONIC_UNTRUSTED_MODE = "1";
+  return environment;
+}
+
 export class ResumeError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
@@ -30,7 +42,7 @@ export async function compileLatex(source: string): Promise<Buffer> {
     if (!process.env.RESUME_TECTONIC_PATH && await access(local).then(() => true, () => false)) compiler = local;
     await exec(compiler, ["-X", "compile", "--untrusted", "--outdir", directory, join(directory, "resume.tex")], {
       cwd: directory, timeout: 120_000, maxBuffer: 2 * 1024 * 1024,
-      env: { ...process.env, TECTONIC_UNTRUSTED_MODE: "1" },
+      env: tectonicEnvironment(),
     });
     const pdf = await readFile(join(directory, "resume.pdf"));
     if (pdf.subarray(0, 5).toString() !== "%PDF-") throw new Error("Invalid PDF");

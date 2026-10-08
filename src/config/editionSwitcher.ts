@@ -41,7 +41,8 @@ function isLoopbackAddress(address: string | undefined): boolean {
 }
 
 function configuredSiteOrigin(environment: NodeJS.ProcessEnv = process.env): URL | null {
-  const raw = environment.AUTH_SITE_URL?.trim() || "http://127.0.0.1:4173";
+  const raw = environment.AUTH_SITE_URL?.trim();
+  if (!raw) return null;
   try {
     const parsed = new URL(raw);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
@@ -57,6 +58,11 @@ export function isConfiguredOriginRequest(
   request: IncomingMessage,
   environment: NodeJS.ProcessEnv = process.env,
 ): boolean {
+  // Without an explicit site URL, local development can use any loopback
+  // spelling (including IPv6). `canUseEditionSwitcher` separately requires
+  // a loopback peer and Host, while this check still rejects cross-origin
+  // browser writes by comparing Origin with that Host.
+  if (!environment.AUTH_SITE_URL?.trim()) return isSameOriginRequest(request);
   const configured = configuredSiteOrigin(environment);
   if (!configured) return false;
   const host = request.headers.host?.trim();

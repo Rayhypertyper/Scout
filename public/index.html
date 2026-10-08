@@ -9,10 +9,9 @@
     <meta name="theme-color" content="#f2f0e9" />
     <title>Scout</title>
     <link rel="icon" href="/assets/brand/scout-favicon.png" type="image/png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preconnect" href="https://picsum.photos" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" />
+    <link rel="preload" href="/fonts/geist/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="modulepreload" href="/app.js" />
+    <link rel="modulepreload" href="/app/listing-snapshot.js" />
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/redesign.css" />
     <link rel="stylesheet" href="/themed-select.css" />
@@ -201,7 +200,7 @@
                 </div>
                 <div class="dashboard-crawl-status">
                   <span class="status-pill" data-crawl-field="run-status">—</span>
-                  <span class="status-run" data-crawl-field="source-status">Idle</span>
+                  <span class="status-run" data-crawl-field="source-status" hidden></span>
                 </div>
               </div>
               <div class="dashboard-crawl-current" data-crawl-current aria-describedby="dashboard-current-source-detail">
@@ -529,7 +528,7 @@
                 </div>
                 <div class="analytics-status-stack">
                   <span id="run-status" class="status-pill" data-crawl-field="run-status">—</span>
-                  <span id="current-source-status" class="status-run" data-crawl-field="source-status">Idle</span>
+                  <span id="current-source-status" class="status-run" data-crawl-field="source-status" hidden></span>
                 </div>
               </div>
               <div id="crawl-health-body">
@@ -572,7 +571,7 @@
                   <h2 id="recent-runs-heading">Recent Runs</h2>
                   <p>Latest crawler activity and throughput.</p>
                 </div>
-                <button class="text-link" id="view-all-runs" type="button">View all</button>
+                <button class="text-link" id="view-all-runs" type="button" aria-controls="recent-runs" aria-expanded="false">View all</button>
               </div>
               <div id="recent-runs" class="recent-runs"></div>
             </section>
@@ -593,10 +592,10 @@
             <div class="analytics-failures" aria-labelledby="failures-heading">
               <div class="analytics-subheading">
                 <h3 id="failures-heading">Failure details</h3>
-                <span>Latest run</span>
+                <span id="failure-window">Past 24 hours</span>
               </div>
-              <div id="failure-list" class="failure-list"></div>
-              <p id="failure-recovery" class="failure-recovery" hidden>Review the failed source below, then run another crawl. Saved sources remain available for retry.</p>
+              <div id="failure-list" class="failure-list" role="list" aria-labelledby="failures-heading"></div>
+              <p id="failure-recovery" class="failure-recovery" hidden>Review the errors above, then run another crawl to retry the affected sources.</p>
             </div>
           </section>
         </section>

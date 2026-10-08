@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSettings } from "../src/config/settings.js";
+import { RETIRED_JOBRIGHT_LIST_URL } from "../src/config/retiredSources.js";
 import { HttpClient, HttpRequestError, parseRetryAfterHeader, retryDelayMs } from "../src/crawler/http.js";
 import { runWithSourceAbortSignal } from "../src/domain/cancellation.js";
 import { Logger } from "../src/utils/logger.js";
@@ -29,6 +30,37 @@ function client(overrides: Record<string, unknown> = {}): HttpClient {
 }
 
 describe("shared HTTP retry and circuit policy", () => {
+  it("rejects retired feed GET and POST variants before robots, cache, or network", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    const policy = vi.fn().mockResolvedValue({ allowed: true, crawlDelayMs: null });
+    const http = client();
+    http.attachRobotsPolicy(policy);
+    for (const url of [RETIRED_JOBRIGHT_LIST_URL, `${RETIRED_JOBRIGHT_LIST_URL}?count=50&position=0`, `${RETIRED_JOBRIGHT_LIST_URL}/obsolete`]) {
+      await expect(http.get(url)).rejects.toMatchObject({ errorType: "source_retired", attempts: 0 });
+      await expect(http.postJson(url, { category: "intern:us:swe" })).rejects.toMatchObject({ errorType: "source_retired", attempts: 0 });
+    }
+    expect(policy).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows Intern List HTML and public SSR tab pages through the ordinary robots policy", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response("<html>Internships</html>", { status: 200, headers: { "content-type": "text/html" } }));
+    const policy = vi.fn().mockResolvedValue({ allowed: true, crawlDelayMs: null });
+    const http = client();
+    http.attachRobotsPolicy(policy);
+    for (const url of ["https://www.intern-list.com/?k=swe", "https://jobright.ai/minisites-jobs/intern/ca/swe?embed=true"]) {
+      expect((await http.get(url)).status).toBe(200);
+    }
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(policy).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks a redirect to the retired feed without retrying or contacting it", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 302, headers: { location: `${RETIRED_JOBRIGHT_LIST_URL}?count=50` } }));
+    await expect(client().get("https://public.example/old-feed")).rejects.toMatchObject({ errorType: "source_retired" });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("parses Retry-After and applies exponential jitter without reducing the server delay", () => {
     expect(parseRetryAfterHeader("2")).toBe(2_000);
     expect(parseRetryAfterHeader("not-a-date")).toBeNull();
@@ -172,6 +204,111 @@ describe("shared HTTP retry and circuit policy", () => {
     expect(await requests[1]?.text()).toContain('"position":50');
   });
 
+  it("keeps the default response truncation at 12 MB when no override is provided", async () => {
+    const body = "x".repeat(12_000_123);
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => (
+      new Response(body, { status: 200, headers: { "content-type": "text/plain" } })
+    ));
+    const http = client({ retryCount: 0 });
+
+    const response = await http.get("https://large.example/jobs", { cache: false });
+
+    expect(response.body).toHaveLength(12_000_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a complete POST body above 12 MB without making it disk-cache eligible", async () => {
+    const json = `{"data":"${"x".repeat(12_000_010)}"}`;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => (
+      new Response(json, { status: 200, headers: { "content-type": "application/json" } })
+    ));
+    const http = client({ retryCount: 0 });
+    const options = { maxResponseBodyBytes: 13_000_000 };
+
+    const first = await http.postJson("https://api.example/large-feed", { category: "large" }, options);
+    const second = await http.postJson("https://api.example/large-feed", { category: "large" }, options);
+
+    expect(first.body).toBe(json);
+    const parsed = JSON.parse(first.body) as { data: string };
+    expect(parsed.data).toHaveLength(12_000_010);
+    expect(second.body).toBe(json);
+    expect(second.fromCache).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("counts opt-in response limits in bytes and cancels an oversized stream", async () => {
+    const encoder = new TextEncoder();
+    let cancelled = false;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode("é".repeat(51)));
+        },
+        cancel() {
+          cancelled = true;
+        },
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    ));
+    const http = client({ retryCount: 0 });
+
+    await expect(http.postJson("https://api.example/oversized", {}, {
+      cache: false,
+      maxResponseBodyBytes: 101,
+    })).rejects.toMatchObject({
+      statusCode: 200,
+      errorType: "response_too_large",
+      attempts: 0,
+    });
+
+    expect(cancelled).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("hard-clamps opt-in limits to 48 MB and rejects non-finite limits before fetching", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(null, { status: 200, headers: { "content-length": "48000001" } }),
+    );
+    const http = client({ retryCount: 0 });
+
+    await expect(http.postJson("https://api.example/clamped", {}, {
+      cache: false,
+      maxResponseBodyBytes: 90_000_000,
+    })).rejects.toMatchObject({
+      errorType: "response_too_large",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    await expect(http.postJson("https://api.example/invalid", {}, {
+      cache: false,
+      maxResponseBodyBytes: Number.NaN,
+    })).rejects.toThrow("maxResponseBodyBytes must be a finite number");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps default and opt-in response-limit POST cache entries separate", async () => {
+    let responseNumber = 0;
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      responseNumber += 1;
+      return new Response(JSON.stringify({ responseNumber }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const http = client({ retryCount: 0 });
+    const first = await http.postJson("https://api.example/cache-limit", { category: "same" }, {
+      maxResponseBodyBytes: 100,
+    });
+    const second = await http.postJson("https://api.example/cache-limit", { category: "same" });
+
+    const firstPayload = JSON.parse(first.body) as { responseNumber: number };
+    const secondPayload = JSON.parse(second.body) as { responseNumber: number };
+    expect(firstPayload.responseNumber).toBe(1);
+    expect(secondPayload.responseNumber).toBe(2);
+    expect(second.fromCache).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("does not share an in-flight request across independently timed source attempts", async () => {
     let calls = 0;
     let firstStarted: (() => void) | undefined;
@@ -223,5 +360,91 @@ describe("shared HTTP retry and circuit policy", () => {
       "https://canonical.example/jobs",
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects an opt-in redirect outside its allowed origins before contacting the target", async () => {
+    const requests: string[] = [];
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      requests.push(url);
+      return new Response(null, { status: 302, headers: { location: "https://ats.example/apply" } });
+    });
+    const http = client({ retryCount: 0 });
+
+    await expect(http.get("https://earlycareerradar.com/api/jobs", {
+      cache: false,
+      respectRobots: false,
+      allowedRedirectOrigins: ["https://earlycareerradar.com"],
+    })).rejects.toMatchObject({ errorType: "redirect_error" });
+
+    expect(requests).toEqual(["https://earlycareerradar.com/api/jobs"]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows redirects within the explicitly permitted first-party origin", async () => {
+    const requests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      requests.push(url);
+      if (requests.length === 1) return new Response(null, { status: 301, headers: { location: "/jobs" } });
+      return new Response("first-party response", { status: 200 });
+    });
+    const http = client({ retryCount: 0 });
+
+    const response = await http.get("https://earlycareerradar.com/api/jobs", {
+      cache: false,
+      respectRobots: false,
+      allowedRedirectOrigins: ["https://earlycareerradar.com/"],
+    });
+
+    expect(response.body).toBe("first-party response");
+    expect(requests).toEqual(["https://earlycareerradar.com/api/jobs", "https://earlycareerradar.com/jobs"]);
+  });
+
+  it("isolates constrained redirects from unconstrained in-flight and cached responses", async () => {
+    const sourceUrl = "https://earlycareerradar.com/api/jobs";
+    const outsideUrl = "https://ats.example/jobs";
+    let sourceRequests = 0;
+    let startFirstRequest: (() => void) | undefined;
+    let releaseFirstResponse: ((response: Response) => void) | undefined;
+    const firstRequestStarted = new Promise<void>((resolve) => { startFirstRequest = resolve; });
+    const firstResponse = new Promise<Response>((resolve) => { releaseFirstResponse = resolve; });
+    const requests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      requests.push(url);
+      if (url === sourceUrl) {
+        sourceRequests += 1;
+        if (sourceRequests === 1) {
+          startFirstRequest?.();
+          return firstResponse;
+        }
+        return new Response("constrained first-party response", { status: 200 });
+      }
+      if (url === outsideUrl) return new Response("unconstrained response", { status: 200 });
+      throw new Error(`Unexpected request ${url}`);
+    });
+    const http = client({ cacheTtlMs: 60_000, retryCount: 0 });
+
+    const unconstrained = http.get(sourceUrl, { cache: true, respectRobots: false });
+    await firstRequestStarted;
+    const constrained = http.get(sourceUrl, {
+      cache: true,
+      respectRobots: false,
+      allowedRedirectOrigins: ["https://earlycareerradar.com"],
+    });
+    releaseFirstResponse?.(new Response(null, { status: 302, headers: { location: outsideUrl } }));
+
+    await expect(unconstrained).resolves.toMatchObject({ body: "unconstrained response" });
+    await expect(constrained).resolves.toMatchObject({ body: "constrained first-party response" });
+    expect(sourceRequests).toBe(2);
+    expect(requests.filter((url) => url === outsideUrl)).toHaveLength(1);
+
+    await expect(http.get(sourceUrl, {
+      cache: true,
+      respectRobots: false,
+      allowedRedirectOrigins: ["https://earlycareerradar.com"],
+    })).resolves.toMatchObject({ body: "constrained first-party response", fromCache: true });
+    expect(sourceRequests).toBe(2);
   });
 });

@@ -15,6 +15,7 @@ import { isListingContentAllowed } from "./output/eligibility.js";
 import { isAllowedPostingLocation } from "./parsing/locations.js";
 import { uniqueStrings } from "./utils/text.js";
 import { canonicalizeUrl, isAggregatorUrl, redactSensitiveUrl } from "./utils/url.js";
+import { DEFAULT_SCOUT_EDITION_CONFIG, resolveScoutEditionConfig, type ScoutEditionConfig } from "./config/edition.js";
 
 interface CrawlRunRow {
   id: number;
@@ -155,6 +156,20 @@ export async function readFinalReportVerifiedLinkedInUrls(outputDirectory: strin
   return readVerifiedLinkedInUrls(join(outputDirectory, "link-verification.json"));
 }
 
+export function filterFinalReportInternships(
+  internships: readonly Internship[],
+  verifiedLinkedInUrls: ReadonlySet<string> | null,
+  edition: ScoutEditionConfig = DEFAULT_SCOUT_EDITION_CONFIG,
+): Internship[] {
+  const minimumScore = edition.edition === "personal" ? MIN_LISTING_SCORE : edition.canonicalAdmission.minimumRelevanceScore;
+  return internships.filter((internship) => internship.availabilityStatus === "open")
+    .filter((internship) => internship.relevanceScore >= minimumScore)
+    .filter(isListingContentAllowed)
+    .filter((internship) => hasVerifiedLinkedInDestinations(internship, verifiedLinkedInUrls))
+    .filter((internship) => edition.edition === "public"
+      || isAllowedPostingLocation(internship.normalizedLocations, internship.remoteStatus));
+}
+
 function sourceOutcome(row: SourceResultRow): "successful" | "partial" | "failed" {
   if (row.completed === 0) return "failed";
   return row.failure_count > 0 ? "partial" : "successful";
@@ -215,16 +230,15 @@ async function main(): Promise<void> {
     const openRows = database.prepare(`
       SELECT payload_json FROM internships
       WHERE availability_status = 'open'
-        AND CAST(json_extract(payload_json, '$.relevanceScore') AS INTEGER) >= @minimumScore
       ORDER BY CAST(json_extract(payload_json, '$.relevanceScore') AS INTEGER) DESC,
                COALESCE(json_extract(payload_json, '$.postingDate'), '') DESC,
                company COLLATE NOCASE, title COLLATE NOCASE
-    `).all({ minimumScore: MIN_LISTING_SCORE }) as unknown as Array<{ payload_json: string }>;
-    const openInternships = openRows
-      .map(({ payload_json: payload }) => InternshipSchema.parse(JSON.parse(payload)))
-      .filter(isListingContentAllowed)
-      .filter((internship) => hasVerifiedLinkedInDestinations(internship, verifiedLinkedInUrls))
-      .filter(({ normalizedLocations, remoteStatus }) => isAllowedPostingLocation(normalizedLocations, remoteStatus));
+    `).all() as unknown as Array<{ payload_json: string }>;
+    const openInternships = filterFinalReportInternships(
+      openRows.map(({ payload_json: payload }) => InternshipSchema.parse(JSON.parse(payload))),
+      verifiedLinkedInUrls,
+      resolveScoutEditionConfig(),
+    );
     const sessionNew = openInternships.filter(({ discoveredAt }) => discoveredAt >= sessionStartRun.started_at);
     const durationColumn = hasDatabaseColumn(database, "source_run_results", "duration_ms")
       ? "sr.duration_ms"

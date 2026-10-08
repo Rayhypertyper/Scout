@@ -22,7 +22,8 @@ function pngDimensions(path: string): { width: number; height: number } {
 }
 
 function fontFaceKeys(css: string): string[] {
-  return [...css.matchAll(/@font-face\s*\{([\s\S]*?)\}/g)].map(([, block]) => {
+  return [...css.matchAll(/@font-face\s*\{([\s\S]*?)\}/g)].map(([, rawBlock]) => {
+    const block = rawBlock ?? "";
     const family = block.match(/font-family:\s*"([^"]+)"/)?.[1] ?? "";
     const weight = block.match(/font-weight:\s*(\d+);/)?.[1] ?? "";
     const file = block.match(/url\("([^"]+)"\)/)?.[1] ?? "";
@@ -211,7 +212,7 @@ describe("Scout frontend asset loading", () => {
       ["/assets/brand/scout-logo-2x.png", "image/png"],
       ["/assets/brand/scout-icon-2x.png", "image/png"],
       ["/assets/brand/scout-favicon-2x.png", "image/png"],
-    ]) {
+    ] as const) {
       const captured = response();
       await serveStatic(
         { method: "GET", url: path, headers: {} } as never,

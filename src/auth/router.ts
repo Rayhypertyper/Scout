@@ -22,8 +22,9 @@ import {
   writeAuthResponse,
 } from "./http.js";
 import { createSupabaseAuthGateway } from "./provider.js";
-import { consumeAuthRateLimit } from "./rateLimit.js";
+import { consumeAuthRateLimitDimensions } from "./rateLimit.js";
 import type {
+  AuthCodeExchangeUser,
   AuthConfig,
   AuthGatewayFactory,
   AuthRequestContext,
@@ -168,20 +169,18 @@ function callbackUrl(config: AuthConfig, next: string): string {
   return callback.toString();
 }
 
-function rateLimit(
+async function rateLimit(
   context: AuthRequestContext,
   action: string,
   identifier: string,
   perIpLimit: number,
   perIdentifierLimit: number,
   windowMs: number,
-): void {
+): Promise<void> {
   const ip = requestIp(context.request, context.config);
-  const ipResult = consumeAuthRateLimit(action, ip, "*", perIpLimit, windowMs);
-  const identifierResult = consumeAuthRateLimit(action, ip, identifier, perIdentifierLimit, windowMs);
-  const retryAfter = Math.max(ipResult.retryAfter, identifierResult.retryAfter);
-  if (!ipResult.allowed || !identifierResult.allowed) {
-    throw new AuthHttpError(429, "RATE_LIMITED", `Too many attempts. Try again in ${retryAfter} seconds.`, { retryAfter });
+  const result = await consumeAuthRateLimitDimensions(action, ip, identifier, perIpLimit, perIdentifierLimit, windowMs);
+  if (!result.allowed) {
+    throw new AuthHttpError(429, "RATE_LIMITED", `Too many attempts. Try again in ${result.retryAfter} seconds.`, { retryAfter: result.retryAfter });
   }
 }
 
@@ -354,36 +353,39 @@ async function handleCallback(request: IncomingMessage, response: ServerResponse
   // Token-hash links carry their flow type explicitly. Never let a signup,
   // invite, or email-confirmation token become a password-recovery grant just
   // because an attacker supplied `next=/reset-password`.
-  const recovery = type === "recovery" || (!requestUrl.searchParams.has("token_hash") && resetDestination);
+  const recoveryErrorPage = type === "recovery" || resetDestination;
   const providerError = requestUrl.searchParams.get("error_code") ?? requestUrl.searchParams.get("error");
   if (providerError) {
-    redirectAuthResponse(response, callbackFailureLocation(providerError === "otp_expired" ? "expired" : "invalid", recovery), context.config, context.responseState);
+    redirectAuthResponse(response, callbackFailureLocation(providerError === "otp_expired" ? "expired" : "invalid", recoveryErrorPage), context.config, context.responseState);
     return;
   }
 
   try {
     const tokenHash = requestUrl.searchParams.get("token_hash");
     const code = requestUrl.searchParams.get("code");
-    let callbackUser: AuthUser;
+    let callbackUser: AuthCodeExchangeUser;
+    let verifiedRecoveryFlow = false;
     if (tokenHash && ALLOWED_EMAIL_TOKEN_TYPES.has(type)) {
       callbackUser = await context.gateway.verifyToken({ tokenHash, type });
+      verifiedRecoveryFlow = type === "recovery";
     } else if (code) {
       const flowId = requestUrl.searchParams.get("sb_flow_id") ?? undefined;
       callbackUser = await context.gateway.exchangeCode({ code, ...(flowId ? { flowId } : {}) });
+      verifiedRecoveryFlow = callbackUser.redirectType === "recovery";
     } else {
       throw new AuthHttpError(400, "LINK_INVALID", "The authentication link is missing required information.");
     }
-    if (recovery) {
+    if (verifiedRecoveryFlow) {
       if (!callbackUser.emailVerified) throw new AuthHttpError(400, "LINK_INVALID", "The password reset link is invalid or has expired.");
-      setRecoveryGrant(context.config, context.responseState);
+      setRecoveryGrant(context.config, context.responseState, callbackUser.id);
     }
-    const destination = recovery ? "/reset-password?ready=1" : next;
+    const destination = verifiedRecoveryFlow ? "/reset-password?ready=1" : next;
     redirectAuthResponse(response, destination, context.config, context.responseState);
   } catch (error) {
     const mapped = providerErrorToHttp(error, "callback");
     redirectAuthResponse(
       response,
-      callbackFailureLocation(mapped.code === "LINK_INVALID" ? "expired" : "invalid", recovery),
+      callbackFailureLocation(mapped.code === "LINK_INVALID" ? "expired" : "invalid", recoveryErrorPage),
       context.config,
       context.responseState,
     );
@@ -433,7 +435,7 @@ async function handleSession(request: IncomingMessage, response: ServerResponse)
       configured: true,
       authenticated: Boolean(user?.emailVerified),
       user: user?.emailVerified ? user : null,
-      recoveryReady: Boolean(user?.emailVerified) && hasRecoveryGrant(request),
+      recoveryReady: Boolean(user?.emailVerified && hasRecoveryGrant(request, context.config, user.id)),
       csrfToken,
     }, context.config, context.responseState, {}, request.method === "HEAD");
   } catch (error) {
@@ -452,7 +454,7 @@ async function handleSession(request: IncomingMessage, response: ServerResponse)
 async function handleSignup(context: AuthRequestContext, body: Record<string, unknown>, response: ServerResponse): Promise<void> {
   const email = normalizedEmail(body);
   const password = confirmedStrongPassword(body);
-  rateLimit(context, "signup", email, 20, 5, 60 * 60_000);
+  await rateLimit(context, "signup", email, 20, 5, 60 * 60_000);
   const next = safePostLoginPath(body.next);
   try {
     const result = await context.gateway.signUp({ email, password, redirectTo: callbackUrl(context.config, next) });
@@ -491,7 +493,7 @@ async function handleSignup(context: AuthRequestContext, body: Record<string, un
 async function handleLogin(context: AuthRequestContext, body: Record<string, unknown>, response: ServerResponse): Promise<void> {
   const email = normalizedEmail(body);
   const password = loginPassword(body);
-  rateLimit(context, "login", email, 50, 10, 10 * 60_000);
+  await rateLimit(context, "login", email, 50, 10, 10 * 60_000);
   try {
     const user = await context.gateway.signIn({ email, password });
     if (!user.emailVerified) {
@@ -512,7 +514,7 @@ async function handleLogin(context: AuthRequestContext, body: Record<string, unk
 
 async function handleResend(context: AuthRequestContext, body: Record<string, unknown>, response: ServerResponse): Promise<void> {
   const email = normalizedEmail(body);
-  rateLimit(context, "resend", email, 12, 3, 15 * 60_000);
+  await rateLimit(context, "resend", email, 12, 3, 15 * 60_000);
   try {
     await context.gateway.resendVerification({ email, redirectTo: callbackUrl(context.config, "/post-login") });
   } catch (error) {
@@ -528,7 +530,7 @@ async function handleResend(context: AuthRequestContext, body: Record<string, un
 
 async function handleForgotPassword(context: AuthRequestContext, body: Record<string, unknown>, response: ServerResponse): Promise<void> {
   const email = normalizedEmail(body);
-  rateLimit(context, "forgot", email, 20, 5, 60 * 60_000);
+  await rateLimit(context, "forgot", email, 20, 5, 60 * 60_000);
   try {
     await context.gateway.requestPasswordReset({
       email,
@@ -545,13 +547,12 @@ async function handleForgotPassword(context: AuthRequestContext, body: Record<st
 }
 
 async function handleResetPassword(context: AuthRequestContext, body: Record<string, unknown>, response: ServerResponse): Promise<void> {
-  if (!hasRecoveryGrant(context.request)) {
+  const user = await currentUser(context, "reset");
+  if (!user?.emailVerified || !hasRecoveryGrant(context.request, context.config, user.id)) {
     throw new AuthHttpError(403, "RESET_LINK_INVALID", "This reset link is invalid or has expired. Request a new one to continue.");
   }
-  const user = await currentUser(context, "reset");
-  if (!user?.emailVerified) throw new AuthHttpError(401, "RESET_LINK_INVALID", "This reset link is invalid or has expired. Request a new one to continue.");
   const password = confirmedStrongPassword(body);
-  rateLimit(context, "reset", user.id, 10, 5, 15 * 60_000);
+  await rateLimit(context, "reset", user.id, 10, 5, 15 * 60_000);
   try {
     await context.gateway.updatePassword(password);
     await context.gateway.signOut("global");
@@ -568,7 +569,7 @@ async function handleResetPassword(context: AuthRequestContext, body: Record<str
 }
 
 async function handleLogout(context: AuthRequestContext, response: ServerResponse): Promise<void> {
-  rateLimit(context, "logout", "session", 30, 30, 10 * 60_000);
+  await rateLimit(context, "logout", "session", 30, 30, 10 * 60_000);
   try {
     await context.gateway.signOut("local");
   } catch (error) {

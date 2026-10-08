@@ -1,4 +1,5 @@
 import { canonicalizeUrl, sameSite } from "../utils/url.js";
+import { hasNotFoundPageContent } from "../verification/pageContent.js";
 
 export interface PublicSourceFallback {
   url: string;
@@ -18,6 +19,18 @@ function earlyCareerRadarHost(value: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** Includes detail/API pages as well as the saved legacy redirect host. */
+export function isEarlyCareerRadarPage(url: string): boolean {
+  return earlyCareerRadarHost(url) !== null;
+}
+
+/** Radar's Next.js not-found screen can be returned with HTTP 200. */
+export function isEarlyCareerRadarNotFoundPage(url: string, status: number | null, text = ""): boolean {
+  return isEarlyCareerRadarPage(url)
+    && (status === 404 || (status !== null && status >= 200 && status < 300
+      && hasNotFoundPageContent(text.replace(/\s+/gu, " "))));
 }
 
 export function isEarlyCareerRadarSource(sourceUrl: string): boolean {

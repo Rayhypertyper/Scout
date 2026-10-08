@@ -36,6 +36,12 @@ export const PROFILE_COUNTERS = [
   "retries",
 ] as const;
 
+const STABLE_COUNTER_ALIASES: Readonly<Record<string, string>> = {
+  urlsDiscovered: "discovered",
+  detailPages: "detailFetched",
+  successfulJobs: "canonicalRolesCreated",
+};
+
 export type ProfileCounter = (typeof PROFILE_COUNTERS)[number] | (string & {});
 
 export type SpanStatus = "ok" | "error" | "cancelled";
@@ -660,6 +666,10 @@ export class Profiler {
     const counters: Record<string, number> = { ...this.counters };
     for (const counter of PROFILE_COUNTERS) counters[counter] ??= 0;
     const durationMs = Math.max(0, finishedAtMs - this.startedAtMs);
+    counters.runtimeMs ??= durationMs;
+    for (const [legacy, stable] of Object.entries(STABLE_COUNTER_ALIASES)) {
+      if (counters[stable] === undefined) counters[stable] = counters[legacy] ?? 0;
+    }
     return {
       startedAtMs: this.startedAtMs,
       finishedAtMs,

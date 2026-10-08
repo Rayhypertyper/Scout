@@ -9,11 +9,16 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { resolveSettings } from "../src/config/settings.js";
 import { InternshipDatabase } from "../src/database/db.js";
+import { QualificationDetailsSchema } from "../src/domain/schemas.js";
 import type { Internship } from "../src/domain/schemas.js";
 import type { CrawlResult, ScoutRunOptions } from "../src/domain/types.js";
+import type { ScoutExecution } from "../src/scout.js";
 import { GrindJobBoardClient } from "../src/integrations/grindJobBoard.js";
-import { analyzed, makeInternship } from "./helpers.js";
+import { analyzed, makeCmpaInternship, makeInternship } from "./helpers.js";
 import { dashboardLocalDayKey, parseDashboardSortDate } from "../src/dashboardSort.js";
+
+import { dashboardAccountHeaders, installDashboardAccountFixture, DASHBOARD_TEST_USER } from "./dashboardAccountFixture.js";
+import { accountActionScope } from "../src/database/accountActions.js";
 
 interface CapturedResponse {
   statusCode: number;
@@ -42,7 +47,7 @@ function request(method: string, url: string, headers: Record<string, string> = 
   return {
     method,
     url,
-    headers,
+    headers: { ...(url.startsWith("/api/") ? dashboardAccountHeaders() : {}), ...headers },
     ...(body === undefined ? {} : {
       async *[Symbol.asyncIterator](): AsyncGenerator<string> {
         yield JSON.stringify(body);
@@ -79,6 +84,7 @@ function crawl(jobs: Internship[], sourceUrl = "https://example.com/careers"): C
 }
 
 describe("dashboard fast API", () => {
+  const originalScoutEdition = process.env.SCOUT_EDITION;
   let requestHandler: typeof import("../src/dashboard.js").requestHandler;
   let setFastSnapshotReadHookForTests: typeof import("../src/dashboard.js").setFastSnapshotReadHookForTests;
   let setFastRunRevisionCaptureHookForTests: typeof import("../src/dashboard.js").setFastRunRevisionCaptureHookForTests;
@@ -94,6 +100,7 @@ describe("dashboard fast API", () => {
   let getVerificationSnapshotInflightSizeForTests: typeof import("../src/dashboard.js").getVerificationSnapshotInflightSizeForTests;
   let clearVerificationSnapshotCacheForTests: typeof import("../src/dashboard.js").clearVerificationSnapshotCacheForTests;
   let setDashboardScoutRunnerForTests: typeof import("../src/dashboard.js").setDashboardScoutRunnerForTests;
+  let setDashboardEditionForTests: typeof import("../src/dashboard.js").setDashboardEditionForTests;
   let setDashboardCrawlLauncherForTests: typeof import("../src/dashboard.js").setDashboardCrawlLauncherForTests;
   let resetDashboardScanStateForTests: typeof import("../src/dashboard.js").resetDashboardScanStateForTests;
   let startDashboardStartupScanForTests: typeof import("../src/dashboard.js").startDashboardStartupScanForTests;
@@ -104,8 +111,14 @@ describe("dashboard fast API", () => {
   let getDashboardRunWatcherStateForTests: typeof import("../src/dashboard.js").getDashboardRunWatcherStateForTests;
   let databasePath = "";
   let directory = "";
+  let restoreAuth: () => void;
 
   beforeAll(async () => {
+    restoreAuth = installDashboardAccountFixture();
+    // These tests exercise the local crawler-administration APIs. Explicitly
+    // use the Personal edition instead of relying on an ambient deployment
+    // default that now safely resolves to Public.
+    process.env.SCOUT_EDITION = "personal";
     directory = mkdtempSync(join(tmpdir(), "internshipmatic-dashboard-fast-"));
     const publicDirectory = join(directory, "public");
     mkdirSync(publicDirectory, { recursive: true });
@@ -122,7 +135,15 @@ describe("dashboard fast API", () => {
     process.env.DASHBOARD_SKIP_STARTUP_SCAN = "1";
     process.env.SCOUT_OUTPUT_DIR = join(directory, "output", "live");
     process.env.GRIND_JOB_BOARD_CACHE_PATH = join(directory, "missing-board-cache.json");
-    ({ requestHandler, setFastSnapshotReadHookForTests, setFastRunRevisionCaptureHookForTests, setFastStartupWatcherBaselineGapHookForTests, setFastStartupWatcherAfterBaselineHookForTests, setFastDashboardIndexBuildHookForTests, closeFastRevisionTrackersForTests, clearFastDashboardCacheForTests, clearDashboardDataCacheForTests, prewarmFastDashboardIndexForTests, setFastPrewarmTimeoutForTests, setFastVerificationReadTimeoutForTests, getVerificationSnapshotInflightSizeForTests, clearVerificationSnapshotCacheForTests, setDashboardScoutRunnerForTests, setDashboardCrawlLauncherForTests, resetDashboardScanStateForTests, startDashboardStartupScanForTests, startDashboardRunWatcherForTests, prepareDashboardRunWatcherForTests, pollDashboardRunWatcherForTests, stopDashboardRunWatcherForTests, getDashboardRunWatcherStateForTests } = await import("../src/dashboard.js"));
+    ({ requestHandler, setFastSnapshotReadHookForTests, setFastRunRevisionCaptureHookForTests, setFastStartupWatcherBaselineGapHookForTests, setFastStartupWatcherAfterBaselineHookForTests, setFastDashboardIndexBuildHookForTests, closeFastRevisionTrackersForTests, clearFastDashboardCacheForTests, clearDashboardDataCacheForTests, prewarmFastDashboardIndexForTests, setFastPrewarmTimeoutForTests, setFastVerificationReadTimeoutForTests, getVerificationSnapshotInflightSizeForTests, clearVerificationSnapshotCacheForTests, setDashboardScoutRunnerForTests, setDashboardEditionForTests, setDashboardCrawlLauncherForTests, resetDashboardScanStateForTests, startDashboardStartupScanForTests, startDashboardRunWatcherForTests, prepareDashboardRunWatcherForTests, pollDashboardRunWatcherForTests, stopDashboardRunWatcherForTests, getDashboardRunWatcherStateForTests } = await import("../src/dashboard.js"));
+    const scoped = <Args extends unknown[], Result>(callback: (...args: Args) => Result) =>
+      (...args: Args): Result => accountActionScope.run({ userId: DASHBOARD_TEST_USER }, () => callback(...args));
+    prewarmFastDashboardIndexForTests = scoped(prewarmFastDashboardIndexForTests);
+    startDashboardStartupScanForTests = scoped(startDashboardStartupScanForTests);
+    startDashboardRunWatcherForTests = scoped(startDashboardRunWatcherForTests);
+    prepareDashboardRunWatcherForTests = scoped(prepareDashboardRunWatcherForTests);
+    pollDashboardRunWatcherForTests = scoped(pollDashboardRunWatcherForTests);
+
 
     databasePath = join(directory, "dashboard.db");
     const settings = resolveSettings({ databasePath, outputDirectory: join(directory, "output") });
@@ -173,6 +194,7 @@ describe("dashboard fast API", () => {
   }
 
   afterAll(() => {
+    restoreAuth();
     setFastSnapshotReadHookForTests(null);
     setFastRunRevisionCaptureHookForTests(null);
     setFastStartupWatcherBaselineGapHookForTests(null);
@@ -190,6 +212,51 @@ describe("dashboard fast API", () => {
     delete process.env.DASHBOARD_SKIP_STARTUP_SCAN;
     delete process.env.SCOUT_OUTPUT_DIR;
     delete process.env.GRIND_JOB_BOARD_CACHE_PATH;
+    if (originalScoutEdition === undefined) delete process.env.SCOUT_EDITION;
+    else process.env.SCOUT_EDITION = originalScoutEdition;
+  });
+
+  it("publishes ready jobs during a running source and separates card revisions from heartbeats", async () => {
+    const path = join(directory, "ready-jobs.db");
+    const source = "https://example.com/careers";
+    const settings = resolveSettings({ databasePath: path, outputDirectory: join(directory, "ready-output") });
+    const options: ScoutRunOptions = { sources: [source], settings, filters: { categories: [], newOnly: false, minScore: 60 } };
+    const database = new InternshipDatabase(path);
+    const readChanges = async () => {
+      const captured = response();
+      await requestHandler(request("GET", "/api/changes") as never, captured as never, path);
+      expect(captured.statusCode).toBe(200);
+      return JSON.parse(captured.body.toString("utf8")) as { version: string; contentVersion: string; scan: { active: boolean } };
+    };
+    try {
+      const first = makeInternship({ id: "already-visible", jobId: "READY-1" });
+      database.persistRun(database.startRun(options), crawl([first]), 2);
+      const runId = database.startRun(options);
+      database.recordSourceStart(runId, source, new Date().toISOString());
+      await readRoleList("/api/roles?view=all&tab=canada&season=all", path);
+      const before = await readChanges();
+      database.updateRunProgress(runId, { sourcesSettled: 0, sourcesCompleted: 0, pagesVisited: 1, potentialPostingsInspected: 1, internshipsDiscovered: 0 });
+      const heartbeat = await readChanges();
+      expect(heartbeat.version).not.toBe(before.version);
+      expect(heartbeat.contentVersion).toBe(before.contentVersion);
+      const now = new Date().toISOString();
+      database.persistReadyJobs(runId, [analyzed(makeInternship({
+        id: "newly-ready", jobId: "READY-2", company: "Fresh Labs",
+        applicationUrl: "https://jobs.example.com/ready/2/apply", postingUrl: "https://jobs.example.com/ready/2",
+        discoveredAt: now, lastVerifiedAt: now, deadline: null, salary: null,
+      }))]);
+      const after = await readChanges();
+      expect(after.contentVersion).not.toBe(before.contentVersion);
+      expect(after.scan.active).toBe(true);
+      const listed = await waitForRoleList("/api/roles?view=all&tab=canada&season=all", (payload) => payload.items.some(({ id }) => id === "newly-ready"), path);
+      expect(listed.payload.items.some(({ id }) => id === "newly-ready")).toBe(true);
+      const payload = JSON.parse(listed.response.body.toString("utf8")) as { contentVersion: string };
+      expect(payload.contentVersion).toBe(after.contentVersion);
+      const raw = new DatabaseSync(path, { readOnly: true });
+      try { expect(raw.prepare("SELECT settled FROM source_run_results WHERE run_id = ?").get(runId)).toMatchObject({ settled: 0 }); }
+      finally { raw.close(); }
+      database.markRunCancelled(runId);
+    } finally { database.close(); }
   });
 
   it("serves the landing page at root and preserves the listings application at /jobs", async () => {
@@ -262,7 +329,7 @@ describe("dashboard fast API", () => {
 
     const stored = new DatabaseSync(databasePath, { readOnly: true });
     try {
-      expect(stored.prepare("SELECT application_stage, application_status FROM listing_actions WHERE listing_key = 'internship:summer-2'").get()).toEqual({
+      expect(stored.prepare("SELECT application_stage, application_status FROM user_listing_actions WHERE user_id = 'dashboard-test-user' AND listing_key = 'internship:summer-2'").get()).toEqual({
         application_stage: "interview",
         application_status: "pending",
       });
@@ -568,6 +635,73 @@ describe("dashboard fast API", () => {
     );
   });
 
+  it("returns every individual error in the past 24 hours across runs and expires them on polling", async () => {
+    clearFastDashboardCacheForTests();
+    const now = Date.now();
+    const database = new DatabaseSync(databasePath);
+    const runIds: number[] = [];
+    const failures: Array<{ id: number; run_id: number; url: string; occurred_at: string }> = [];
+    try {
+      const sourceId = Number((database.prepare("SELECT id FROM sources WHERE url = 'https://example.com/careers'").get() as { id: number }).id);
+      for (let index = 0; index < 2; index += 1) {
+        const run = database.prepare(`
+          INSERT INTO crawl_runs (started_at, finished_at, status, options_json)
+          VALUES (@now, @now, 'COMPLETED', '{}')
+        `).run({ now: new Date(now).toISOString() });
+        runIds.push(Number(run.lastInsertRowid));
+      }
+      const insert = database.prepare(`
+        INSERT INTO failed_pages (run_id, source_id, url, error_type, message, status_code, retry_count, occurred_at)
+        VALUES (@runId, @sourceId, @url, 'http_error', 'Not found HTTP 404', 404, 2, @occurredAt)
+      `);
+      for (let index = 0; index < 117; index += 1) {
+        const runId = runIds[index % 2]!;
+        const url = `https://example.com/jobs/${index}`;
+        // Matching messages must stay separate, including matching timestamps.
+        const occurredAt = new Date(index === 116 ? now - 24 * 60 * 60_000 + 60_000 : now - (Math.floor(index / 2) + 1) * 1000).toISOString();
+        const inserted = insert.run({ runId, sourceId: index === 0 ? null : sourceId, url, occurredAt });
+        failures.push({ id: Number(inserted.lastInsertRowid), run_id: runId, url, occurred_at: occurredAt });
+      }
+      insert.run({ runId: runIds[0]!, sourceId, url: 'https://example.com/expired', occurredAt: new Date(now - 25 * 60 * 60_000).toISOString() });
+      const expected = failures.toSorted((left, right) => right.occurred_at.localeCompare(left.occurred_at) || right.id - left.id);
+      const validators = new Map<string, string>();
+      for (const endpoint of ["/api/changes", "/api/roles?tab=summer&limit=1"]) {
+        const captured = response();
+        await requestHandler(request("GET", endpoint) as never, captured as never, databasePath);
+        const payload = JSON.parse(captured.body.toString("utf8")) as { errors24h: number; failures24h: typeof failures };
+        expect(captured.statusCode).toBe(200);
+        expect(payload.errors24h).toBe(117);
+        expect(payload.failures24h).toHaveLength(117);
+        expect(payload.failures24h.map(({ id, run_id, url, occurred_at }) => ({ id, run_id, url, occurred_at }))).toEqual(expected);
+        expect(payload.failures24h.find((failure) => failure.url.endsWith('/0'))).toMatchObject({ source_url: '(unknown)', error_type: 'http_error', message: 'Not found HTTP 404', status_code: 404, retry_count: 2 });
+        validators.set(endpoint, captured.headers.ETag!);
+      }
+      const initial = response();
+      await requestHandler(request("GET", "/api/changes") as never, initial as never, databasePath);
+      const unchanged = response();
+      await requestHandler(request("GET", "/api/changes", { "if-none-match": initial.headers.ETag! }) as never, unchanged as never, databasePath);
+      expect(unchanged.statusCode).toBe(304);
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now + 120_000);
+      try {
+        for (const [endpoint, etag] of validators) {
+          const expired = response();
+          await requestHandler(request("GET", endpoint, { "if-none-match": etag }) as never, expired as never, databasePath);
+          expect(expired.statusCode).toBe(200);
+          const payload = JSON.parse(expired.body.toString("utf8")) as { errors24h: number; failures24h: typeof failures };
+          expect(payload.errors24h).toBe(116);
+          expect(payload.failures24h).toHaveLength(116);
+          expect(payload.failures24h.map((failure) => failure.id)).not.toContain(failures[116]!.id);
+        }
+      } finally {
+        clock.mockRestore();
+      }
+    } finally {
+      for (const runId of runIds) database.prepare("DELETE FROM crawl_runs WHERE id = ?").run(runId);
+      database.close();
+      clearFastDashboardCacheForTests();
+    }
+  });
+
   it("keeps provenance and failures on a failed latest run instead of the last completed crawl", async () => {
     resetDashboardScanStateForTests();
     clearFastDashboardCacheForTests();
@@ -624,6 +758,35 @@ describe("dashboard fast API", () => {
       cleanup.prepare("DELETE FROM crawl_runs WHERE id = @runId").run({ runId });
       cleanup.close();
       resetDashboardScanStateForTests();
+      clearFastDashboardCacheForTests();
+    }
+  });
+
+  it("labels user-terminated runs distinctly in recent crawl history", async () => {
+    clearFastDashboardCacheForTests();
+    const now = new Date().toISOString();
+    const database = new DatabaseSync(databasePath);
+    let runId: number;
+    try {
+      database.prepare(`
+        INSERT INTO crawl_runs (started_at, finished_at, heartbeat_at, status, options_json, sources_requested, sources_settled, error_message)
+        VALUES (@startedAt, @finishedAt, NULL, 'FAILED', '{}', 1, 0, 'Terminated by user.')
+      `).run({ startedAt: now, finishedAt: now });
+      runId = Number((database.prepare("SELECT MAX(id) AS id FROM crawl_runs").get() as { id: number }).id);
+    } finally {
+      database.close();
+    }
+
+    try {
+      const changes = response();
+      await requestHandler(request("GET", "/api/changes") as never, changes as never, databasePath);
+      expect(changes.statusCode).toBe(200);
+      const payload = JSON.parse(changes.body.toString("utf8")) as { runs: Array<{ id: number; status: string }> };
+      expect(payload.runs[0]).toMatchObject({ id: runId, status: "TERMINATED" });
+    } finally {
+      const cleanup = new DatabaseSync(databasePath);
+      cleanup.prepare("DELETE FROM crawl_runs WHERE id = @runId").run({ runId });
+      cleanup.close();
       clearFastDashboardCacheForTests();
     }
   });
@@ -1883,7 +2046,7 @@ describe("dashboard fast API", () => {
     );
     expect(captured.statusCode).toBe(200);
     expect(captured.headers["Content-Encoding"]).toBe("gzip");
-    expect(captured.headers.Vary).toBe("Accept-Encoding");
+    expect(captured.headers.Vary).toBe("Accept-Encoding, Cookie");
     expect(captured.headers["Content-Length"]).toBe(String(captured.body.byteLength));
     expect(JSON.parse(gunzipSync(captured.body).toString("utf8"))).toHaveProperty("items");
   });
@@ -1902,7 +2065,7 @@ describe("dashboard fast API", () => {
     expect(head.statusCode).toBe(200);
     expect(head.body).toHaveLength(0);
     expect(head.headers["Content-Length"]).toBe(String(identity.body.byteLength));
-    expect(head.headers.Vary).toBe("Accept-Encoding");
+    expect(head.headers.Vary).toBe("Accept-Encoding, Cookie");
 
     const wildcard = response();
     await requestHandler(request("GET", "/api/roles?tab=main&status=all&limit=100", {
@@ -1947,7 +2110,7 @@ describe("dashboard fast API", () => {
     expect(unchangedResponse.statusCode).toBe(304);
     expect(unchangedResponse.body).toHaveLength(0);
     expect(unchangedResponse.headers["Content-Length"]).toBeUndefined();
-    expect(unchangedResponse.headers.Vary).toBe("Accept-Encoding");
+    expect(unchangedResponse.headers.Vary).toBe("Accept-Encoding, Cookie");
 
     const listMatchResponse = response();
     await requestHandler(request("GET", "/api/changes", {
@@ -2097,10 +2260,7 @@ describe("dashboard fast API", () => {
 
     const hiddenLegacy = response();
     await requestHandler(request("GET", "/api/data") as never, hiddenLegacy as never, databasePath);
-    const hiddenLegacyPayload = JSON.parse(hiddenLegacy.body.toString("utf8")) as {
-      internships: Array<{ id?: string; listingId?: string }>;
-    };
-    expect(hiddenLegacyPayload.internships.some((item) => (item.listingId ?? item.id) === "summer-1")).toBe(false);
+    expect(hiddenLegacy.statusCode).toBe(410);
 
     const appliedAction = response();
     await requestHandler(request("POST", "/api/actions", {}, {
@@ -2129,6 +2289,51 @@ describe("dashboard fast API", () => {
     expect(changedResponse.statusCode).toBe(200);
     expect(changedPayload.appliedRoleCount).toBe(0);
     expect(changedResponse.headers.ETag).not.toBe(etag);
+  });
+
+  it("deduplicates legacy CMPA source copies before Canada pagination and keeps them hidden after a decision", async () => {
+    const cmpaDatabasePath = join(directory, "cmpa-copies.db");
+    const source = "https://github.com/dreamworkhq/Tech-Internships-2027";
+    const first = makeCmpaInternship();
+    const second = makeCmpaInternship({ id: "cmpa-copy", company: "**Cmpa/Acpm**", jobId: "7e531699-916d-480c-b208-b824dab0c658" });
+    const settings = resolveSettings({ databasePath: cmpaDatabasePath, outputDirectory: join(directory, "output") });
+    const options: ScoutRunOptions = { sources: [source], settings, filters: { categories: [], newOnly: false, minScore: 60 } };
+    const database = new InternshipDatabase(cmpaDatabasePath);
+    database.persistRun(database.startRun(options), crawl([first, { ...second, company: "Separate Employer" }], source), 2);
+    database.close();
+    // Simulate records already saved before alias/aggregator normalization.
+    const legacy = new DatabaseSync(cmpaDatabasePath);
+    legacy.prepare("UPDATE internships SET company = @company, normalized_company = 'cmpa acpm', payload_json = @payload WHERE id = @id")
+      .run({ id: second.id, company: second.company, payload: JSON.stringify(second) });
+    legacy.prepare("UPDATE internships SET normalized_company = 'carrieres cmpa acpm' WHERE id = @id").run({ id: first.id });
+    legacy.close();
+
+    try {
+      const page = await readRoleList("/api/roles?view=all&tab=canada&status=open&limit=1", cmpaDatabasePath);
+      expect(page.response.statusCode).toBe(200);
+      expect(page.payload.items).toHaveLength(1);
+      const counts = page.payload as unknown as { pagination: { total: number; hasMore: boolean }; counts: { canada: number } };
+      expect(counts.pagination).toMatchObject({ total: 1, hasMore: false });
+      expect(counts.counts.canada).toBe(1);
+      const next = await readRoleList("/api/roles?view=all&tab=canada&status=open&limit=1&offset=1", cmpaDatabasePath);
+      expect(next.payload.items).toHaveLength(0);
+
+      const full = response();
+      await requestHandler(request("GET", "/api/data") as never, full as never, cmpaDatabasePath);
+      expect(full.statusCode).toBe(410);
+
+      const selected = page.payload.items[0]!;
+      const action = response();
+      await requestHandler(request("POST", "/api/actions", {}, {
+        listingType: "internship", listingId: selected.id, action: "cant_fit", company: selected.company, title: first.title,
+      }) as never, action as never, cmpaDatabasePath);
+      expect(action.statusCode).toBe(200);
+      const hidden = await readRoleList("/api/roles?view=all&tab=canada&status=open&limit=100", cmpaDatabasePath);
+      expect(hidden.payload.items).toHaveLength(0);
+    } finally {
+      clearFastDashboardCacheForTests();
+      clearDashboardDataCacheForTests();
+    }
   });
 
   it("keeps a handled role hidden when a source copy has a new listing id", async () => {
@@ -2172,10 +2377,10 @@ describe("dashboard fast API", () => {
     // the action row instead of treating an empty projection as the only
     // migration signal.
     const projection = new DatabaseSync(aliasDatabasePath);
-    projection.prepare("DELETE FROM listing_action_identities WHERE listing_key = @listingKey").run({ listingKey: "grind:handled-board-copy" });
+    projection.prepare("DELETE FROM user_listing_action_identities WHERE user_id = 'dashboard-test-user' AND listing_key = @listingKey").run({ listingKey: "grind:handled-board-copy" });
     projection.prepare(`
-      INSERT INTO listing_action_identities (listing_key, identity_key, direct_job_ids_json)
-      VALUES ('grind:unrelated', 'listing:grind:unrelated', '[]')
+      INSERT INTO user_listing_action_identities (user_id, listing_key, identity_key, direct_job_ids_json)
+      VALUES ('dashboard-test-user', 'grind:unrelated', 'listing:grind:unrelated', '[]')
     `).run();
     projection.close();
 
@@ -2191,10 +2396,7 @@ describe("dashboard fast API", () => {
 
       const legacy = response();
       await requestHandler(request("GET", "/api/data") as never, legacy as never, aliasDatabasePath);
-      const legacyPayload = JSON.parse(legacy.body.toString("utf8")) as {
-        internships: Array<{ listingId?: string; id?: string }>;
-      };
-      expect(legacyPayload.internships.some((item) => (item.listingId ?? item.id) === "source-copy")).toBe(false);
+      expect(legacy.statusCode).toBe(410);
     } finally {
       clearFastDashboardCacheForTests();
       clearDashboardDataCacheForTests();
@@ -2219,7 +2421,7 @@ describe("dashboard fast API", () => {
       sources: [sourceUrl],
       applicationUrl: jobrightUrl,
       postingUrl: jobrightUrl,
-      qualificationDetails: { applicationUrl: jobrightUrl },
+      qualificationDetails: QualificationDetailsSchema.parse({ applicationUrl: jobrightUrl }),
     });
     const database = new InternshipDatabase(jobrightDatabasePath);
     const runId = database.startRun(options);
@@ -2612,6 +2814,66 @@ describe("dashboard fast API", () => {
       expect(row.is_configured).toBe(1);
     } finally {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      resetDashboardScanStateForTests();
+      setDashboardScoutRunnerForTests(null);
+    }
+  });
+
+  it("uses the active edition for queued scans while preserving the active scan snapshot", async () => {
+    const sourceUrl = "https://queued.example/jobs";
+    const createSignal = () => {
+      let resolveSignal!: () => void;
+      return {
+        promise: new Promise<void>((resolve) => { resolveSignal = resolve; }),
+        resolve: () => resolveSignal(),
+      };
+    };
+    const activeGate = createSignal();
+    const queuedGate = createSignal();
+    const queuedStarted = createSignal();
+    const editions: string[] = [];
+    const execution: ScoutExecution = {
+      crawl: crawl([]),
+      persisted: {
+        runId: 54_322,
+        internships: [],
+        counts: { NEW: 0, UPDATED: 0, UNCHANGED: 0, REMOVED_OR_CLOSED: 0 },
+      },
+      displayed: [],
+      jsonPath: "",
+      csvPath: "",
+    };
+    setDashboardEditionForTests("personal");
+    setDashboardScoutRunnerForTests(async (options) => {
+      editions.push(options.settings.edition);
+      if (editions.length === 1) await activeGate.promise;
+      else if (editions.length === 2) {
+        queuedStarted.resolve();
+        await queuedGate.promise;
+      }
+      return execution;
+    });
+    resetDashboardScanStateForTests();
+    try {
+      const refresh = response();
+      await requestHandler(request("POST", "/api/refresh") as never, refresh as never, databasePath);
+      expect(refresh.statusCode).toBe(202);
+      expect(editions).toEqual(["personal"]);
+
+      const queued = response();
+      await requestHandler(request("POST", "/api/sources", {}, { url: sourceUrl }) as never, queued as never, databasePath);
+      expect(queued.statusCode).toBe(202);
+      expect(JSON.parse(queued.body.toString("utf8"))).toMatchObject({ started: false, queued: true });
+
+      setDashboardEditionForTests("public");
+      activeGate.resolve();
+      await queuedStarted.promise;
+      expect(editions).toEqual(["personal", "public"]);
+    } finally {
+      activeGate.resolve();
+      queuedGate.resolve();
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      setDashboardEditionForTests("personal");
       resetDashboardScanStateForTests();
       setDashboardScoutRunnerForTests(null);
     }
