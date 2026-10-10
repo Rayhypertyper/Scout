@@ -33,7 +33,7 @@ const PROJECT_ROOT = resolve(process.env.INTERNSHIPMATIC_ROOT ?? process.cwd());
 const ONBOARDING_PUBLIC_ROOT = join(PROJECT_ROOT, "public", "onboarding");
 const ONBOARDING_PAGE_PATH = join(ONBOARDING_PUBLIC_ROOT, "onboarding.html");
 const PREFERENCE_PAGE_ROUTES = new Set(["/onboarding", "/preferences"]);
-const ALL_INTERNSHIPS_PATH = "/jobs?view=all&tab=main&sort=posted";
+const DEFAULT_JOBS_PATH = "/jobs?view=all&tab=canada&sort=posted";
 
 export interface AuthenticatedPreferences {
   context: AuthRequestContext;
@@ -235,7 +235,7 @@ async function handlePreferencePage(
   const access = await authenticatedRequest(request, response, databasePath, { api: false, intendedPath });
   if (!access) return;
   if (requestUrl.pathname === "/onboarding" && access.preferences.onboardingCompleted) {
-    redirectAuthResponse(response, ALL_INTERNSHIPS_PATH, access.context.config, access.context.responseState);
+    redirectAuthResponse(response, DEFAULT_JOBS_PATH, access.context.config, access.context.responseState);
     return;
   }
   if (requestUrl.pathname === "/preferences" && !access.preferences.onboardingCompleted) {
@@ -264,7 +264,7 @@ async function handlePostLogin(
   const returnTo = safePostLoginReturnPath(requestUrl.searchParams.get("returnTo"));
   redirectAuthResponse(
     response,
-    access.preferences.onboardingCompleted ? (returnTo ?? ALL_INTERNSHIPS_PATH) : "/onboarding",
+    access.preferences.onboardingCompleted ? (returnTo ?? DEFAULT_JOBS_PATH) : "/onboarding",
     access.context.config,
     access.context.responseState,
   );
@@ -337,7 +337,7 @@ async function handleJobsEntry(
   if (requestedView === null) {
     const destination = new URL(requestUrl.toString());
     destination.searchParams.set("view", "all");
-    destination.searchParams.set("tab", "main");
+    destination.searchParams.set("tab", "canada");
     destination.searchParams.set("sort", "posted");
     redirectAuthResponse(response, `${destination.pathname}${destination.search}`, context.config, context.responseState);
     return true;
@@ -394,7 +394,7 @@ async function handlePreferenceApi(
       ok: true,
       savedStep: step,
       preferences,
-      ...(step === 3 ? { redirect: ALL_INTERNSHIPS_PATH } : {}),
+      ...(step === 3 ? { redirect: DEFAULT_JOBS_PATH } : {}),
     }, access.context.config, access.context.responseState);
   } catch (error) {
     if (error instanceof PreferenceValidationError) {
@@ -449,6 +449,17 @@ export async function handlePreferenceRequest(
     await handlePostLogin(request, response, requestUrl, databasePath);
     return true;
   }
+  /* Today feature is dormant for now.
+  if (pathname === "/today" || pathname === "/today/") {
+    const access = await authenticatedRequest(request, response, databasePath, { api: false, intendedPath: TODAY_PATH });
+    if (!access) return true;
+    if (!access.preferences.onboardingCompleted) {
+      redirectAuthResponse(response, "/onboarding", access.context.config, access.context.responseState);
+      return true;
+    }
+    return false;
+  }
+  */
   if (pathname === "/jobs" || pathname === "/jobs/") {
     return handleJobsEntry(request, response, requestUrl, databasePath);
   }

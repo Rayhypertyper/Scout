@@ -22,11 +22,18 @@ import { generateOpenAIStructuredJson, type OpenAIJsonSchema, type OpenAIPart } 
 import { authorizeResume } from "./access.js";
 import { readBaseResume, ResumeError } from "./service.js";
 import { resumeSchema, type Resume } from "./tailor.js";
+import {
+  browserHelperAnswerScopeKey,
+  browserHelperAnswerValueSchema,
+  type BrowserHelperAnswerValue,
+  type BrowserHelperStoredAnswerValue,
+} from "../browserHelper/profile.js";
 
 export const MAX_RESUME_UPLOAD_BYTES = 5 * 1024 * 1024;
 const MAX_UPLOAD_BASE64_LENGTH = Math.ceil(MAX_RESUME_UPLOAD_BYTES / 3) * 4;
 const MAX_IMPORT_TEXT_CHARACTERS = 250_000;
 const MAX_IMPORT_EVIDENCE_QUOTE_CHARACTERS = 4_000;
+const MAX_BROWSER_HELPER_ANSWERS = 64;
 const PROFILE_TABLE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS resume_profiles (
   user_id TEXT PRIMARY KEY,
@@ -35,15 +42,45 @@ CREATE TABLE IF NOT EXISTS resume_profiles (
   updated_at TEXT NOT NULL
 );
 `;
+const BROWSER_HELPER_ANSWERS_LEGACY_SCHEMA = `CREATE TABLE browser_helper_answers (
+  user_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  normalized_question TEXT NOT NULL,
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, id),
+  UNIQUE (user_id, normalized_question)
+)`;
+const BROWSER_HELPER_ANSWERS_SCHEMA = `CREATE TABLE browser_helper_answers (
+  user_id TEXT NOT NULL,
+  id TEXT NOT NULL,
+  normalized_question TEXT NOT NULL,
+  scope_key TEXT NOT NULL DEFAULT '{}',
+  question TEXT NOT NULL,
+  answer TEXT NOT NULL,
+  answer_type TEXT NOT NULL DEFAULT 'text' CHECK (answer_type IN ('text', 'single-choice', 'multi-choice', 'boolean')),
+  selected_choices_json TEXT NOT NULL DEFAULT '[]',
+  boolean_value INTEGER CHECK (boolean_value IS NULL OR boolean_value IN (0, 1)),
+  scope_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, id),
+  UNIQUE (user_id, normalized_question, scope_key)
+)`;
+const BROWSER_HELPER_SCHEMA = `
+CREATE TABLE IF NOT EXISTS browser_helper_profiles (
+  user_id TEXT PRIMARY KEY,
+  profile_json TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+${BROWSER_HELPER_ANSWERS_SCHEMA.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS ")};
+`;
 const PROFILE_DATABASE_SUFFIX = ".resume-profiles.db";
 const PROFILE_DATABASE_APPLICATION_ID = 0x52505246;
 const PRIVATE_FILE_MODE = 0o600;
 const SQLITE_SIDECARS = ["-wal", "-shm", "-journal"] as const;
-const EXPECTED_PROFILE_TABLE_SQL = PROFILE_TABLE_SCHEMA
-  .trimStart()
-  .replace(/^CREATE TABLE IF NOT EXISTS/i, "CREATE TABLE")
-  .trim()
-  .replace(/;\s*$/, "");
 
 const textField = z.string().trim().max(2_000);
 const candidateEntrySchema = z.object({
@@ -429,7 +466,7 @@ function legacyProfileTableExists(database: DatabaseSync): boolean {
 
 interface ProfileDatabaseInspection {
   applicationId: number;
-  hasProfileTable: boolean;
+  hasResumeProfileTable: boolean;
 }
 
 function inspectProfileDatabase(database: DatabaseSync): ProfileDatabaseInspection {
@@ -444,28 +481,74 @@ function inspectProfileDatabase(database: DatabaseSync): ProfileDatabaseInspecti
     FROM sqlite_schema
     ORDER BY type, name
   `).all() as Array<{ type: string; name: string; tbl_name: string; sql: string | null }>;
+  const knownTables = new Map<string, string[]>([
+    ["resume_profiles", [PROFILE_TABLE_SCHEMA.trim().replace(/^CREATE TABLE IF NOT EXISTS/i, "CREATE TABLE").trim().replace(/;\s*$/, "")]],
+    ["browser_helper_profiles", ["CREATE TABLE browser_helper_profiles ( user_id TEXT PRIMARY KEY, profile_json TEXT NOT NULL, updated_at TEXT NOT NULL )"]],
+    ["browser_helper_answers", [BROWSER_HELPER_ANSWERS_LEGACY_SCHEMA, BROWSER_HELPER_ANSWERS_SCHEMA]],
+  ]);
   const objects = schemaObjects.filter((object) => !(
     object.type === "index"
-    && object.name.startsWith("sqlite_autoindex_resume_profiles_")
-    && object.tbl_name === "resume_profiles"
+    && object.name.startsWith("sqlite_autoindex_")
+    && knownTables.has(object.tbl_name)
     && object.sql === null
   ));
-  if (objects.length === 0) return { applicationId, hasProfileTable: false };
+  if (objects.length === 0) return { applicationId, hasResumeProfileTable: false };
 
   const tables = objects.filter((object) => object.type === "table");
-  const profileTable = tables.length === 1 && tables[0]?.name === "resume_profiles" ? tables[0] : undefined;
   const normalizeSql = (sql: string | null | undefined) => (sql ?? "").replace(/\s+/g, "").toLowerCase();
-  if (!profileTable || normalizeSql(profileTable.sql) !== normalizeSql(EXPECTED_PROFILE_TABLE_SQL)) {
+  if (tables.length === 0 || tables.some((table) => {
+    const expected = knownTables.get(table.name);
+    return !expected || !expected.some((schema) => normalizeSql(table.sql) === normalizeSql(schema));
+  })) {
     throw new Error("The derived resume profile path contains an unrelated or incompatible database schema.");
   }
 
-  const extraObjects = objects.filter((object) => object !== profileTable);
+  const extraObjects = objects.filter((object) => object.type !== "table");
   const markedProfileTriggersOnly = applicationId === PROFILE_DATABASE_APPLICATION_ID
-    && extraObjects.every((object) => object.type === "trigger" && object.tbl_name === "resume_profiles");
+    && extraObjects.every((object) => object.type === "trigger" && knownTables.has(object.tbl_name));
   if (extraObjects.length > 0 && !markedProfileTriggersOnly) {
     throw new Error("The derived resume profile path contains unrelated SQLite objects.");
   }
-  return { applicationId, hasProfileTable: true };
+  return { applicationId, hasResumeProfileTable: tables.some((table) => table.name === "resume_profiles") };
+}
+
+function migrateBrowserHelperAnswers(database: DatabaseSync): void {
+  const table = database.prepare(`
+    SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'browser_helper_answers'
+  `).get() as { sql?: string } | undefined;
+  const normalizeSql = (sql: string | null | undefined) => (sql ?? "").replace(/\s+/g, "").toLowerCase();
+  if (normalizeSql(table?.sql) === normalizeSql(BROWSER_HELPER_ANSWERS_SCHEMA)) return;
+  if (normalizeSql(table?.sql) !== normalizeSql(BROWSER_HELPER_ANSWERS_LEGACY_SCHEMA)) {
+    throw new Error("The browser helper answer store has an unsupported schema.");
+  }
+  const triggers = database.prepare(`
+    SELECT name, tbl_name, sql FROM sqlite_schema WHERE type = 'trigger' AND sql IS NOT NULL
+  `).all() as Array<{ name: string; tbl_name: string; sql: string }>;
+  const dependentTriggers = triggers.filter((trigger) => /\bbrowser_helper_answers\b/iu.test(trigger.sql));
+  if (dependentTriggers.some((trigger) => trigger.tbl_name !== "browser_helper_answers")) {
+    throw new Error("Cannot safely migrate browser helper answers while another table has a dependent trigger.");
+  }
+  const answerTriggers = dependentTriggers.map((trigger) => trigger.sql);
+
+  database.exec("BEGIN IMMEDIATE");
+  try {
+    database.exec("ALTER TABLE browser_helper_answers RENAME TO browser_helper_answers_legacy");
+    database.exec(BROWSER_HELPER_ANSWERS_SCHEMA);
+    database.exec(`
+      INSERT INTO browser_helper_answers (
+        user_id, id, normalized_question, scope_key, question, answer, answer_type,
+        selected_choices_json, boolean_value, scope_json, created_at, updated_at
+      )
+      SELECT user_id, id, normalized_question, '{}', question, answer, 'text', '[]', NULL, '{}', created_at, updated_at
+      FROM browser_helper_answers_legacy
+    `);
+    database.exec("DROP TABLE browser_helper_answers_legacy");
+    for (const triggerSql of answerTriggers) database.exec(triggerSql);
+    database.exec("COMMIT");
+  } catch (error) {
+    try { database.exec("ROLLBACK"); } catch { /* Preserve the original error. */ }
+    throw error;
+  }
 }
 
 function openPrivateProfileDatabase(profileDatabasePath: string, crawlerDatabasePath: string): DatabaseSync {
@@ -487,7 +570,9 @@ function openPrivateProfileDatabase(profileDatabasePath: string, crawlerDatabase
     if (inspection.applicationId === 0) {
       database.exec(`PRAGMA application_id = ${PROFILE_DATABASE_APPLICATION_ID}`);
     }
-    if (!inspection.hasProfileTable) database.exec(PROFILE_TABLE_SCHEMA);
+    if (!inspection.hasResumeProfileTable) database.exec(PROFILE_TABLE_SCHEMA);
+    database.exec(BROWSER_HELPER_SCHEMA);
+    migrateBrowserHelperAnswers(database);
     inspectProfileDatabase(database);
     secureSqliteSidecars(profileDatabasePath, false);
     return database;
@@ -653,6 +738,241 @@ export function readResumeProfile(databasePath: string, userId: string): ResumeP
     return parseProfileRow(row);
   } catch (error) {
     if (error instanceof ResumeProfileStorageError || error instanceof ResumeProfileError) throw error;
+    throw new ResumeProfileStorageError({ cause: error });
+  } finally {
+    database.close();
+  }
+}
+
+export interface BrowserHelperStoredAnswer extends BrowserHelperStoredAnswerValue {
+  id: string;
+  question: string;
+  updatedAt: string;
+}
+
+export interface BrowserHelperStoredProfile {
+  profile: unknown;
+  updatedAt: string;
+}
+
+export interface BrowserHelperStoredState {
+  profile: BrowserHelperStoredProfile | null;
+  answers: BrowserHelperStoredAnswer[];
+  updatedAt: string | null;
+}
+
+/** Read helper data from the same private, account-scoped store as resume profiles. */
+export function readBrowserHelperState(databasePath: string, userId: string): BrowserHelperStoredState {
+  const normalizedUserId = safeUserId(userId);
+  const database = openProfileDatabase(databasePath);
+  try {
+    const profileRow = database.prepare(`
+      SELECT profile_json, updated_at
+      FROM browser_helper_profiles WHERE user_id = @userId
+    `).get({ userId: normalizedUserId }) as { profile_json: string; updated_at: string } | undefined;
+    let profile: BrowserHelperStoredProfile | null = null;
+    if (profileRow) {
+      try {
+        profile = { profile: JSON.parse(profileRow.profile_json) as unknown, updatedAt: profileRow.updated_at };
+      } catch (error) {
+        throw new ResumeProfileStorageError({ cause: error });
+      }
+    }
+    const answers = database.prepare(`
+      SELECT id, question, answer, answer_type, selected_choices_json, boolean_value, scope_json, updated_at
+      FROM browser_helper_answers WHERE user_id = @userId
+      ORDER BY normalized_question, scope_key, id
+    `).all({ userId: normalizedUserId }) as unknown as Array<{
+      id: string;
+      question: string;
+      answer: string;
+      answer_type: string;
+      selected_choices_json: string;
+      boolean_value: number | null;
+      scope_json: string;
+      updated_at: string;
+    }>;
+    const decodedAnswers = answers.map((row): BrowserHelperStoredAnswer => {
+      try {
+        const selectedChoices: unknown = JSON.parse(row.selected_choices_json);
+        const decodedScope: unknown = JSON.parse(row.scope_json);
+        const scope = decodedScope && typeof decodedScope === "object" && !Array.isArray(decodedScope)
+          && Object.keys(decodedScope).length > 0 ? decodedScope : undefined;
+        const candidate = {
+          answerType: row.answer_type,
+          answer: row.answer,
+          ...(row.answer_type === "single-choice" || row.answer_type === "multi-choice" ? { selectedChoices } : {}),
+          ...(row.answer_type === "boolean" && row.boolean_value !== null
+            ? { booleanValue: row.boolean_value === 1 }
+            : {}),
+          ...(scope ? { scope } : {}),
+        };
+        const parsed = browserHelperAnswerValueSchema.safeParse(candidate);
+        if (!parsed.success) throw new Error("Stored answer value is malformed.");
+        const value = parsed.data;
+        return {
+          id: row.id,
+          question: row.question,
+          answerType: value.answerType,
+          answer: value.answer ?? "",
+          ...(value.answerType === "single-choice" || value.answerType === "multi-choice"
+            ? { selectedChoices: value.selectedChoices }
+            : {}),
+          ...(value.answerType === "boolean" ? { booleanValue: value.booleanValue } : {}),
+          ...(value.scope ? { scope: value.scope } : {}),
+          updatedAt: row.updated_at,
+        };
+      } catch (error) {
+        throw new ResumeProfileStorageError({ cause: error });
+      }
+    });
+    const latestAnswer = answers.reduce<string | null>((latest, answer) =>
+      latest === null || answer.updated_at > latest ? answer.updated_at : latest, null);
+    const updatedAt = profile?.updatedAt && latestAnswer
+      ? (profile.updatedAt > latestAnswer ? profile.updatedAt : latestAnswer)
+      : profile?.updatedAt ?? latestAnswer;
+    return {
+      profile,
+      answers: decodedAnswers,
+      updatedAt,
+    };
+  } catch (error) {
+    if (error instanceof ResumeProfileError || error instanceof ResumeProfileStorageError) throw error;
+    throw new ResumeProfileStorageError({ cause: error });
+  } finally {
+    database.close();
+  }
+}
+
+/** Persist a validated browser-helper profile in the authenticated account's private store. */
+export function saveBrowserHelperProfile(
+  databasePath: string,
+  userId: string,
+  profile: unknown,
+  now = new Date(),
+): BrowserHelperStoredProfile {
+  const normalizedUserId = safeUserId(userId);
+  const json = JSON.stringify(profile);
+  if (Buffer.byteLength(json, "utf8") > 64 * 1024) {
+    throw new ResumeProfileError(413, "The browser helper profile is too large to save.");
+  }
+  const updatedAt = now.toISOString();
+  const database = openProfileDatabase(databasePath);
+  try {
+    database.prepare(`
+      INSERT INTO browser_helper_profiles (user_id, profile_json, updated_at)
+      VALUES (@userId, @profileJson, @updatedAt)
+      ON CONFLICT(user_id) DO UPDATE SET profile_json = excluded.profile_json, updated_at = excluded.updated_at
+    `).run({ userId: normalizedUserId, profileJson: json, updatedAt });
+    return { profile, updatedAt };
+  } catch (error) {
+    if (error instanceof ResumeProfileError || error instanceof ResumeProfileStorageError) throw error;
+    throw new ResumeProfileStorageError({ cause: error });
+  } finally {
+    database.close();
+  }
+}
+
+/** Save one normalized question atomically, retaining its existing stable id on updates. */
+export function saveBrowserHelperAnswer(
+  databasePath: string,
+  userId: string,
+  proposedId: string,
+  normalizedQuestion: string,
+  question: string,
+  answerValue: BrowserHelperAnswerValue,
+  now = new Date(),
+): BrowserHelperStoredAnswer {
+  const normalizedUserId = safeUserId(userId);
+  const updatedAt = now.toISOString();
+  const scopeKey = browserHelperAnswerScopeKey(answerValue.scope);
+  const answer = answerValue.answer ?? "";
+  const answerType = answerValue.answerType;
+  const selectedChoicesJson = JSON.stringify("selectedChoices" in answerValue ? answerValue.selectedChoices : []);
+  const booleanValue = answerType === "boolean" ? Number(answerValue.booleanValue) : null;
+  const scopeJson = JSON.stringify(answerValue.scope ?? {});
+  const database = openProfileDatabase(databasePath);
+  try {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = database.prepare(`
+        SELECT id, created_at FROM browser_helper_answers
+        WHERE user_id = @userId AND normalized_question = @normalizedQuestion AND scope_key = @scopeKey
+      `).get({ userId: normalizedUserId, normalizedQuestion, scopeKey }) as { id: string; created_at: string } | undefined;
+      if (!existing) {
+        const count = database.prepare("SELECT COUNT(*) AS count FROM browser_helper_answers WHERE user_id = @userId")
+          .get({ userId: normalizedUserId }) as { count: number | bigint };
+        if (Number(count.count) >= MAX_BROWSER_HELPER_ANSWERS) {
+          throw new ResumeProfileError(422, `You can save up to ${MAX_BROWSER_HELPER_ANSWERS} recurring answers.`);
+        }
+      }
+      const id = existing?.id ?? proposedId;
+      database.prepare(`
+        INSERT INTO browser_helper_answers (
+          user_id, id, normalized_question, scope_key, question, answer, answer_type,
+          selected_choices_json, boolean_value, scope_json, created_at, updated_at
+        ) VALUES (
+          @userId, @id, @normalizedQuestion, @scopeKey, @question, @answer, @answerType,
+          @selectedChoicesJson, @booleanValue, @scopeJson, @updatedAt, @updatedAt
+        )
+        ON CONFLICT(user_id, id) DO UPDATE SET
+          normalized_question = excluded.normalized_question,
+          scope_key = excluded.scope_key,
+          question = excluded.question,
+          answer = excluded.answer,
+          answer_type = excluded.answer_type,
+          selected_choices_json = excluded.selected_choices_json,
+          boolean_value = excluded.boolean_value,
+          scope_json = excluded.scope_json,
+          updated_at = excluded.updated_at
+      `).run({
+        userId: normalizedUserId,
+        id,
+        normalizedQuestion,
+        scopeKey,
+        question,
+        answer,
+        answerType,
+        selectedChoicesJson,
+        booleanValue,
+        scopeJson,
+        updatedAt,
+      });
+      database.exec("COMMIT");
+      return {
+        id,
+        question,
+        answerType,
+        answer,
+        ...(answerType === "single-choice" || answerType === "multi-choice"
+          ? { selectedChoices: "selectedChoices" in answerValue ? answerValue.selectedChoices : [] }
+          : {}),
+        ...(answerType === "boolean" ? { booleanValue: "booleanValue" in answerValue ? answerValue.booleanValue : false } : {}),
+        ...(answerValue.scope ? { scope: answerValue.scope } : {}),
+        updatedAt,
+      };
+    } catch (error) {
+      database.exec("ROLLBACK");
+      throw error;
+    }
+  } catch (error) {
+    if (error instanceof ResumeProfileError || error instanceof ResumeProfileStorageError) throw error;
+    throw new ResumeProfileStorageError({ cause: error });
+  } finally {
+    database.close();
+  }
+}
+
+/** Delete only the helper answer owned by this verified account. */
+export function deleteBrowserHelperAnswer(databasePath: string, userId: string, id: string): boolean {
+  const normalizedUserId = safeUserId(userId);
+  const database = openProfileDatabase(databasePath);
+  try {
+    const result = database.prepare("DELETE FROM browser_helper_answers WHERE user_id = @userId AND id = @id")
+      .run({ userId: normalizedUserId, id });
+    return Number(result.changes) > 0;
+  } catch (error) {
+    if (error instanceof ResumeProfileError || error instanceof ResumeProfileStorageError) throw error;
     throw new ResumeProfileStorageError({ cause: error });
   } finally {
     database.close();

@@ -21,4 +21,21 @@ export default tseslint.config(
       "@typescript-eslint/restrict-template-expressions": ["error", { "allowNumber": true }]
     },
   },
+  {
+    files: ["public/admin/operations.js", "public/app/feed-performance.js"],
+    languageOptions: {
+      globals: {
+        DOMException: "readonly",
+        Element: "readonly",
+        URL: "readonly",
+        clearInterval: "readonly",
+        clearTimeout: "readonly",
+        document: "readonly",
+        fetch: "readonly",
+        setInterval: "readonly",
+        setTimeout: "readonly",
+        window: "readonly",
+      },
+    },
+  },
 );

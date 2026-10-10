@@ -1,0 +1,97 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-08",
+  "observationSource": "Live Codex IAB inspection reported by the parent task; no candidate values retained.",
+  "tenant": "Mercer University",
+  "host": "merceruniversity.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "step": {
+    "heading": "My Experience",
+    "index": 2,
+    "count": 5,
+    "headingHierarchy": [
+      { "level": 1, "text": "Careers at Mercer University" },
+      { "level": 2, "text": "Software Engineer" },
+      { "level": 3, "text": "My Experience" }
+    ],
+    "routeNote": "The Workday flow may retain the applyManually route through SPA step transitions; the route was not re-read for this observation."
+  },
+  "sanitization": "Structural metadata and requirements only. Candidate values, candidate file names, personal reference details, and certification content are omitted. The name of the synthetic test file is retained for upload evidence.",
+  "sections": [
+    {
+      "heading": "Certifications",
+      "visibleControls": [
+        { "role": "button", "label": "Add" }
+      ],
+      "rowsVisible": false,
+      "interaction": "No row was added; the user asked to leave certifications empty."
+    },
+    {
+      "heading": "Resume/CV attachment",
+      "wrapper": {
+        "dataAutomationId": "attachments-FileUpload",
+        "ariaLabelledBy": ["label86"],
+        "accessibleLabelText": "Upload a file (5MB max)*"
+      },
+      "applicationFieldWrapper": {
+        "dataAutomationIdPrefix": "formField-",
+        "suffixObserved": false
+      },
+      "controls": [
+        {
+          "role": "button",
+          "selector": "#resumeAttachments--attachments",
+          "dataAutomationId": "select-files",
+          "type": "button"
+        },
+        {
+          "role": "file-input",
+          "selector": "input[type=file][data-automation-id=file-upload-input-ref]",
+          "type": "file",
+          "dataAutomationId": "file-upload-input-ref",
+          "display": "none",
+          "multiple": true,
+          "accept": null,
+          "name": null,
+          "id": null,
+          "required": false,
+          "ariaRequired": false
+        }
+      ],
+      "dropZoneAutomationId": "file-upload-drop-zone",
+      "uploadResult": {
+        "status": "successfully uploaded",
+        "visibleFileName": "scout-upload-test.pdf",
+        "visibleFileSize": "2.25 KB",
+        "itemAutomationId": "file-upload-item",
+        "fileNameAutomationId": "file-upload-item-name",
+        "successAutomationId": "file-upload-successful",
+        "liveRegionAutomationIds": ["ariaLive", "ariaLiveMessage"],
+        "liveRegionRole": "alert",
+        "deleteControl": {
+          "dataAutomationId": "delete-file",
+          "type": "button",
+          "ariaLabel": "Delete scout-upload-test.pdf"
+        }
+      },
+      "fileConstraint": "Visible page instruction states a 5 MB maximum.",
+      "uploadTestSubmitted": false
+    }
+  ],
+  "visibleRequirements": [
+    "Resume",
+    "Cover letter",
+    "Three professional references, including names and contact information"
+  ],
+  "unseenOrUnverified": [
+    "No education or work-experience rows were visible on this step.",
+    "Exact reference-field labels, selectors, widget types, and row relationships were not captured in the relayed observation.",
+    "The cover-letter control and whether it uses the same file input were not captured.",
+    "Certification row behavior and any selectors were not inspected because no row was added.",
+    "The live page accepted the synthetic resume PDF; cover-letter and reference controls remain unverified."
+  ],
+  "stepActions": {
+    "applicationSubmitted": false,
+    "pageAdvancedByResearcher": false
+  }
+}

@@ -25,6 +25,7 @@ const MAX_REDIRECTS = 10;
 const SLOW_PUBLIC_BOARD_HOST = /(?:^|\.)(?:csjobs\.ca|hiringcafe\.com)$/i;
 const SLOW_PUBLIC_BOARD_REQUEST_TIMEOUT_MS = 30_000;
 const SLOW_PUBLIC_BOARD_RETRY_COUNT = 3;
+const NARROW_PUBLIC_BOARD_HOST = /(?:^|\.)(?:csjobs\.ca|hiringcafe\.com|intern-list\.com)$/i;
 
 export interface RobotsPolicySnapshot {
   allowed: boolean;
@@ -99,6 +100,8 @@ function headerMap(headers: Headers): Record<string, string> {
 interface HttpRequestOptions {
   headers?: HeadersInit;
   cache?: boolean;
+  /** Refresh a cached representation while retaining validators and outage recovery. */
+  revalidate?: boolean;
   perHostDelayMs?: number;
   method?: "GET" | "POST";
   body?: string;
@@ -264,7 +267,7 @@ export class HttpClient {
     this.ready = this.initialize();
   }
 
-  public async get(url: string, options: Pick<HttpRequestOptions, "headers" | "cache" | "perHostDelayMs" | "timeoutMs" | "retryCount" | "staleIfError" | "respectRobots" | "allowedRedirectOrigins"> = {}): Promise<HttpResponseSnapshot> {
+  public async get(url: string, options: Pick<HttpRequestOptions, "headers" | "cache" | "revalidate" | "perHostDelayMs" | "timeoutMs" | "retryCount" | "staleIfError" | "respectRobots" | "allowedRedirectOrigins"> = {}): Promise<HttpResponseSnapshot> {
     throwIfAborted(this.activeSignal());
     await this.ready;
     throwIfAborted(this.activeSignal());
@@ -275,7 +278,8 @@ export class HttpClient {
     // Include caller-provided header values in the de-duplication key. This
     // prevents an authenticated GitHub request from sharing a public request
     // already in flight for the same URL.
-    const requestKey = `GET\n${requestedUrl}\nrobots=${options.respectRobots === false ? "off" : "on"}\nredirect-origins=${redirectIdentity}\n${[...requestHeaders.entries()].toSorted(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${key}:${value}`).join("\n")}`;
+    const recoveryIdentity = JSON.stringify([options.cache ?? true, options.revalidate ?? false, options.staleIfError ?? false, options.timeoutMs, options.retryCount]);
+    const requestKey = `GET\n${requestedUrl}\nrobots=${options.respectRobots === false ? "off" : "on"}\nredirect-origins=${redirectIdentity}\nrecovery=${recoveryIdentity}\n${[...requestHeaders.entries()].toSorted(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${key}:${value}`).join("\n")}`;
     const ownerSignal = currentSourceAbortSignal();
     const previous = this.inFlight.get(requestKey)?.get(ownerSignal);
     if (previous && !ownerSignal?.aborted) return previous;
@@ -419,7 +423,7 @@ export class HttpClient {
       const method = options.method ?? "GET";
       const cachePath = join(this.cacheDirectory, `${sha256(options.cacheKey ?? requestedUrl)}.json`);
       const cacheEntry = cacheEnabled ? await this.readCache(cachePath) : null;
-      if (cacheEntry && this.settings.cacheTtlMs > 0 && Date.now() - cacheEntry.storedAt <= this.settings.cacheTtlMs) {
+      if (!options.revalidate && cacheEntry && this.settings.cacheTtlMs > 0 && Date.now() - cacheEntry.storedAt <= this.settings.cacheTtlMs) {
         this.cacheHitCount += 1;
         return {
           requestedUrl,
@@ -720,7 +724,7 @@ export class HttpClient {
     // These boards sit behind a shared edge. Keeping the origin lane narrow
     // prevents detail fan-out from starving the listing/sitemap request or
     // triggering edge-side connection resets during a full multi-source crawl.
-    return SLOW_PUBLIC_BOARD_HOST.test(domain) ? Math.min(2, this.settings.perDomainConcurrency) : this.settings.perDomainConcurrency;
+    return NARROW_PUBLIC_BOARD_HOST.test(domain) ? Math.min(2, this.settings.perDomainConcurrency) : this.settings.perDomainConcurrency;
   }
 
   private shouldServeStaleCache(

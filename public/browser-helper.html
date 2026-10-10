@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Manage the reusable application details and answers in your Scout browser helper." />
+    <meta name="theme-color" content="#f2f0e9" />
+    <title>Application profile — Scout</title>
+    <link rel="icon" href="/assets/brand/scout-favicon.png" type="image/png" />
+    <link rel="preload" href="/fonts/geist/Geist-Regular.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/redesign.css" />
+    <link rel="stylesheet" href="/browser-helper.css" />
+  </head>
+  <body class="browser-helper-page">
+    <a class="skip-link" href="#helper-main">Skip to application profile</a>
+
+    <header class="helper-topbar">
+      <div class="helper-topbar-inner">
+        <a class="helper-brand" href="/jobs" aria-label="Scout dashboard">
+          <img src="/assets/brand/scout-icon.png" alt="" width="30" height="30" />
+          <span class="helper-brand-copy"><strong>Scout</strong><small>Opportunity intelligence</small></span>
+        </a>
+        <a class="helper-back-link" href="/jobs">Back to Scout <span aria-hidden="true">→</span></a>
+      </div>
+    </header>
+
+    <main id="helper-main" class="helper-main" aria-labelledby="helper-title">
+      <header class="helper-page-heading">
+        <div>
+          <h1 id="helper-title">Application profile</h1>
+          <p>Save details and recurring answers for the Scout browser helper. Review every field before using it on an application.</p>
+        </div>
+        <p id="helper-page-status" class="helper-page-status" role="status" aria-live="polite">Checking your Scout session…</p>
+      </header>
+
+      <section id="helper-loading" class="helper-gate" role="status" aria-live="polite">
+        <span class="helper-gate-rule" aria-hidden="true"></span>
+        <p>Loading your application profile…</p>
+      </section>
+
+      <section id="helper-signin" class="helper-gate" hidden aria-labelledby="helper-signin-title">
+        <span class="helper-gate-rule" aria-hidden="true"></span>
+        <div>
+          <h2 id="helper-signin-title">Sign in to use your application profile</h2>
+          <p>Your profile and saved answers are tied to your Scout account.</p>
+          <a class="helper-primary-link" href="/login?next=%2Fbrowser-helper">Sign in to Scout</a>
+        </div>
+      </section>
+
+      <section id="helper-unconfigured" class="helper-gate" hidden aria-labelledby="helper-unconfigured-title">
+        <span class="helper-gate-rule" aria-hidden="true"></span>
+        <div>
+          <h2 id="helper-unconfigured-title">Scout sign-in is unavailable</h2>
+          <p>This Scout server has not configured account sign-in. Contact the person who manages this Scout instance.</p>
+        </div>
+      </section>
+
+      <section id="helper-load-error" class="helper-gate" hidden aria-labelledby="helper-load-error-title">
+        <span class="helper-gate-rule helper-gate-rule-error" aria-hidden="true"></span>
+        <div>
+          <h2 id="helper-load-error-title">Your profile could not load</h2>
+          <p id="helper-load-error-message">Check your connection and try again.</p>
+          <button id="helper-retry-load" class="helper-secondary-button" type="button">Try again</button>
+        </div>
+      </section>
+
+      <div id="helper-content" class="helper-layout" hidden>
+        <div class="helper-primary-column">
+          <section class="helper-section" aria-labelledby="profile-heading">
+            <header class="helper-section-heading">
+              <div>
+                <h2 id="profile-heading">Your profile</h2>
+                <p>These details stay with your Scout account and sync to the helper when you choose to connect it.</p>
+              </div>
+            </header>
+
+            <div class="helper-review-note" role="note">
+              <span class="helper-note-mark" aria-hidden="true">!</span>
+              <p><strong>Review before use.</strong> Some details may be prefilled from your Scout resume profile. Check every value. The original resume document is not retained here; choose a local resume or cover letter in the browser helper when you prepare an application.</p>
+            </div>
+
+            <p id="profile-empty-note" class="helper-empty-note" hidden>Your profile is empty. Add details you want to reuse; work authorization and personal application choices stay unknown until you choose them.</p>
+
+            <form id="profile-form" class="helper-form" autocomplete="on">
+              <fieldset class="helper-fieldset">
+                <legend>Contact and links</legend>
+                <p class="helper-fieldset-note">Use the full exact country or region label shown in the phone code picker. A dial code such as +1 can refer to more than one country, so Scout will not guess from your address.</p>
+                <div class="helper-field-grid">
+                  <label class="helper-field"><span>First name</span><input name="firstName" type="text" maxlength="500" autocomplete="given-name" /></label>
+                  <label class="helper-field"><span>Last name</span><input name="lastName" type="text" maxlength="500" autocomplete="family-name" /></label>
+                  <label class="helper-field"><span>Email</span><input name="email" type="email" maxlength="500" autocomplete="email" /></label>
+                  <label class="helper-field"><span>Phone number</span><input name="phone" type="tel" maxlength="500" autocomplete="tel-national" /></label>
+                  <label class="helper-field">
+                    <span>Phone type</span>
+                    <select name="phoneType">
+                      <option value="">Choose a type…</option>
+                      <option value="Landline">Landline</option>
+                      <option value="Mobile">Mobile</option>
+                    </select>
+                  </label>
+                  <label class="helper-field"><span>Phone country or region code label</span><input name="phoneCountryCode" type="text" maxlength="100" placeholder="Use the exact label shown in the picker" autocomplete="tel-country-code" /></label>
+                  <label class="helper-field"><span>Phone extension (optional)</span><input name="phoneExtension" type="text" maxlength="100" autocomplete="tel-extension" /></label>
+                  <label class="helper-field helper-field-wide"><span>Street address</span><input name="address" type="text" maxlength="500" autocomplete="street-address" /></label>
+                  <label class="helper-field"><span>City</span><input name="city" type="text" maxlength="500" autocomplete="address-level2" /></label>
+                  <label class="helper-field"><span>Province, state, or region</span><input name="region" type="text" maxlength="500" autocomplete="address-level1" /></label>
+                  <label class="helper-field"><span>Postal or ZIP code</span><input name="postalCode" type="text" maxlength="500" autocomplete="postal-code" /></label>
+                  <label class="helper-field"><span>Country</span><input name="country" type="text" maxlength="500" autocomplete="country-name" /></label>
+                  <label class="helper-field"><span>LinkedIn</span><input name="linkedin" type="url" inputmode="url" maxlength="500" placeholder="https://linkedin.com/in/…" autocomplete="url" /></label>
+                  <label class="helper-field"><span>GitHub</span><input name="github" type="url" inputmode="url" maxlength="500" placeholder="https://github.com/…" autocomplete="url" /></label>
+                  <label class="helper-field"><span>Portfolio or website</span><input name="portfolio" type="url" inputmode="url" maxlength="500" placeholder="https://…" autocomplete="url" /></label>
+                </div>
+              </fieldset>
+
+              <fieldset class="helper-fieldset">
+                <legend>Work eligibility</legend>
+                <p class="helper-fieldset-note">These fields start blank. Enter a country-specific authorization answer only when you know it applies. Re-read exact authorization and sponsorship wording against every application before reusing it.</p>
+                <div class="helper-field-grid helper-eligibility-grid">
+                  <label class="helper-field">
+                    <span>Work authorization (country-specific)</span>
+                    <input name="workAuthorization" type="text" maxlength="500" placeholder="e.g., Authorized to work in Canada" />
+                  </label>
+                  <label class="helper-field">
+                    <span>Will you need sponsorship now or in the future?</span>
+                    <select name="requiresSponsorship">
+                      <option value="">Choose an answer…</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </label>
+                </div>
+              </fieldset>
+
+              <fieldset class="helper-fieldset">
+                <legend>Mercer application details</legend>
+                <p class="helper-fieldset-note">These choices stay unknown until you select Yes or No. Scout reuses only the choice you save for the matching question; review it before each application.</p>
+                <div class="helper-field-grid">
+                  <label class="helper-field">
+                    <span>Were you a previous employee or student at Mercer University OR are you a current MERC employee?</span>
+                    <select name="previousWorker">
+                      <option value="">Unknown — choose only if reviewed…</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </label>
+                  <label class="helper-field">
+                    <span>Do you have a preferred name?</span>
+                    <select name="hasPreferredName">
+                      <option value="">Unknown — choose only if reviewed…</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                  </label>
+                  <div id="preferred-name-fields" class="helper-field-grid helper-field-wide" hidden>
+                    <p class="helper-fieldset-note helper-field-wide">Enter preferred-name values only if you use them. Scout does not infer these from your legal name; blank values stay unknown until you provide them.</p>
+                    <label class="helper-field"><span>Preferred first name</span><input name="preferredFirstName" type="text" maxlength="500" /></label>
+                    <label class="helper-field"><span>Preferred last name</span><input name="preferredLastName" type="text" maxlength="500" /></label>
+                  </div>
+                </div>
+              </fieldset>
+
+              <fieldset class="helper-fieldset">
+                <legend>Referral source</legend>
+                <p class="helper-fieldset-note">When an application asks how you heard about the role, enter only exact option labels you have reviewed. Leave this blank if the form’s choices do not fit.</p>
+                <label class="helper-field"><span>How did you hear about us? (exact option labels)</span><textarea name="referralSources" rows="3" maxlength="15029" placeholder="One exact option label per line"></textarea></label>
+              </fieldset>
+
+              <fieldset class="helper-fieldset">
+                <legend>Other websites</legend>
+                <p class="helper-fieldset-note">Add profile or project URLs you want to keep available. Empty rows are saved as editable slots and are never filled into an application.</p>
+                <p id="website-empty" class="helper-list-empty">No additional websites yet.</p>
+                <div id="website-list" class="helper-record-list"></div>
+                <button class="helper-add-button" type="button" data-add-record="website">Add website <span aria-hidden="true">+</span></button>
+              </fieldset>
+
+              <fieldset class="helper-fieldset">
+                <legend>Education</legend>
+                <p class="helper-fieldset-note">Add the schools or programs you want available for matching application fields.</p>
+                <p id="education-empty" class="helper-list-empty">No education entries yet.</p>
+                <div id="education-list" class="helper-record-list"></div>
+                <button class="helper-add-button" type="button" data-add-record="education">Add education <span aria-hidden="true">+</span></button>
+              </fieldset>
+
+              <fieldset class="helper-fieldset">
+                <legend>Work experience</legend>
+                <p class="helper-fieldset-note">Add roles you may want to reuse in application forms. The selected panel count controls autofill; saved work history stays intact when the count is lower.</p>
+                <label class="helper-field"><span>Work experience panels to fill (0–20)</span><input name="experienceCount" type="number" min="0" max="20" step="1" inputmode="numeric" placeholder="No saved count" /></label>
+                <p id="experience-empty" class="helper-list-empty">No work experience entries yet.</p>
+                <div id="experience-list" class="helper-record-list"></div>
+                <button class="helper-add-button" type="button" data-add-record="experience">Add experience <span aria-hidden="true">+</span></button>
+              </fieldset>
+
+              <fieldset class="helper-fieldset">
+                <legend>Languages</legend>
+                <p class="helper-fieldset-note">Enter only languages and exact proficiency labels you have reviewed. Unknown fluency stays blank.</p>
+                <p id="language-empty" class="helper-list-empty">No languages yet.</p>
+                <div id="language-list" class="helper-record-list"></div>
+                <button class="helper-add-button" type="button" data-add-record="language">Add language <span aria-hidden="true">+</span></button>
+              </fieldset>
+
+              <div class="helper-form-footer">
+                <p id="profile-save-status" class="helper-inline-status" role="status" aria-live="polite"></p>
+                <button id="clear-profile" class="helper-secondary-button" type="button">Clear profile fields</button>
+                <button id="save-profile" class="helper-primary-button" type="submit">Save profile</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="helper-section helper-answers-section" aria-labelledby="answers-heading">
+            <header class="helper-section-heading">
+              <div>
+                <h2 id="answers-heading">Saved answers</h2>
+                <p>Keep a few recurring responses ready, then check their fit for each role.</p>
+              </div>
+            </header>
+            <p class="helper-fieldset-note">Save text, an exact option label, a group of exact labels, or an explicit yes/no. For legal or voluntary choices, save the exact prompt and selection you reviewed; Scout never guesses consent. Optional scope limits where an answer can be reused.</p>
+
+            <p id="answers-empty" class="helper-list-empty helper-answers-empty">No saved answers yet. Add a question and response below.</p>
+            <div id="answer-list" class="helper-answer-list" role="list" aria-label="Saved application answers"></div>
+
+            <form id="answer-form" class="helper-answer-form">
+              <h3 id="answer-form-title">Add a saved answer</h3>
+              <div data-answer-fields></div>
+              <div class="helper-form-footer helper-answer-footer">
+                <p id="answer-save-status" class="helper-inline-status" role="status" aria-live="polite"></p>
+                <button id="save-answer" class="helper-primary-button" type="submit">Save answer</button>
+              </div>
+            </form>
+          </section>
+        </div>
+
+        <aside class="helper-aside" aria-label="Browser helper setup and guidance">
+          <section class="helper-aside-section" aria-labelledby="connect-heading">
+            <h2 id="connect-heading">Install the browser helper</h2>
+            <p>Load the unpacked extension from the Scout project on this computer.</p>
+            <ol class="helper-steps">
+              <li>In Chromium, open <code>chrome://extensions</code> and turn on Developer mode.</li>
+              <li>Choose <strong>Load unpacked</strong>, then select the <code class="helper-path">extension/</code> folder inside your Scout project checkout.</li>
+              <li>Sign in to Scout in this browser profile. Open the helper, choose <strong>Set up</strong>, enter this Scout address, then connect and approve access to that address to sync your profile and saved answers.</li>
+            </ol>
+            <p class="helper-origin-line">Scout address <code id="scout-origin">your current Scout address</code></p>
+            <p class="helper-aside-note">The helper is installed from this local project folder. Scout does not report an installed or connected state on this page.</p>
+          </section>
+
+          <section class="helper-aside-section" aria-labelledby="apply-heading">
+            <h2 id="apply-heading">Use it on an application</h2>
+            <ol class="helper-steps">
+              <li>Open the role’s application page on its ATS site.</li>
+              <li>Choose a local PDF or DOCX resume or cover letter in the helper if you want to attach one.</li>
+              <li>Select <strong>Fill blank fields</strong>, then review every filled field and attachment and complete anything it missed.</li>
+              <li>Submit the application yourself. With company and role filled in, the helper can watch a supported page for up to 30 minutes after a trusted submit event. A new confirmation may be logged to your connected Scout account; otherwise, choose “I submitted this application” after you submit.</li>
+            </ol>
+            <p class="helper-aside-note">Automatic tracking requires a connected, verified Scout account. Review company and role before filling. If Scout is unavailable, a confirmed log waits locally until Scout is open. Re-read exact work authorization and sponsorship answers against the application's wording.</p>
+          </section>
+
+          <section class="helper-aside-section helper-control-note" aria-labelledby="control-heading">
+            <h2 id="control-heading">You stay in control</h2>
+            <p>Profile data syncs only after you connect the helper. The local helper checks the active form when you choose <strong>Check page</strong> or <strong>Fill blank fields</strong>. Autofill inserts matching values into the employer’s page under that site’s data practices; you review the form and decide whether to submit it.</p>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <template id="education-template">
+      <fieldset class="helper-record" data-record-type="education">
+        <legend class="sr-only">Education entry</legend>
+        <div class="helper-record-heading"><strong data-record-title>Education</strong><button class="helper-remove-button" type="button" data-remove-record="education">Remove</button></div>
+        <div class="helper-field-grid">
+          <label class="helper-field"><span>School</span><input type="text" maxlength="500" data-field="school" /></label>
+          <label class="helper-field"><span>Degree</span><input type="text" maxlength="500" data-field="degree" /></label>
+          <label class="helper-field"><span>Field of study</span><input type="text" maxlength="500" data-field="fieldOfStudy" /></label>
+          <label class="helper-field"><span>Grade average (optional)</span><input type="text" maxlength="500" data-field="gradeAverage" /></label>
+          <label class="helper-field"><span>Start date</span><input type="text" maxlength="500" data-field="startDate" placeholder="YYYY-MM, e.g., 2024-09" /></label>
+          <label class="helper-field"><span>End date or expected</span><input type="text" maxlength="500" data-field="endDate" placeholder="YYYY-MM, e.g., 2028-04" /></label>
+        </div>
+      </fieldset>
+    </template>
+
+    <template id="experience-template">
+      <fieldset class="helper-record" data-record-type="experience">
+        <legend class="sr-only">Work experience entry</legend>
+        <div class="helper-record-heading"><strong data-record-title>Experience</strong><button class="helper-remove-button" type="button" data-remove-record="experience">Remove</button></div>
+        <div class="helper-field-grid">
+          <label class="helper-field"><span>Company</span><input type="text" maxlength="500" data-field="company" /></label>
+          <label class="helper-field"><span>Title</span><input type="text" maxlength="500" data-field="title" /></label>
+          <label class="helper-field"><span>Work location</span><input type="text" maxlength="500" data-field="location" /></label>
+          <label class="helper-field"><span>Start date</span><input type="text" maxlength="500" data-field="startDate" placeholder="YYYY-MM, e.g., 2025-05" /></label>
+          <label class="helper-field"><span>End date</span><input type="text" maxlength="500" data-field="endDate" placeholder="YYYY-MM, e.g., 2025-08" /></label>
+          <label class="helper-field"><span>Do you currently work here?</span><select data-field="currentlyWorkHere"><option value="">Unknown</option><option value="true">Yes</option><option value="false">No</option></select></label>
+          <label class="helper-field helper-field-wide"><span>Description</span><textarea data-field="description" rows="4" maxlength="4000"></textarea></label>
+        </div>
+      </fieldset>
+    </template>
+
+    <template id="website-template">
+      <fieldset class="helper-record" data-record-type="website">
+        <legend class="sr-only">Website entry</legend>
+        <div class="helper-record-heading"><strong data-record-title>Website</strong><button class="helper-remove-button" type="button" data-remove-record="website">Remove</button></div>
+        <div class="helper-field-grid">
+          <label class="helper-field helper-field-wide"><span>Website URL</span><input type="url" inputmode="url" maxlength="2048" data-field="url" placeholder="https://example.com" /></label>
+        </div>
+      </fieldset>
+    </template>
+
+    <template id="language-template">
+      <fieldset class="helper-record" data-record-type="language">
+        <legend class="sr-only">Language entry</legend>
+        <div class="helper-record-heading"><strong data-record-title>Language</strong><button class="helper-remove-button" type="button" data-remove-record="language">Remove</button></div>
+        <div class="helper-field-grid">
+          <label class="helper-field"><span>Language</span><input type="text" maxlength="100" data-field="language" /></label>
+          <label class="helper-field"><span>Fluent?</span><select data-field="fluent"><option value="">Unknown</option><option value="true">Yes</option><option value="false">No</option></select></label>
+          <label class="helper-field"><span>Comprehension (exact label)</span><input type="text" maxlength="100" data-field="comprehension" /></label>
+          <label class="helper-field"><span>Overall (exact label)</span><input type="text" maxlength="100" data-field="overall" /></label>
+          <label class="helper-field"><span>Reading (exact label)</span><input type="text" maxlength="100" data-field="reading" /></label>
+          <label class="helper-field"><span>Speaking (exact label)</span><input type="text" maxlength="100" data-field="speaking" /></label>
+          <label class="helper-field"><span>Writing (exact label)</span><input type="text" maxlength="100" data-field="writing" /></label>
+        </div>
+      </fieldset>
+    </template>
+
+    <script type="module" src="/browser-helper.js"></script>
+  </body>
+</html>

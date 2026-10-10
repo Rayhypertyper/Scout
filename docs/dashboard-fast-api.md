@@ -43,6 +43,21 @@ For this installation, Ray has explicitly confirmed ownership of all historical
 applications. The restored records and ongoing ownership instruction are
 documented in [Application ownership and recovery](application-ownership.md).
 
+## Analytics
+
+`GET /api/analytics` reads crawler inventory totals, recent runs, and source
+health from a single SQLite read snapshot. It does not build role cards or
+contact the authentication provider. Inventory totals cover all stored crawler
+roles, independently of the current feed's filters or account decisions. A
+covering index keeps the summary read small even when descriptions are large.
+Public edition responses omit crawler run and source diagnostics.
+
+`GET /api/analytics/account` separately verifies the session and counts the
+account's full saved decisions. Closed or no-longer-visible roles still count.
+An anonymous response has null counts, never an apparent zero history. The UI
+identifies the connected account and offers sign-in or retry when these counts
+cannot load; crawler analytics remain usable while account access is pending.
+
 ## `GET /api/roles`
 
 Query parameters:

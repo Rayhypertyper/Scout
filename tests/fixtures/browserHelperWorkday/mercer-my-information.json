@@ -1,0 +1,208 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-08",
+  "tenant": "Mercer University",
+  "host": "merceruniversity.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "path": "/en-US/external/job/Warner-Robins%2C-GA--31088-7810/Software-Engineer_26-SW-14/apply/applyManually",
+  "step": {
+    "heading": "My Information",
+    "index": 1,
+    "count": 5,
+    "progressSelector": "ol[data-automation-id=progressBar]",
+    "navigation": "progress items rendered as li labels; no interactive roles or links observed"
+  },
+  "sanitization": "Visible prompts, DOM selector metadata, and control state only. Candidate values, selected phone-country-code text, and account text are omitted. This is a structural excerpt, not a full-page HTML snapshot.",
+  "controls": [
+    {
+      "prompt": "How Did You Hear About Us?*",
+      "selector": "#source--source",
+      "role": "textbox",
+      "placeholder": "Search",
+      "ariaRequired": true,
+      "wrapperAutomationIds": ["multiSelectContainer", "multiselectInputContainer"],
+      "state": "blank",
+    "interaction": {
+      "emptyOpenOptionRowsBySelector": { "selector": "li[role=option]", "count": 0 },
+      "searchTerm": "Other",
+      "searchedOptionRowsBySelector": { "selector": "li[role=option]", "count": 0 },
+      "afterClearing": { "selectedItemCount": 0 },
+      "popupStructuresNotInventoried": ["checkboxes", "tree rows"],
+      "laterMenuObservation": {
+        "optionNode": { "tag": "div", "role": "option", "dataAutomationId": "menuItem" },
+        "visibleLabels": ["External Website", "Mercer University", "Other", "Referral", "Social Media"],
+        "socialMediaChildLabelHierarchy": "A LinkedIn leaf was not verified.",
+        "selectionDisplayStructure": {
+          "presentationRow": { "tag": "li", "role": "presentation", "dataAutomationId": "menuItem" },
+          "selectedItem": { "tag": "div", "role": "option", "dataAutomationId": "selectedItem" },
+          "labelElement": "paragraph; text omitted",
+          "removeControlAutomationId": "DELETE_charm",
+          "selectedLabelRetained": false
+        }
+      }
+      },
+      "interpretationBoundary": "Absence of li[role=option] rows does not establish that there are no choices."
+    },
+    {
+      "prompt": "Previous Worker Confirmation Text: Were you a previous employee or student at Mercer University OR are you a current Mercer Engineering Research Center (MERC) employee? If so, please enter your information below. FOR CURRENT MERCER UNIVERSITY EMPLOYEES ONLY: You must apply via the internal career portal. Please log in to your Workday account to submit your application.",
+      "control": {
+        "selector": "input[type=radio][name=candidateIsPreviousWorker]",
+        "type": "radio",
+        "visibleRequiredMarker": true,
+        "ariaRequired": false,
+        "checked": false
+      },
+      "choices": ["Yes", "No"]
+    },
+    {
+      "prompt": "Country*",
+      "selector": "#country--country",
+      "role": "button",
+      "name": "country",
+      "state": "selected-value-omitted"
+    },
+    {
+      "prompt": "First Name*",
+      "selector": "#name--legalName--firstName",
+      "name": "legalName--firstName",
+      "wrapperAutomationId": "formField-legalName--firstName",
+      "role": "textbox",
+      "ariaRequired": true,
+      "state": "blank"
+    },
+    {
+      "prompt": "Last Name*",
+      "selector": "#name--legalName--lastName",
+      "name": "legalName--lastName",
+      "wrapperAutomationId": "formField-legalName--lastName",
+      "role": "textbox",
+      "ariaRequired": true,
+      "state": "blank"
+    },
+    {
+      "prompt": "I have a preferred name",
+      "selector": "#name--preferredCheck",
+      "name": "preferredCheck",
+      "role": "checkbox",
+      "ariaRequired": false,
+      "checked": false,
+      "conditionalFieldsInspected": true,
+      "temporaryInspection": {
+        "checkedToRevealConditionalFields": true,
+        "fields": [
+          {
+            "prompt": "First Name*",
+            "selector": "#name--preferredName--firstName",
+            "name": "preferredName--firstName",
+            "wrapperAutomationId": "formField-preferredName--firstName",
+            "role": "textbox",
+            "ariaRequired": true,
+            "required": false
+          },
+          {
+            "prompt": "Last Name*",
+            "selector": "#name--preferredName--lastName",
+            "name": "preferredName--lastName",
+            "wrapperAutomationId": "formField-preferredName--lastName",
+            "role": "textbox",
+            "ariaRequired": true,
+            "required": false
+          }
+        ],
+        "noTextEntered": true,
+        "restoredToOriginalUncheckedState": true,
+        "fieldsHiddenAfterRestore": true
+      }
+    },
+    {
+      "prompt": "Address Line 1",
+      "selector": "#address--addressLine1",
+      "name": "addressLine1",
+      "wrapperAutomationId": "formField-addressLine1",
+      "role": "textbox",
+      "ariaRequired": false,
+      "state": "blank"
+    },
+    {
+      "prompt": "City",
+      "selector": "#address--city",
+      "name": "city",
+      "wrapperAutomationId": "formField-city",
+      "role": "textbox",
+      "ariaRequired": false,
+      "state": "blank"
+    },
+    {
+      "prompt": "Province or Territory",
+      "selector": "#address--countryRegion",
+      "name": "countryRegion",
+      "role": "button",
+      "ariaRequired": false,
+      "state": "placeholder-selected",
+      "popup": {
+        "role": "listbox",
+        "optionRole": "option",
+        "triggerExpanded": true,
+        "optionIds": "dynamic; not retained as selectors"
+      }
+    },
+    {
+      "prompt": "Postal Code",
+      "selector": "#address--postalCode",
+      "name": "postalCode",
+      "wrapperAutomationId": "formField-postalCode",
+      "role": "textbox",
+      "ariaRequired": false,
+      "state": "blank"
+    },
+    {
+      "prompt": "Email Address",
+      "role": "display-text",
+      "value": "omitted"
+    },
+    {
+      "prompt": "Phone Device Type*",
+      "selector": "#phoneNumber--phoneType",
+      "name": "phoneType",
+      "role": "button",
+      "state": "select-one",
+      "popup": {
+        "role": "listbox",
+        "optionRole": "option",
+        "options": ["Landline", "Mobile"]
+      }
+    },
+    {
+      "prompt": "Country Phone Code*",
+      "selector": "#phoneNumber--countryPhoneCode",
+      "role": "textbox",
+      "placeholder": "Search",
+      "wrapperAutomationIds": ["multiSelectContainer", "multiselectInputContainer"],
+      "selectedItemList": "ul[role=listbox][data-automation-id=selectedItemList]",
+      "state": "selected-value-omitted"
+    },
+    {
+      "prompt": "Phone Number*",
+      "selector": "#phoneNumber--phoneNumber",
+      "name": "phoneNumber",
+      "wrapperAutomationId": "formField-phoneNumber",
+      "role": "textbox",
+      "ariaRequired": true,
+      "state": "blank"
+    },
+    {
+      "prompt": "Phone Extension",
+      "selector": "#phoneNumber--extension",
+      "name": "extension",
+      "wrapperAutomationId": "formField-extension",
+      "role": "textbox",
+      "ariaRequired": false,
+      "state": "blank"
+    }
+  ],
+  "stepAction": {
+    "label": "Save and Continue",
+    "automationId": "pageFooterNextButton",
+    "clicked": false
+  }
+}

@@ -99,6 +99,7 @@ export async function collectUsenoSummer2027(options: UsenoCrawlOptions): Promis
 
   const response = await options.http.get(options.sourceUrl, {
     cache: true,
+    timeoutMs: 30_000,
     perHostDelayMs: policy.crawlDelayMs ?? 0,
   });
   if (response.status < 200 || response.status >= 300) {
@@ -151,6 +152,7 @@ export async function collectUsenoInternshipMasterlist(options: UsenoCrawlOption
 
   const response = await options.http.get(options.sourceUrl, {
     cache: true,
+    timeoutMs: 30_000,
     perHostDelayMs: policy.crawlDelayMs ?? 0,
   });
   if (response.status < 200 || response.status >= 300) {
@@ -170,7 +172,7 @@ export async function collectUsenoInternshipMasterlist(options: UsenoCrawlOption
   if (response.body.includes("/data/internship-index.json")) {
     const endpoint = new URL("/data/internship-index.json", response.url);
     // This exception is deliberately scoped to the feed linked by this page.
-    const feedOptions = { cache: true, respectRobots: false, allowedRedirectOrigins: [endpoint.origin], headers: { accept: "application/json" } };
+    const feedOptions = { cache: true, timeoutMs: 30_000, respectRobots: false, allowedRedirectOrigins: [endpoint.origin], headers: { accept: "application/json" } };
     const firstResponse = await options.http.get(endpoint.href, feedOptions);
     payload = feedPayload(firstResponse);
     retrievalUrls.push(firstResponse.url);

@@ -4,11 +4,12 @@ import { join } from "node:path";
 
 import type { FetchFailure, LinkCandidate, PageSnapshot } from "../domain/types.js";
 import type { ScoutSettings } from "../domain/schemas.js";
+import { composeAbortSignals, currentSourceAbortSignal, runWithSourceAbortSignal, throwIfAborted } from "../domain/cancellation.js";
 import { discoverPublicBoardLinks } from "../extractors/publicBoards.js";
 import { canonicalizeUrl, safeCanonicalizeUrl, sameSite } from "../utils/url.js";
 import type { Logger } from "../utils/logger.js";
 import { HttpClient, HttpRequestError, isTransientHttpRequestError, type HttpResponseSnapshot } from "./http.js";
-import { publicSourceFallbacks } from "./publicSources.js";
+import { isApplyBoltNotFoundPage, publicSourceFallbacks } from "./publicSources.js";
 
 export interface StaticAdapterResult {
   snapshots: PageSnapshot[];
@@ -62,11 +63,13 @@ export async function mapBounded<T, R>(
   values: readonly T[],
   concurrency: number,
   operation: (value: T, index: number) => Promise<R>,
+  signal?: AbortSignal,
 ): Promise<PromiseSettledResult<R>[]> {
   const results: PromiseSettledResult<R>[] = Array.from({ length: values.length });
   let next = 0;
   const worker = async (): Promise<void> => {
     while (true) {
+      throwIfAborted(signal);
       const index = next;
       next += 1;
       if (index >= values.length) return;
@@ -420,7 +423,7 @@ export class StaticHttpAdapter {
             // Ignore malformed pagination links.
           }
         }
-        const pageResults = await mapBounded(batch, Math.max(1, Math.min(this.settings.httpConcurrency, 6)), async (url) => this.http.get(url, {
+        const pageResults = await this.fetchPaginationBatch(profile, batch, async (url) => this.http.get(url, {
           cache: true,
           perHostDelayMs: Math.max(Math.min(this.settings.perHostDelayMs, 150), batchDelays.get(url) ?? 0),
           ...resilientBoardRequestOptions(profile),
@@ -553,6 +556,35 @@ export class StaticHttpAdapter {
       notes,
       failures,
     };
+  }
+
+  private async fetchPaginationBatch(
+    profile: AdapterProfile,
+    urls: readonly string[],
+    fetchPage: (url: string) => Promise<HttpResponseSnapshot>,
+  ): Promise<PromiseSettledResult<HttpResponseSnapshot>[]> {
+    const concurrency = Math.max(1, Math.min(this.settings.httpConcurrency, 6));
+    if (profile.name !== "ApplyBolt") return mapBounded(urls, concurrency, fetchPage);
+    const controller = new AbortController();
+    const signal = composeAbortSignals(currentSourceAbortSignal(), controller.signal)!;
+    let notFound: HttpRequestError | null = null;
+    try {
+      return await runWithSourceAbortSignal(signal, () => mapBounded(urls, concurrency, async (url) => {
+        try {
+          return await fetchPage(url);
+        } catch (error) {
+          if (error instanceof HttpRequestError && isApplyBoltNotFoundPage(url, error.statusCode)) {
+            notFound ??= error;
+            controller.abort(error);
+          }
+          throw error;
+        }
+      }, signal));
+    } catch (error) {
+      // The local abort stops sibling requests; report the original 404 to
+      // the crawler so it skips only this source, without cancelling the run.
+      throw notFound ?? error;
+    }
   }
 
   /** Fetch a caller-selected subset of detail candidates after early filtering. */

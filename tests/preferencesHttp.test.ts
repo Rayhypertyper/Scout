@@ -204,7 +204,7 @@ describe("preference HTTP boundaries", () => {
     expect(head.handled).toBe(false);
   });
 
-  it("routes incomplete and completed users with all internships as the default view", async () => {
+  it("routes incomplete and completed users with all internships as the logged-in home", async () => {
     const path = databasePath();
     const postLoginIncomplete = await dispatch("GET", "/post-login", path);
     expect(postLoginIncomplete.response.statusCode).toBe(303);
@@ -222,16 +222,16 @@ describe("preference HTTP boundaries", () => {
     complete(path);
     const postLoginComplete = await dispatch("GET", "/post-login", path);
     expect(postLoginComplete.response.statusCode).toBe(303);
-    expect(postLoginComplete.response.headers.Location).toBe("/jobs?view=all&tab=main&sort=posted");
+    expect(postLoginComplete.response.headers.Location).toBe("/jobs?view=all&tab=canada&sort=posted");
     const postLoginCompleteReturn = await dispatch("GET", "/post-login?returnTo=%2Faccount%3Ffrom%3Dsaved", path);
     expect(postLoginCompleteReturn.response.statusCode).toBe(303);
     expect(postLoginCompleteReturn.response.headers.Location).toBe("/account?from=saved");
     const postLoginUnsafeReturn = await dispatch("GET", "/post-login?returnTo=https%3A%2F%2Fevil.example", path);
     expect(postLoginUnsafeReturn.response.statusCode).toBe(303);
-    expect(postLoginUnsafeReturn.response.headers.Location).toBe("/jobs?view=all&tab=main&sort=posted");
+    expect(postLoginUnsafeReturn.response.headers.Location).toBe("/jobs?view=all&tab=canada&sort=posted");
     const onboardingComplete = await dispatch("GET", "/onboarding", path);
     expect(onboardingComplete.response.statusCode).toBe(303);
-    expect(onboardingComplete.response.headers.Location).toBe("/jobs?view=all&tab=main&sort=posted");
+    expect(onboardingComplete.response.headers.Location).toBe("/jobs?view=all&tab=canada&sort=posted");
   });
 
   it("returns a CSRF token for reads and persists a valid incremental step", async () => {

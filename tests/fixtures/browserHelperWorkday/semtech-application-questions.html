@@ -1,0 +1,134 @@
+<!doctype html>
+<!--
+  Synthetic adapter fixture based on sanitized Semtech Application Questions
+  observations. It is not a Workday capture. Dynamic IDs, local event handlers,
+  auxiliary zero-size inputs, and page layout are test scaffolding.
+-->
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <title>Synthetic Semtech Application Questions</title>
+    <style>
+      body { font: 16px sans-serif; margin: 2rem; }
+      [data-fixture-picker][hidden] { display: none; }
+      .auxiliary { width: 0; height: 0; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <ol data-automation-id="progressBar">
+        <li data-automation-id="progressBarActiveStep">current step 4 of 6</li>
+        <li>step1of6</li><li>step2of6</li><li>step3of6</li><li>step5of6</li><li>step6of6</li>
+      </ol>
+      <h1>Careers at Semtech</h1>
+      <h2>Synthetic co-op listing</h2>
+      <h3>Application Questions</h3>
+      <div id="primaryQuestionnaire-section">
+        <fieldset data-automation-id="formField-question-001">
+          <legend>Are you legally eligible to work in the country in which you are applying?*</legend>
+          <button id="primaryQuestionnaire--question-001" name="question-001" type="button" aria-haspopup="listbox" aria-label=" Select One Required" onclick="openQuestion('question-001')">Select One</button>
+          <input class="auxiliary" type="text" tabindex="0">
+          <ul id="question-list-001" role="listbox" aria-activedescendant="question-option-001-placeholder" data-fixture-picker="question-001" hidden>
+            <li id="question-option-001-placeholder" role="option" aria-disabled="true">Select One</li>
+            <li role="option" onclick="chooseQuestion('question-001', this)">Yes</li>
+            <li role="option" onclick="chooseQuestion('question-001', this)">No</li>
+          </ul>
+        </fieldset>
+        <fieldset data-automation-id="formField-question-002">
+          <legend>Will you require visa sponsorship at any time?*</legend>
+          <button id="primaryQuestionnaire--question-002" name="question-002" type="button" aria-haspopup="listbox" aria-label=" Select One Required" onclick="openQuestion('question-002')">Select One</button>
+          <input class="auxiliary" type="text" tabindex="0">
+          <ul id="question-list-002" role="listbox" aria-activedescendant="question-option-002-placeholder" data-fixture-picker="question-002" hidden>
+            <li id="question-option-002-placeholder" role="option" aria-disabled="true">Select One</li>
+            <li role="option" onclick="chooseQuestion('question-002', this)">Yes</li>
+            <li role="option" onclick="chooseQuestion('question-002', this)">No</li>
+          </ul>
+        </fieldset>
+        <fieldset data-automation-id="formField-question-003">
+          <legend>Are you local or willing to relocate?*</legend>
+          <button id="primaryQuestionnaire--question-003" name="question-003" type="button" aria-haspopup="listbox" aria-label=" Select One Required" onclick="openQuestion('question-003')">Select One</button>
+          <input class="auxiliary" type="text" tabindex="0">
+          <ul id="question-list-003" role="listbox" aria-activedescendant="question-option-003-placeholder" data-fixture-picker="question-003" hidden>
+            <li id="question-option-003-placeholder" role="option" aria-disabled="true">Select One</li>
+            <li role="option" onclick="chooseQuestion('question-003', this)">Yes</li>
+            <li role="option" onclick="chooseQuestion('question-003', this)">No</li>
+          </ul>
+        </fieldset>
+        <fieldset data-automation-id="formField-question-004">
+          <legend>What are your base salary expectations (CAD)?*</legend>
+          <button id="primaryQuestionnaire--question-004" name="question-004" type="button" aria-haspopup="listbox" aria-label=" Select One Required" onclick="openQuestion('question-004')">Select One</button>
+          <input class="auxiliary" type="text" tabindex="0">
+          <ul id="question-list-004" role="listbox" aria-activedescendant="question-option-004-placeholder" data-fixture-picker="question-004" hidden>
+            <li id="question-option-004-placeholder" role="option" aria-disabled="true">Select One</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">30,000 CAD  - 42,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">43,000 CAD  - 54,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">55,000 CAD  - 79,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">80,000 CAD  - 104,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">105,000 CAD  -124,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">125,000 CAD  - 149,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">150,000 CAD  - 174,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">175,000 CAD  - 199,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">200,000 CAD  - 224,000 CAD</li>
+            <li role="option" onclick="chooseQuestion('question-004', this)">225,000 CAD+</li>
+          </ul>
+        </fieldset>
+        <fieldset data-automation-id="formField-question-005">
+          <legend>Are you related to any current employee of Semtech or any of its subsidiaries?*</legend>
+          <button id="primaryQuestionnaire--question-005" name="question-005" type="button" aria-haspopup="listbox" aria-label=" Select One Required" onclick="openQuestion('question-005')">Select One</button>
+          <input class="auxiliary" type="text" tabindex="0">
+          <ul id="question-list-005" role="listbox" aria-activedescendant="question-option-005-placeholder" data-fixture-picker="question-005" hidden>
+            <li id="question-option-005-placeholder" role="option" aria-disabled="true">Select One</li>
+            <li role="option" onclick="chooseQuestion('question-005', this)">Yes</li>
+            <li role="option" onclick="chooseQuestion('question-005', this)">No</li>
+          </ul>
+        </fieldset>
+        <fieldset data-automation-id="formField-question-006">
+          <legend>Do you meet the minimum education requirements for this position?*</legend>
+          <button id="primaryQuestionnaire--question-006" name="question-006" type="button" aria-haspopup="listbox" aria-label=" Select One Required" onclick="openQuestion('question-006')">Select One</button>
+          <input class="auxiliary" type="text" tabindex="0">
+          <ul id="question-list-006" role="listbox" aria-activedescendant="question-option-006-placeholder" data-fixture-picker="question-006" hidden>
+            <li id="question-option-006-placeholder" role="option" aria-disabled="true">Select One</li>
+            <li role="option" onclick="chooseQuestion('question-006', this)">Yes</li>
+            <li role="option" onclick="chooseQuestion('question-006', this)">No</li>
+          </ul>
+        </fieldset>
+        <fieldset data-automation-id="formField-question-007">
+          <legend>Do you have experience working in the semiconductors/electronics/manufacturing/or similar industry?*</legend>
+          <button id="primaryQuestionnaire--question-007" name="question-007" type="button" aria-haspopup="listbox" aria-label=" Select One Required" onclick="openQuestion('question-007')">Select One</button>
+          <input class="auxiliary" type="text" tabindex="0">
+          <ul id="question-list-007" role="listbox" aria-activedescendant="question-option-007-placeholder" data-fixture-picker="question-007" hidden>
+            <li id="question-option-007-placeholder" role="option" aria-disabled="true">Select One</li>
+            <li role="option" onclick="chooseQuestion('question-007', this)">Yes</li>
+            <li role="option" onclick="chooseQuestion('question-007', this)">No</li>
+          </ul>
+        </fieldset>
+        <fieldset data-automation-id="formField-essay-001">
+          <legend>Please take a moment to briefly highlight your relevant work experience.*</legend>
+          <textarea id="primaryQuestionnaire--essay-001" aria-required="true" maxlength="2000"></textarea>
+        </fieldset>
+        <fieldset data-automation-id="formField-essay-002">
+          <legend>Do you have experience using the tools/systems/technology outlined in the job posting? Please explain.*</legend>
+          <textarea id="primaryQuestionnaire--essay-002" aria-required="true" maxlength="2000"></textarea>
+        </fieldset>
+      </div>
+      <button data-automation-id="pageFooterNextButton" onclick="window.continueCount += 1">Save and Continue</button>
+      <button id="submit-observer" onclick="window.submitCount += 1">Submit</button>
+      <output id="choiceCount">0</output>
+      <output id="submitCount">0</output>
+    </main>
+    <script>
+      window.submitCount = 0;
+      window.continueCount = 0;
+      function openQuestion(key) {
+        document.querySelectorAll('[data-fixture-picker]').forEach((popup) => { popup.hidden = true; });
+        const popup = document.querySelector(`[data-fixture-picker="${key}"]`);
+        if (popup) popup.hidden = false;
+      }
+      function chooseQuestion(key, option) {
+        document.getElementById(`primaryQuestionnaire--${key}`).textContent = option.textContent.trim();
+        document.querySelector(`[data-fixture-picker="${key}"]`).hidden = true;
+        document.getElementById('choiceCount').textContent = String(Number(document.getElementById('choiceCount').textContent) + 1);
+      }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,257 @@
+<!doctype html>
+<!--
+  Synthetic test fixture from sanitized Semtech My Experience observations.
+  This is not a Workday capture. Test-only example rows, popup handlers,
+  repeatable row creation, and counters are scaffolding. The selectors,
+  control names, labels, and option labels mirror recorded live metadata.
+-->
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <title>Synthetic Semtech My Experience step</title>
+    <style>
+      body { font: 16px sans-serif; margin: 2rem; }
+      [data-fixture-picker][hidden] { display: none; }
+      [data-fixture-counter] { display: none; }
+      button { min-height: 2.5rem; }
+      input { min-height: 2rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <ol data-automation-id="progressBar">
+        <li data-automation-id="progressBarActiveStep">current step 3 of 6</li>
+        <li>step1of6</li><li>step2of6</li><li>step4of6</li><li>step5of6</li><li>step6of6</li>
+      </ol>
+      <h1>Careers at Semtech</h1>
+      <h2>Synthetic co-op listing</h2>
+      <h3>My Experience</h3>
+
+      <section aria-labelledby="Work-Experience-section">
+        <h4 id="Work-Experience-section">Work Experience</h4>
+        <div id="experience-form">
+          <div id="work-experience-rows">
+            <div aria-labelledby="Work-Experience-1-panel">
+              <h5 id="WorkExperience1" title="WorkExperience1">Work Experience 1</h5>
+              <label>Job Title*<input id="workExperience-1--jobTitle" aria-required="true" value="Existing synthetic role" /></label>
+              <label>Company Name*<input id="workExperience-1--companyName" aria-required="true" value="Example Organization A" /></label>
+              <label>Location*<input id="workExperience-1--location" aria-required="true" value="Synthetic location" /></label>
+              <div data-automation-id="formField-startDate">
+                <label>From*</label>
+                <input id="workExperience-1--startDate-dateSectionMonth-input" data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month" min="1" max="12" value="5" />
+                <input id="workExperience-1--startDate-dateSectionYear-input" data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year" min="1" max="9999" value="2025" />
+              </div>
+              <div data-automation-id="formField-endDate">
+                <label>To*</label>
+                <input id="workExperience-1--endDate-dateSectionMonth-input" data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month" min="1" max="12" value="8" />
+                <input id="workExperience-1--endDate-dateSectionYear-input" data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year" min="1" max="9999" value="2025" />
+              </div>
+              <label><input id="workExperience-1--currentlyWorkHere" name="currentlyWorkHere" type="checkbox" />I currently work here</label>
+              <label>Role Description*<textarea id="workExperience-1--roleDescription" aria-required="true">Existing synthetic description</textarea></label>
+            </div>
+            <div aria-labelledby="Work-Experience-2-panel">
+              <h5 id="WorkExperience2" title="WorkExperience2">Work Experience 2</h5>
+              <label>Job Title*<input id="workExperience-2--jobTitle" aria-required="true" value="Preexisting synthetic role to be removed" /></label>
+              <label>Company Name*<input id="workExperience-2--companyName" aria-required="true" value="Synthetic Example Company B" /></label>
+              <label>Location*<input id="workExperience-2--location" aria-required="true" value="Synthetic City B" /></label>
+              <div data-automation-id="formField-startDate">
+                <label>From*</label>
+                <input id="workExperience-2--startDate-dateSectionMonth-input" data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month" min="1" max="12" />
+                <input id="workExperience-2--startDate-dateSectionYear-input" data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year" min="1" max="9999" />
+              </div>
+              <div data-automation-id="formField-endDate">
+                <label>To*</label>
+                <input id="workExperience-2--endDate-dateSectionMonth-input" data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month" min="1" max="12" />
+                <input id="workExperience-2--endDate-dateSectionYear-input" data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year" min="1" max="9999" />
+              </div>
+              <label><input id="workExperience-2--currentlyWorkHere" name="currentlyWorkHere" type="checkbox" />I currently work here</label>
+              <label>Role Description*<textarea id="workExperience-2--roleDescription" aria-required="true">Synthetic description for the preexisting row.</textarea></label>
+              <button onclick="deleteExperienceRow(this)">Delete</button>
+            </div>
+          </div>
+          <button data-automation-id="add-button" onclick="addExperienceRow()">Add Another</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="Education-section">
+        <h4 id="Education-section">Education</h4>
+        <div id="education-rows">
+          <div aria-labelledby="Education-1-panel">
+            <h5 id="Education1" title="Education1">Education 1</h5>
+            <label>School or University*<input id="education-1--schoolName" name="schoolName" aria-required="true" value="Example University" /></label>
+            <div data-automation-id="formField-degree">
+              <label>Degree*</label>
+              <button id="education-1--degree" name="degree" type="button" aria-haspopup="listbox" aria-label="Degree Example selection required" onclick="openPicker('degree-one')">Bachelors</button>
+              <div role="listbox" data-fixture-picker="degree-one" aria-activedescendant="degree-option-one" hidden>
+                <div id="degree-option-placeholder-one" role="option" aria-disabled="true">Select One</div>
+                <div id="degree-option-one" role="option" onclick="choosePicker('education-1--degree', 'degree-one', this)">Bachelors</div>
+                <div id="degree-option-masters-one" role="option" onclick="choosePicker('education-1--degree', 'degree-one', this)">Masters</div>
+              </div>
+            </div>
+            <div data-automation-id="formField-fieldOfStudy">
+              <div data-automation-id="multiSelectContainer">
+                <div data-automation-id="multiselectInputContainer">
+                  <label>Field of Study*<input id="education-1--fieldOfStudy" name="fieldOfStudy" placeholder="Search" enterkeyhint="search" aria-required="true" /></label>
+                  <div id="fieldOfStudy-options" data-automation-id="activeListContainer" role="listbox" aria-activedescendant="field-study-option-one" hidden>
+                    <div id="field-study-option-one" data-automation-id="menuItem" role="option" aria-label="Computer and Information Science not checked">Computer and Information Science</div>
+                    <div id="field-study-option-two" data-automation-id="menuItem" role="option" aria-label="Computer Engineering not checked">Computer Engineering</div>
+                  </div>
+                  <ul id="fieldOfStudy-selected" hidden></ul>
+                </div>
+              </div>
+            </div>
+            <label>Overall Result (GPA)<input id="education-1--gradeAverage" name="gradeAverage" type="text" /></label>
+          </div>
+        </div>
+        <button data-automation-id="add-button" onclick="addEducationRow()">Add Another</button>
+      </section>
+
+      <section aria-labelledby="Languages-section">
+        <h4 id="Languages-section">Languages</h4>
+        <div id="language-rows">
+          <div aria-labelledby="Languages-1-panel">
+            <h5 id="Languages1" title="Languages1">Language 1</h5>
+            <div data-automation-id="formField-language">
+              <label>Language*</label>
+              <button id="language-1--language" name="language" type="button" aria-haspopup="listbox" aria-label="Language Select One Required" onclick="openPicker('language-one')">Select One</button>
+              <div role="listbox" data-fixture-picker="language-one" aria-activedescendant="language-one-option" hidden>
+                <div id="language-one-option" role="option" onclick="choosePicker('language-1--language', 'language-one', this)">Chinese</div>
+                <div id="language-one-option-english" role="option" onclick="choosePicker('language-1--language', 'language-one', this)">English</div>
+              </div>
+            </div>
+            <label><input id="language-1--native" name="native" type="checkbox" />I am fluent in this language.</label>
+            <div data-automation-id="formField-comprehension"><label>Comprehension*</label><button id="language-1--comprehension" type="button" aria-haspopup="listbox" aria-label="Comprehension Select One Required" onclick="openPicker('comprehension-one')">Select One</button></div>
+            <div data-automation-id="formField-overall"><label>Overall*</label><button id="language-1--overall" type="button" aria-haspopup="listbox" aria-label="Overall Select One Required" onclick="openPicker('overall-one')">Select One</button></div>
+            <div data-automation-id="formField-reading"><label>Reading*</label><button id="language-1--reading" type="button" aria-haspopup="listbox" aria-label="Reading Select One Required" onclick="openPicker('reading-one')">Select One</button></div>
+            <div data-automation-id="formField-speaking"><label>Speaking*</label><button id="language-1--speaking" type="button" aria-haspopup="listbox" aria-label="Speaking Select One Required" onclick="openPicker('speaking-one')">Select One</button></div>
+            <div data-automation-id="formField-writing"><label>Writing*</label><button id="language-1--writing" type="button" aria-haspopup="listbox" aria-label="Writing Select One Required" onclick="openPicker('writing-one')">Select One</button></div>
+          </div>
+          <div aria-labelledby="Languages-2-panel">
+            <h5 id="Languages2" title="Languages2">Language 2</h5>
+            <div data-automation-id="formField-language">
+              <label>Language*</label>
+              <button id="language-2--language" name="language" type="button" aria-haspopup="listbox" aria-label="Language Select One Required" onclick="openPicker('language-two')">Select One</button>
+              <div role="listbox" data-fixture-picker="language-two" aria-activedescendant="language-two-option" hidden>
+                <div id="language-two-option" role="option" onclick="choosePicker('language-2--language', 'language-two', this)">Chinese</div>
+                <div id="language-two-option-english" role="option" onclick="choosePicker('language-2--language', 'language-two', this)">English</div>
+              </div>
+            </div>
+            <label><input id="language-2--native" name="native" type="checkbox" />I am fluent in this language.</label>
+            <div data-automation-id="formField-comprehension"><label>Comprehension*</label><button id="language-2--comprehension" type="button" aria-haspopup="listbox" aria-label="Comprehension Select One Required" onclick="openPicker('comprehension-two')">Select One</button></div>
+            <div data-automation-id="formField-overall"><label>Overall*</label><button id="language-2--overall" type="button" aria-haspopup="listbox" aria-label="Overall Select One Required" onclick="openPicker('overall-two')">Select One</button></div>
+            <div data-automation-id="formField-reading"><label>Reading*</label><button id="language-2--reading" type="button" aria-haspopup="listbox" aria-label="Reading Select One Required" onclick="openPicker('reading-two')">Select One</button></div>
+            <div data-automation-id="formField-speaking"><label>Speaking*</label><button id="language-2--speaking" type="button" aria-haspopup="listbox" aria-label="Speaking Select One Required" onclick="openPicker('speaking-two')">Select One</button></div>
+            <div data-automation-id="formField-writing"><label>Writing*</label><button id="language-2--writing" type="button" aria-haspopup="listbox" aria-label="Writing Select One Required" onclick="openPicker('writing-two')">Select One</button></div>
+          </div>
+        </div>
+        <button data-automation-id="add-button" onclick="addLanguageRow()">Add Another</button>
+      </section>
+
+      <section aria-labelledby="Websites-section">
+        <h4 id="Websites-section">Websites</h4>
+        <div id="website-rows">
+          <div aria-labelledby="Websites-1-panel">
+            <h5 id="Websites1" title="Websites1">Website 1</h5>
+            <div data-automation-id="formField-url"><label>URL*<input id="webAddress-1--url" name="url" type="text" aria-required="true" /></label></div>
+          </div>
+        </div>
+        <button data-automation-id="add-button" onclick="addWebsiteRow()">Add Another</button>
+      </section>
+
+      <button data-automation-id="pageFooterNextButton" onclick="countContinue()">Save and Continue</button>
+      <output id="submit-count" data-fixture-counter>0</output>
+      <output id="continue-count" data-fixture-counter>0</output>
+      <output id="experience-add-count" data-fixture-counter>0</output>
+      <output id="experience-delete-count" data-fixture-counter>0</output>
+      <output id="education-add-count" data-fixture-counter>0</output>
+      <output id="language-add-count" data-fixture-counter>0</output>
+      <output id="website-add-count" data-fixture-counter>0</output>
+      <output id="calendar-open-count" data-fixture-counter>0</output>
+    </main>
+    <script>
+      document.querySelectorAll("form").forEach((form) => form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        increment("submit-count");
+      }));
+      function increment(id) {
+        const target = document.getElementById(id);
+        target.textContent = String(Number(target.textContent) + 1);
+      }
+      function openPicker(key) {
+        document.querySelectorAll("[data-fixture-picker]").forEach((popup) => { popup.hidden = true; });
+        const popup = document.querySelector(`[data-fixture-picker="${key}"]`);
+        if (popup) popup.hidden = false;
+      }
+      function choosePicker(buttonId, key, option) {
+        document.getElementById(buttonId).textContent = option.textContent.trim();
+        document.querySelector(`[data-fixture-picker="${key}"]`).hidden = true;
+      }
+      const fieldOfStudySearch = document.getElementById("education-1--fieldOfStudy");
+      fieldOfStudySearch.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          document.getElementById("fieldOfStudy-options").hidden = false;
+        }
+      });
+      document.querySelectorAll('#fieldOfStudy-options [role="option"]').forEach((option) => {
+        option.addEventListener("click", () => {
+          const selected = document.getElementById("fieldOfStudy-selected");
+          const item = document.createElement("li");
+          item.setAttribute("role", "presentation");
+          item.dataset.automationId = "menuItem";
+          const selectedTag = document.createElement("div");
+          selectedTag.setAttribute("role", "option");
+          selectedTag.dataset.automationId = "selectedItem";
+          selectedTag.textContent = option.textContent.trim();
+          item.append(selectedTag);
+          selected.replaceChildren(item);
+          selected.hidden = false;
+          fieldOfStudySearch.value = "";
+          document.getElementById("fieldOfStudy-options").hidden = true;
+        });
+      });
+      function addExperienceRow() {
+        const index = document.querySelectorAll('#work-experience-rows [aria-labelledby^="Work-Experience-"]').length + 1;
+        const row = document.createElement("div");
+        row.setAttribute("aria-labelledby", `Work-Experience-${index}-panel`);
+        row.innerHTML = `<h5 id="WorkExperience${index}" title="WorkExperience${index}">Work Experience ${index}</h5>
+          <label>Job Title*<input id="workExperience-${index}--jobTitle" aria-required="true"></label>
+          <label>Company Name*<input id="workExperience-${index}--companyName" aria-required="true"></label>
+          <label>Location*<input id="workExperience-${index}--location" aria-required="true"></label>
+          <div data-automation-id="formField-startDate"><label>From*</label><input id="workExperience-${index}--startDate-dateSectionMonth-input" data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month"><input id="workExperience-${index}--startDate-dateSectionYear-input" data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year"></div>
+          <div data-automation-id="formField-endDate"><label>To*</label><input id="workExperience-${index}--endDate-dateSectionMonth-input" data-automation-id="dateSectionMonth-input" role="spinbutton" aria-label="Month"><input id="workExperience-${index}--endDate-dateSectionYear-input" data-automation-id="dateSectionYear-input" role="spinbutton" aria-label="Year"></div>
+          <label><input id="workExperience-${index}--currentlyWorkHere" name="currentlyWorkHere" type="checkbox">I currently work here</label>
+          <label>Role Description*<textarea id="workExperience-${index}--roleDescription" aria-required="true"></textarea></label>`;
+        document.getElementById("work-experience-rows").append(row);
+        increment("experience-add-count");
+      }
+      function deleteExperienceRow(button) {
+        button.closest('[aria-labelledby^="Work-Experience-"]')?.remove();
+        increment("experience-delete-count");
+      }
+      function addEducationRow() {
+        const index = document.querySelectorAll('#education-rows [aria-labelledby^="Education-"]').length + 1;
+        const row = document.createElement("div");
+        row.setAttribute("aria-labelledby", `Education-${index}-panel`);
+        row.innerHTML = `<h5 id="Education${index}" title="Education${index}">Education ${index}</h5>
+          <label>School or University*<input id="education-${index}--schoolName" name="schoolName" aria-required="true"></label>
+          <div data-automation-id="formField-degree"><label>Degree*</label><button id="education-${index}--degree" name="degree" type="button" aria-haspopup="listbox" aria-label="Degree Select One Required" onclick="openPicker('degree-${index}')">Select One</button><div role="listbox" data-fixture-picker="degree-${index}" aria-activedescendant="degree-option-${index}" hidden><div id="degree-option-${index}" role="option" onclick="choosePicker('education-${index}--degree', 'degree-${index}', this)">Bachelors</div><div role="option" onclick="choosePicker('education-${index}--degree', 'degree-${index}', this)">Masters</div></div></div>
+          <div data-automation-id="formField-fieldOfStudy"><div data-automation-id="multiSelectContainer"><div data-automation-id="multiselectInputContainer"><label>Field of Study*<input id="education-${index}--fieldOfStudy" name="fieldOfStudy" placeholder="Search" enterkeyhint="search" aria-required="true"></label></div></div></div>
+          <label>Overall Result (GPA)<input id="education-${index}--gradeAverage" name="gradeAverage" type="text"></label>`;
+        document.getElementById("education-rows").append(row);
+        increment("education-add-count");
+      }
+      function addLanguageRow() { increment("language-add-count"); }
+      function addWebsiteRow() {
+        const index = document.querySelectorAll('#website-rows [aria-labelledby^="Websites-"]').length + 1;
+        const row = document.createElement("div");
+        row.setAttribute("aria-labelledby", `Websites-${index}-panel`);
+        row.innerHTML = `<h5 id="Websites${index}" title="Websites${index}">Website ${index}</h5><div data-automation-id="formField-url"><label>URL*<input id="webAddress-${index}--url" name="url" type="text" aria-required="true"></label></div>`;
+        document.getElementById("website-rows").append(row);
+        increment("website-add-count");
+      }
+      function countContinue() { increment("continue-count"); }
+      document.querySelectorAll('[data-automation-id="dateIcon"]').forEach((icon) => icon.addEventListener("click", () => increment("calendar-open-count")));
+    </script>
+  </body>
+</html>

@@ -14,7 +14,7 @@ const temporaryDirectories: string[] = [];
 
 afterEach(() => {
   vi.restoreAllMocks();
-  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
+  for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 10 });
 });
 
 function client(overrides: Record<string, unknown> = {}): HttpClient {
@@ -30,6 +30,33 @@ function client(overrides: Record<string, unknown> = {}): HttpClient {
 }
 
 describe("shared HTTP retry and circuit policy", () => {
+  it("refreshes a valid cache and retains its latest representation on an outage", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response("first feed", { headers: { etag: '"first"' } }))
+      .mockResolvedValueOnce(new Response("updated feed", { headers: { etag: '"updated"' } }))
+      .mockRejectedValueOnce(new TypeError("fetch failed"));
+    const http = client({ cacheTtlMs: 60_000, retryCount: 0 });
+    await http.get("https://feed.example/jobs");
+    await expect(http.get("https://feed.example/jobs", { revalidate: true })).resolves.toMatchObject({ body: "updated feed", fromCache: false });
+    await expect(http.get("https://feed.example/jobs", { revalidate: true, staleIfError: true })).resolves.toMatchObject({ body: "updated feed", fromCache: true, stale: true });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get("if-none-match")).toBe('"updated"');
+  });
+
+  it("keeps Intern List detail fan-out at two requests per origin", async () => {
+    let active = 0;
+    let maximum = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return new Response("ok");
+    });
+    const http = client({ perDomainConcurrency: 6, retryCount: 0 });
+    await Promise.all(Array.from({ length: 6 }, (_, index) => http.get(`https://www.intern-list.com/details/${index}`)));
+    expect(maximum).toBe(2);
+  });
   it("rejects retired feed GET and POST variants before robots, cache, or network", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch");
     const policy = vi.fn().mockResolvedValue({ allowed: true, crawlDelayMs: null });

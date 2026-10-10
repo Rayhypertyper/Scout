@@ -80,6 +80,7 @@ CREATE INDEX IF NOT EXISTS internships_application_url_idx ON internships(applic
 CREATE INDEX IF NOT EXISTS internships_posting_url_idx ON internships(posting_url);
 CREATE INDEX IF NOT EXISTS internships_job_identity_idx ON internships(normalized_company, job_id);
 CREATE INDEX IF NOT EXISTS internships_fallback_identity_idx ON internships(normalized_company, normalized_title, location_key);
+CREATE INDEX IF NOT EXISTS internships_analytics_inventory_idx ON internships(availability_status, lifecycle_status, first_seen_at, id);
 
 /*
  * Jobright detail resolution is deliberately outside the crawl transaction.

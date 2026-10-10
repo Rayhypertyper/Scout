@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  Synthetic adapter fixture, not a captured Workday page. The heading hierarchy
+  and observed file-control automation IDs mirror the relayed observation. The
+  outer formField suffix, output counters, and test behavior are synthetic-only.
+-->
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>Software Engineer</title>
+    <style>
+      [hidden] { display: none !important; }
+      body { font: 16px sans-serif; }
+      label { display: block; margin: 0.5rem 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Careers at Mercer University</h1>
+    <h2>Software Engineer</h2>
+    <h3>My Experience</h3>
+    <form id="synthetic-experience-application">
+      <section id="synthetic-certifications">
+        <h4>Certifications</h4>
+        <button id="certifications-add" type="button">Add</button>
+        <div id="certification-rows"></div>
+      </section>
+
+      <section data-automation-id="formField-resumeAttachments">
+        <div data-automation-id="attachments-FileUpload" aria-labelledby="label86">
+          <h4 id="label86">Upload a file (5MB max)*</h4>
+          <div data-automation-id="file-upload-drop-zone">
+            <label>
+              Resume/CV
+              <button id="resumeAttachments--attachments" data-automation-id="select-files" type="button">Select files</button>
+              <input type="file" data-automation-id="file-upload-input-ref" multiple hidden />
+            </label>
+          </div>
+          <div data-automation-id="file-upload-item" hidden>
+            <span data-automation-id="file-upload-item-name"></span>
+            <span data-automation-id="file-upload-successful"></span>
+            <button data-automation-id="delete-file" type="button">Delete test file</button>
+          </div>
+          <div role="alert" aria-live="polite">
+            <span data-automation-id="ariaLive"></span>
+            <span data-automation-id="ariaLiveMessage"></span>
+          </div>
+        </div>
+      </section>
+
+      <button id="experience-next" type="submit">Save and Continue</button>
+    </form>
+    <output id="select-files-click-count" hidden>0</output>
+    <output id="certification-add-click-count" hidden>0</output>
+    <output id="upload-change-count" hidden>0</output>
+    <output id="experience-submit-count" hidden>0</output>
+    <script>
+      (() => {
+        const setCount = (selector) => {
+          const output = document.querySelector(selector);
+          output.textContent = String(Number(output.textContent) + 1);
+        };
+        document.querySelector("#resumeAttachments--attachments").addEventListener("click", () => setCount("#select-files-click-count"));
+        document.querySelector("#certifications-add").addEventListener("click", () => setCount("#certification-add-click-count"));
+        document.querySelector('[data-automation-id="file-upload-input-ref"]').addEventListener("change", (event) => {
+          const input = event.currentTarget;
+          setCount("#upload-change-count");
+          const filename = Array.from(input.files ?? [], (file) => file.name).join(", ");
+          document.querySelector('[data-automation-id="file-upload-item"]').hidden = !filename;
+          document.querySelector('[data-automation-id="file-upload-item-name"]').textContent = filename;
+          document.querySelector('[data-automation-id="file-upload-successful"]').textContent = filename ? "Successfully Uploaded!" : "";
+          document.querySelector('[data-automation-id="ariaLive"]').textContent = filename ? "Successfully Uploaded!" : "";
+          document.querySelector('[data-automation-id="ariaLiveMessage"]').textContent = filename ? "File upload complete." : "";
+        });
+        document.querySelector("#synthetic-experience-application").addEventListener("submit", (event) => {
+          event.preventDefault();
+          setCount("#experience-submit-count");
+        });
+      })();
+    </script>
+  </body>
+</html>

@@ -2290,6 +2290,18 @@ select {
   font-size: 11.5px;
 }
 
+.analytics-load-status {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-bottom: 16px;
+}
+
+.analytics-load-status p { margin: 0; }
+.analytics-load-status[data-error="true"] { color: var(--red); }
+
 .application-summary {
   border-bottom: 1px solid var(--line);
   display: flex;

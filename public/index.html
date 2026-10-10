@@ -15,6 +15,9 @@
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/redesign.css" />
     <link rel="stylesheet" href="/themed-select.css" />
+    <!-- Today feature is dormant for now.
+    <link rel="stylesheet" href="/app/today.css" />
+    -->
   </head>
   <body>
     <a class="skip-link" href="#main-content">Skip to dashboard content</a>
@@ -33,6 +36,11 @@
         <nav class="sidebar-nav" aria-label="Dashboard navigation">
           <div class="nav-group" role="group" aria-labelledby="nav-workspace-label">
             <p class="nav-section" id="nav-workspace-label">Workspace</p>
+            <!-- Today feature is dormant for now.
+            <a class="nav-item" href="/today" data-nav="today">
+              <span class="nav-label">Today</span><span class="nav-count" id="today-nav-count" hidden></span>
+            </a>
+            -->
             <a class="nav-item active" href="#dashboard" data-nav="dashboard" aria-current="page">
               <span class="nav-label">Dashboard</span>
             </a>
@@ -179,6 +187,28 @@
             <span>Enable JavaScript, then reload this page to view roles and crawl status.</span>
           </div>
         </noscript>
+
+        <!-- Today feature is dormant for now.
+        <section id="today-view" class="today-view" data-role-view="today" hidden aria-labelledby="today-title">
+          <header class="today-header">
+            <div>
+              <h1 id="today-title">Today</h1>
+              <p id="today-subtitle">New listings, newest first.</p>
+            </div>
+            <div class="today-header-actions">
+              <time id="today-date"></time>
+              <a class="button button-subtle" href="/jobs?view=all&tab=main&sort=posted">Browse roles <span aria-hidden="true">↗</span></a>
+            </div>
+          </header>
+          <div id="today-content" class="today-content" aria-busy="true">
+            <p class="today-loading" role="status">Loading new listings…</p>
+          </div>
+          <div class="today-footer">
+            <p id="today-status" role="status" aria-live="polite"></p>
+            <button id="today-refresh" class="text-link" type="button">Refresh listings</button>
+          </div>
+        </section>
+        -->
 
         <div class="main-chrome" data-role-view="roles">
           <header class="page-header page-header-editorial">
@@ -497,11 +527,16 @@
             </div>
           </header>
 
+          <div class="analytics-load-status" id="analytics-load-status" role="status" aria-live="polite">
+            <p id="analytics-load-message">Loading saved analytics…</p>
+            <button id="analytics-retry" class="text-link" type="button" hidden>Retry analytics</button>
+          </div>
+
           <section class="analytics-panel analytics-statistics-panel" aria-labelledby="crawl-statistics-heading">
             <div class="analytics-panel-heading">
               <div>
                 <h2 id="crawl-statistics-heading">Crawl Statistics</h2>
-                <p>Current listing totals and decisions across the crawler.</p>
+                <p>All stored crawler roles and your saved decisions. Listing filters do not affect these totals.</p>
               </div>
               <span class="analytics-panel-kicker">Live snapshot</span>
             </div>
@@ -517,6 +552,7 @@
                 <div class="crawl-stat loading-card" aria-hidden="true"><span class="loading-block loading-block-value"></span><span class="loading-block loading-block-label"></span></div>
               </div>
             </div>
+            <p id="analytics-account-status" class="source-summary" role="status" aria-live="polite">Checking your saved counts…</p>
           </section>
 
           <div class="analytics-grid analytics-grid-top">
@@ -630,6 +666,16 @@
                   </div>
                   <span id="settings-account-status" class="settings-readonly-note">Checking account…</span>
                 </div>
+              </section>
+
+              <section class="settings-panel" aria-labelledby="settings-autofill-heading">
+                <div class="settings-panel-heading">
+                  <div>
+                    <h2 id="settings-autofill-heading">Application autofill</h2>
+                    <p>Keep reusable application details and answers in your Scout account, then review them in your browser helper.</p>
+                  </div>
+                </div>
+                <a class="settings-inline-button settings-inline-link" href="/browser-helper">Open application profile <span aria-hidden="true">→</span></a>
               </section>
 
               <section class="settings-panel" aria-labelledby="settings-appearance-heading">

@@ -1,0 +1,52 @@
+<!doctype html>
+<!--
+  Synthetic test fixture based on sanitized Semtech Workday IAB observations.
+  This is not a captured employer page. The formField suffix, surrounding page
+  structure, and click counters are test scaffolding, not observed selectors.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Synthetic Workday application step</title>
+    <style>
+      body { font: 16px sans-serif; margin: 2rem; }
+      [data-automation-id="file-upload-input-ref"] { display: none; }
+      button { min-height: 2.75rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <ol data-automation-id="progressBar">
+        <li data-automation-id="progressBarActiveStep">current step 1 of 6</li>
+        <li>step2of6</li>
+        <li>step3of6</li>
+        <li>step4of6</li>
+        <li>step5of6</li>
+        <li>step6of6</li>
+      </ol>
+      <h3>Autofill with Resume</h3>
+      <div data-automation-id="formField-synthetic-resume">
+          <div>
+            <div>
+              <div data-automation-id="resumeUpload">
+                <div>
+                  <p>Resume attachment. Relevant application information may load for hiring managers and HR.</p>
+                  <p>5 MB maximum. Accepted formats: DOC, DOCX, HTML, PDF, TXT.</p>
+                  <p>Drop file here or Select file</p>
+                  <button type="button" data-automation-id="select-files"
+                    onclick="document.querySelector('[data-automation-id=\"file-upload-input-ref\"]').click(); document.querySelector('#select-files-click-count').textContent = String(Number(document.querySelector('#select-files-click-count').textContent) + 1)">Select file</button>
+                  <input type="file" data-automation-id="file-upload-input-ref"
+                    onchange="document.querySelector('#upload-change-count').textContent = String(Number(document.querySelector('#upload-change-count').textContent) + 1)">
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      <p><button data-automation-id="pageFooterNextButton"
+          onclick="document.querySelector('#continue-click-count').textContent = String(Number(document.querySelector('#continue-click-count').textContent) + 1)">Continue</button></p>
+      <output id="select-files-click-count">0</output>
+      <output id="upload-change-count">0</output>
+      <output id="continue-click-count">0</output>
+    </main>
+  </body>
+</html>

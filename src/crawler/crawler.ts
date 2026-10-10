@@ -39,7 +39,7 @@ import { snapshotFromHttp, StaticHttpAdapter } from "./staticAdapters.js";
 import { looksLikeRecruitingLink, scoreLink } from "./linkScorer.js";
 import { PriorityQueue } from "./queue.js";
 import { RobotsManager } from "./robots.js";
-import { earlyCareerRadarSameSite, isCsJobsTorontoSource, isEarlyCareerRadarNotFoundPage, isEarlyCareerRadarPage, isEarlyCareerRadarSource, isHiringCafeSource, largeListingSourcePageFloor, publicSourceFallbacks } from "./publicSources.js";
+import { earlyCareerRadarSameSite, isApplyBoltNotFoundPage, isApplyBoltPage, isCsJobsTorontoSource, isEarlyCareerRadarNotFoundPage, isEarlyCareerRadarPage, isEarlyCareerRadarSource, isHiringCafeSource, largeListingSourcePageFloor, publicSourceFallbacks } from "./publicSources.js";
 import { classifyPageContent } from "../verification/pageContent.js";
 import { SourceAdapterRouter } from "./adapters/router.js";
 import { browserFallbackSuppressedResult, isBrowserFallbackSuppressed, type SourceHealthForOrchestration } from "./sourceOrchestration.js";
@@ -820,6 +820,7 @@ export class InternshipCrawler {
     // the feed adapter gets a chance to run.
     const knownJsRequired = Boolean(
       !internListSource
+      && !isApplyBoltPage(sourceUrl)
       && !isEarlyCareerRadarPage(sourceUrl)
       && knownStrategy?.requiresJs
       && knownStrategy.lastSuccessAt
@@ -835,9 +836,12 @@ export class InternshipCrawler {
           await onProgress?.({ pagesVisited: 0, potentialPostingsInspected: 0, internshipsDiscovered: 0, completed: false });
         } });
         this.throwIfCancelled(persistence);
+        if (isApplyBoltNotFoundPage(sourceUrl, adapterResult.httpStatus)) {
+          return this.skippedNotFoundSource(sourceUrl, Math.max(1, adapterResult.attempts), adapterResult.retrievalMethod, adapterResult.retrievalUrls);
+        }
         if (isEarlyCareerRadarPage(sourceUrl) && (isEarlyCareerRadarNotFoundPage(sourceUrl, adapterResult.httpStatus)
           || adapterResult.snapshots.some((snapshot) => isEarlyCareerRadarNotFoundPage(snapshot.url, snapshot.status, snapshot.text)))) {
-          return this.skippedEarlyCareerRadarSource(sourceUrl, adapterResult.attempts, adapterResult.retrievalMethod, adapterResult.retrievalUrls);
+          return this.skippedNotFoundSource(sourceUrl, adapterResult.attempts, adapterResult.retrievalMethod, adapterResult.retrievalUrls);
         }
         const terminalAdapterFailure = adapterResult.failures.some((failure) => failure.errorType === "source_retired")
           || (internListSource && adapterResult.snapshots.length === 0 && adapterResult.failures.length > 0)
@@ -897,8 +901,9 @@ export class InternshipCrawler {
       }
     } catch (error) {
       this.propagateIfAbort(error, persistence);
-      if (error instanceof HttpRequestError && isEarlyCareerRadarNotFoundPage(sourceUrl, error.statusCode)) {
-        return this.skippedEarlyCareerRadarSource(sourceUrl, error.attempts + 1, "first-party HTTP", [sourceUrl]);
+      if (error instanceof HttpRequestError && (isEarlyCareerRadarNotFoundPage(sourceUrl, error.statusCode)
+        || isApplyBoltNotFoundPage(sourceUrl, error.statusCode))) {
+        return this.skippedNotFoundSource(sourceUrl, error.attempts + 1, "first-party HTTP", [sourceUrl]);
       }
       if (isEarlyCareerRadarSource(sourceUrl) || internListSource) {
         const runtimeMs = Math.max(0, Math.round(performance.now() - httpStartedAt));
@@ -948,6 +953,7 @@ export class InternshipCrawler {
     let rawListingLimitReported = false;
     let candidateLimitReported = false;
     let rootSucceeded = false;
+    let applyBoltNotFound = false;
     let radarNotFoundRoot = false;
     let radarNotFoundPagesSkipped = 0;
     let retrievalMode: "configured_url" | "public_alternate" = "configured_url";
@@ -1195,6 +1201,10 @@ export class InternshipCrawler {
           const fetchError = error instanceof PageFetchError
             ? error
             : new PageFetchError(error instanceof Error ? error.message : String(error), null, 0, "unexpected_error");
+          if (isApplyBoltNotFoundPage(item.url, fetchError.statusCode)) {
+            applyBoltNotFound = true;
+            return;
+          }
           if (isEarlyCareerRadarNotFoundPage(item.url, fetchError.statusCode)) {
             radarNotFoundPagesSkipped += 1;
             if (item.url === sourceUrl) radarNotFoundRoot = true;
@@ -1206,6 +1216,7 @@ export class InternshipCrawler {
         }
       }));
       this.throwIfCancelled(persistence);
+      if (applyBoltNotFound) return this.skippedNotFoundSource(sourceUrl, 1, "Playwright browser", retrievalUrls);
       await onProgress?.({
         pagesVisited,
         potentialPostingsInspected,
@@ -1219,7 +1230,7 @@ export class InternshipCrawler {
       this.throwIfCancelled(persistence);
     }
     if (radarNotFoundRoot && !rootSucceeded) {
-      return this.skippedEarlyCareerRadarSource(sourceUrl, 1, "Playwright browser", retrievalUrls);
+      return this.skippedNotFoundSource(sourceUrl, 1, "Playwright browser", retrievalUrls);
     }
     if (radarNotFoundPagesSkipped > 0) coverageNotes.push(`${radarNotFoundPagesSkipped} Early Career Radar not-found page(s) skipped without retry.`);
     const interpretedBrowserStatus = sourceStatus(rootSucceeded, jobs.length, failures);
@@ -1296,7 +1307,7 @@ export class InternshipCrawler {
     };
   }
 
-  private skippedEarlyCareerRadarSource(sourceUrl: string, attempts: number, retrievalMethod: string, retrievalUrls: string[]): SourceCrawlResult {
+  private skippedNotFoundSource(sourceUrl: string, attempts: number, retrievalMethod: string, retrievalUrls: string[]): SourceCrawlResult {
     return {
       sourceUrl,
       pagesVisited: 0,
@@ -1316,7 +1327,7 @@ export class InternshipCrawler {
       attempts,
       httpStatus: 404,
       directApplicationLinks: 0,
-      coverageNotes: ["Early Career Radar returned a 404/not-found page; skipped without retry or alternate retrieval. Previous listings were not treated as closed."],
+      coverageNotes: [`${isApplyBoltPage(sourceUrl) ? "ApplyBolt" : "Early Career Radar"} returned a 404/not-found page; skipped without retry or alternate retrieval. Previous listings were not treated as closed.`],
       metrics: { retryableFailures: 0 },
     };
   }
@@ -1368,17 +1379,20 @@ export class InternshipCrawler {
         .filter((job) => !isExcludedJobTitle(job.title))
         .map((job) => grindJobToAnalyzedJob(job, sourceUrl, verifiedAt))
         .filter(({ internship }) => internship.relevanceScore >= minimumScore && internship.categories.length > 0);
+      const feedFailureTypes = {
+        network: "network_error", timeout: "timeout", parse: "parse_error",
+        access: "access_denied", rate_limit: "rate_limited", http: "http_error",
+      } as const;
       const failures: FetchFailure[] = snapshot.failures.map((failure) => ({
         sourceUrl,
         url: snapshot.retrievalUrl,
-        errorType: failure.statusCode === 429
-          ? "rate_limited"
-          : failure.statusCode === 401 || failure.statusCode === 403
-            ? "access_denied"
-            : "http_error",
+        errorType: failure.errorType ? feedFailureTypes[failure.errorType]
+          : failure.statusCode === 429 ? "rate_limited"
+            : failure.statusCode === 401 || failure.statusCode === 403 ? "access_denied"
+              : "http_error",
         message: `${failure.company}: ${failure.message}`,
         statusCode: failure.statusCode ?? null,
-        retryCount: Math.max(0, snapshot.attempts - snapshot.companyCount),
+        retryCount: failure.retryCount ?? 0,
         occurredAt: new Date().toISOString(),
       }));
       const irrelevantListingsSkipped = Math.max(0, snapshot.jobs.length - jobs.length);
@@ -1401,6 +1415,7 @@ export class InternshipCrawler {
         closedPages: [],
         completed,
         coverageComplete: snapshot.status === "ready",
+        stale: snapshot.status === "stale" || snapshot.status === "partial",
         status,
         retrievalMethod: "Convex structured feed",
         attempts: snapshot.attempts,
@@ -1496,7 +1511,7 @@ export class InternshipCrawler {
 
   private async extractJobsWithFallback(
     snapshot: PageSnapshot,
-    sourceUrl: string,
+    _sourceUrl: string,
     persistence?: CrawlPersistence,
   ): Promise<RawJob[]> {
     const signal = composeAbortSignals(currentSourceAbortSignal(), persistence?.signal, this.cancellationSignal);
@@ -1508,8 +1523,11 @@ export class InternshipCrawler {
       return deterministicJobs;
     }
     if (detectClosedPage(snapshot.text, snapshot.status, snapshot.url, false, snapshot.html)) return deterministicJobs;
+    // Temporarily dormant: keep the recovery path here in comments so it can be re-enabled later.
+    void this.openaiJobFallback;
+    /*
     try {
-      const recovered = await this.openaiJobFallback.recover(snapshot, deterministicJobs, sourceUrl, signal);
+      const recovered = await this.openaiJobFallback.recover(snapshot, deterministicJobs, _sourceUrl, signal);
       throwIfAborted(signal);
       return recovered;
     } catch (error) {
@@ -1520,6 +1538,8 @@ export class InternshipCrawler {
       this.logger.warn("LLM", `OpenAI fallback failed for ${redactSensitiveUrl(snapshot.url)} (${errorKind}).`);
       return deterministicJobs;
     }
+    */
+    return deterministicJobs;
   }
 
   private async analyzeJobWithProfile(
@@ -2879,6 +2899,10 @@ export class InternshipCrawler {
         metrics,
       };
     } catch (error) {
+      this.propagateIfAbort(error, persistence);
+      if ((error instanceof HttpRequestError || error instanceof PageFetchError) && isApplyBoltNotFoundPage(sourceUrl, error.statusCode)) {
+        return this.skippedNotFoundSource(sourceUrl, this.http.metrics.httpRequests - httpMetricsStart.httpRequests, "ApplyBolt static HTTP", [sourceUrl]);
+      }
       if (error instanceof HttpRequestError && error.statusCode === 403 && /wellfound\.com$/i.test(new URL(sourceUrl).hostname)) {
         try {
           const snapshot = await this.browser.fetchPage(sourceUrl, robotsDelayMs, sourceUrl);

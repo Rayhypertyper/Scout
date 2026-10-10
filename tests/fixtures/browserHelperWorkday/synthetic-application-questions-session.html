@@ -1,0 +1,182 @@
+<!doctype html>
+<!--
+  Synthetic adapter fixture, not a captured Workday page. Its heading hierarchy,
+  fieldset/legend relationship, trigger and popup roles, labels, and control
+  patterns model the parent-relayed live observation. IDs, state, event handling,
+  wrapper suffixes, and counters are synthetic-only.
+-->
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>Software Engineer</title>
+    <style>
+      [hidden] { display: none !important; }
+      body { font: 16px sans-serif; }
+      fieldset { margin: 1rem 0; }
+      ul[role="listbox"] { border: 1px solid; padding: 0.25rem; }
+      li[role="option"] { cursor: pointer; padding: 0.25rem; }
+      li[aria-disabled="true"] { opacity: 0.65; cursor: default; }
+    </style>
+  </head>
+  <body>
+    <h1>Careers at Mercer University</h1>
+    <h2>Software Engineer</h2>
+    <h3>Application Questions</h3>
+    <form id="synthetic-questionnaire">
+      <section data-automation-id="formField-synthetic-question-1">
+        <fieldset>
+          <legend>Have you ever been employed at Mercer University or Mercer Engineering Research Center (MERC)? <span aria-hidden="true">*</span></legend>
+          <button id="primaryQuestionnaire--synthetic-question-1" name="primaryQuestionnaire--synthetic-question-1" type="button" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button>
+          <ul id="synthetic-question-1-listbox" role="listbox" aria-activedescendant="synthetic-question-1-placeholder" hidden>
+            <li id="synthetic-question-1-placeholder" role="option" aria-disabled="true" tabindex="-1">Select One</li>
+            <li id="synthetic-question-1-yes" role="option" tabindex="-1">Yes</li>
+            <li id="synthetic-question-1-no" role="option" tabindex="-1">No</li>
+          </ul>
+        </fieldset>
+      </section>
+
+      <section data-automation-id="formField-synthetic-question-2">
+        <fieldset>
+          <legend>Have you ever held a security clearance? <span aria-hidden="true">*</span></legend>
+          <button id="primaryQuestionnaire--synthetic-question-2" name="primaryQuestionnaire--synthetic-question-2" type="button" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button>
+          <ul id="synthetic-question-2-listbox" role="listbox" aria-activedescendant="synthetic-question-2-placeholder" hidden>
+            <li id="synthetic-question-2-placeholder" role="option" aria-disabled="true" tabindex="-1">Select One</li>
+            <li id="synthetic-question-2-yes" role="option" tabindex="-1">Yes</li>
+            <li id="synthetic-question-2-no" role="option" tabindex="-1">No</li>
+          </ul>
+        </fieldset>
+      </section>
+
+      <section data-automation-id="formField-synthetic-question-6">
+        <fieldset>
+          <legend>Are you a U.S. citizen? <span aria-hidden="true">*</span></legend>
+          <button id="primaryQuestionnaire--synthetic-question-6" name="primaryQuestionnaire--synthetic-question-6" type="button" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button>
+          <ul id="synthetic-question-6-listbox" role="listbox" aria-activedescendant="synthetic-question-6-placeholder" hidden>
+            <li id="synthetic-question-6-placeholder" role="option" aria-disabled="true" tabindex="-1">Select One</li>
+            <li id="synthetic-question-6-yes" role="option" tabindex="-1">Yes</li>
+            <li id="synthetic-question-6-no" role="option" tabindex="-1">No</li>
+          </ul>
+        </fieldset>
+      </section>
+
+      <!-- Test-only two-country wording verifies that mixed jurisdictions stay unscoped. -->
+      <section data-automation-id="formField-synthetic-question-two-countries">
+        <fieldset>
+          <legend>Are you authorized to work in the United States or Canada? <span aria-hidden="true">*</span></legend>
+          <button id="primaryQuestionnaire--synthetic-question-two-countries" name="primaryQuestionnaire--synthetic-question-two-countries" type="button" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button>
+          <ul id="synthetic-question-two-countries-listbox" role="listbox" aria-activedescendant="synthetic-question-two-countries-placeholder" hidden>
+            <li id="synthetic-question-two-countries-placeholder" role="option" aria-disabled="true" tabindex="-1">Select One</li>
+            <li id="synthetic-question-two-countries-yes" role="option" tabindex="-1">Yes</li>
+            <li id="synthetic-question-two-countries-no" role="option" tabindex="-1">No</li>
+          </ul>
+        </fieldset>
+      </section>
+
+      <section data-automation-id="formField-synthetic-salary">
+        <fieldset>
+          <legend>What is your desired starting salary? <span aria-hidden="true">*</span></legend>
+          <textarea id="primaryQuestionnaire--synthetic-salary" aria-required="true"></textarea>
+        </fieldset>
+      </section>
+
+      <!-- Test-only benign prompt verifies that a literal dash remains a valid choice. -->
+      <section data-automation-id="formField-synthetic-dash-choice">
+        <fieldset>
+          <legend>Which synthetic schedule label should the test choose?</legend>
+          <button id="primaryQuestionnaire--synthetic-dash-choice" name="primaryQuestionnaire--synthetic-dash-choice" type="button" aria-haspopup="listbox" aria-label=" Select One">Select One</button>
+          <ul id="synthetic-dash-choice-listbox" role="listbox" aria-activedescendant="synthetic-dash-choice-placeholder" hidden>
+            <li id="synthetic-dash-choice-placeholder" role="option" aria-disabled="true" tabindex="-1">Select One</li>
+            <li id="synthetic-dash-choice-dash" role="option" tabindex="-1">-</li>
+            <li id="synthetic-dash-choice-other" role="option" tabindex="-1">Other</li>
+          </ul>
+        </fieldset>
+      </section>
+
+      <section data-automation-id="formField-synthetic-question-11">
+        <fieldset>
+          <legend>In compliance with federal law, all persons hired will be required to verify identity and eligibility to work in the United States and to complete the required employment eligibility verification document form upon hire. I authorize representatives of Mercer University/MERC to contact the references that I have provided, and to make inquiries concerning my employment history with current or former employers if I am selected as a finalist. I understand that all final and official offers of employment shall be made by the MERC Executive Director. <span aria-hidden="true">*</span></legend>
+          <button id="primaryQuestionnaire--synthetic-question-11" name="primaryQuestionnaire--synthetic-question-11" type="button" aria-haspopup="listbox" aria-label=" Select One Required">Select One</button>
+          <ul id="synthetic-question-11-listbox" role="listbox" aria-activedescendant="synthetic-question-11-placeholder" hidden>
+            <li id="synthetic-question-11-placeholder" role="option" aria-disabled="true" tabindex="-1">Select One</li>
+            <li id="synthetic-question-11-yes" role="option" tabindex="-1">Yes - I certify that I have read and agree with these statements.</li>
+            <li id="synthetic-question-11-dash" role="option" tabindex="-1">-</li>
+          </ul>
+        </fieldset>
+      </section>
+
+      <button id="synthetic-next" type="submit">Save and Continue</button>
+    </form>
+    <output id="trigger-click-count" hidden>0</output>
+    <output id="option-click-count" hidden>0</output>
+    <output id="next-click-count" hidden>0</output>
+    <output id="questionnaire-submit-count" hidden>0</output>
+    <script>
+      (() => {
+        const count = (selector) => {
+          const output = document.querySelector(selector);
+          output.textContent = String(Number(output.textContent) + 1);
+        };
+        const enabledOptions = (listbox) => Array.from(listbox.querySelectorAll('[role="option"]'))
+          .filter((option) => option.getAttribute("aria-disabled") !== "true");
+        const focusOption = (listbox, option) => {
+          if (!option) return;
+          listbox.setAttribute("aria-activedescendant", option.id);
+          option.focus();
+        };
+        const commitOption = (button, listbox, option) => {
+          if (!option || option.getAttribute("aria-disabled") === "true") return;
+          count("#option-click-count");
+          button.textContent = option.textContent.trim();
+          listbox.hidden = true;
+        };
+        document.querySelectorAll('button[id^="primaryQuestionnaire--"]').forEach((button) => {
+          const listbox = button.parentElement.querySelector('[role="listbox"]');
+          const options = () => enabledOptions(listbox);
+          button.addEventListener("click", () => {
+            count("#trigger-click-count");
+            listbox.hidden = false;
+            const current = options().find((option) => option.textContent.trim() === button.textContent.trim());
+            focusOption(listbox, current ?? options()[0]);
+          });
+          button.addEventListener("keydown", (event) => {
+            if (event.key !== "ArrowDown") return;
+            event.preventDefault();
+            listbox.hidden = false;
+            const current = options().find((option) => option.textContent.trim() === button.textContent.trim());
+            focusOption(listbox, current ?? options()[0]);
+          });
+          listbox.addEventListener("click", (event) => {
+            const option = event.target.closest('[role="option"]');
+            commitOption(button, listbox, option);
+          });
+          listbox.addEventListener("keydown", (event) => {
+            const current = event.target.closest('[role="option"]');
+            if (event.key === "Escape") {
+              event.preventDefault();
+              listbox.hidden = true;
+              button.focus();
+              return;
+            }
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              const all = options();
+              const next = all[(all.indexOf(current) + 1) % all.length];
+              focusOption(listbox, next);
+              return;
+            }
+            if (["Enter", " "].includes(event.key)) {
+              event.preventDefault();
+              commitOption(button, listbox, current);
+              button.focus();
+            }
+          });
+        });
+        document.querySelector("#synthetic-next").addEventListener("click", () => count("#next-click-count"));
+        document.querySelector("#synthetic-questionnaire").addEventListener("submit", (event) => {
+          event.preventDefault();
+          count("#questionnaire-submit-count");
+        });
+      })();
+    </script>
+  </body>
+</html>

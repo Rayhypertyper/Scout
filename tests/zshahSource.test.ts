@@ -83,7 +83,10 @@ describe("zshah published source", () => {
     const rawReadme = `${ZSHAH_REPOSITORY_URL.replace("https://github.com/", "https://raw.githubusercontent.com/")}/main/README.md`;
     expect(get.mock.calls.map(([url]) => url)).toEqual([ZSHAH_JOBS_URL, apiBase, rawReadme]);
     expect(result.snapshots).toEqual([]);
-    expect(result.failures).toMatchObject([{ sourceUrl: ZSHAH_DASHBOARD_URL, url: rawReadme }]);
+    expect(result.failures).toMatchObject([
+      { sourceUrl: ZSHAH_DASHBOARD_URL, url: ZSHAH_JOBS_URL, errorType: "network_error" },
+      { sourceUrl: ZSHAH_DASHBOARD_URL, url: rawReadme, errorType: "network_error" },
+    ]);
   });
 
   it.each(["unavailable", "truncated"])("falls back to just README.md when the dashboard is %s", async (failureMode) => {
@@ -104,7 +107,8 @@ describe("zshah published source", () => {
     const result = await adapter.collect(ZSHAH_REPOSITORY_URL);
 
     expect(get.mock.calls.map(([url]) => url)).toEqual([ZSHAH_JOBS_URL, apiBase, `${apiBase}/contents/README.md?ref=main`]);
-    expect(result).toMatchObject({ inventoryComplete: false, failures: [] });
+    expect(result).toMatchObject({ inventoryComplete: false });
+    expect(result.failures).toMatchObject([{ url: ZSHAH_JOBS_URL, errorType: failureMode === "unavailable" ? "network_error" : "parse_error" }]);
     expect(extractJobs(result.snapshots[0]!)).toHaveLength(1);
 
     const crawler = new InternshipCrawler(resolveSettings({ respectRobotsTxt: false }), new Logger("error"));

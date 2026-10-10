@@ -107,10 +107,9 @@ export class PublicEgressProxy implements BrowserEgressProxy {
       void this.handleConnect(request, client, head);
     });
     server.on("connection", (socket) => {
-      const trackedSocket = socket as unknown as Socket;
-      trackedSocket.setTimeout(PUBLIC_EGRESS_PROXY_IDLE_TIMEOUT_MS, () => trackedSocket.destroy());
-      this.sockets.add(trackedSocket);
-      socket.once("close", () => this.sockets.delete(trackedSocket));
+      socket.setTimeout(PUBLIC_EGRESS_PROXY_IDLE_TIMEOUT_MS, () => socket.destroy());
+      this.sockets.add(socket);
+      socket.once("close", () => this.sockets.delete(socket));
     });
     server.on("clientError", (_error, socket) => socket.destroy());
     this.startPromise = (async () => {

@@ -38,6 +38,15 @@
         ],
         "createdAt": "2026-10-06T21:04:08.882Z",
         "reason": "Codex decided: this backend Markdown parser removes literal img markup with a regex; it does not render an image element."
+      },
+      {
+        "rule": "design-system-font-size",
+        "value": "32px",
+        "files": [
+          "public/app/today.css"
+        ],
+        "createdAt": "2026-10-08T03:42:55.932Z",
+        "reason": "Codex decided: Today uses a 32px page title to distinguish the daily briefing from its 22px section titles; all body and metadata sizes follow the established Scout typography."
       }
     ]
   }

@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scout Application Helper</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="brand-lockup" aria-label="Scout Application Helper">
+        <span class="brand-mark" aria-hidden="true">S</span>
+        <div>
+          <p class="brand-name">Scout</p>
+          <p class="brand-description">Application helper</p>
+        </div>
+      </div>
+      <span class="privacy-tag">You submit</span>
+    </header>
+
+    <main>
+      <section class="connection-section" aria-labelledby="connection-heading">
+        <div class="section-heading">
+          <div>
+            <h1 id="connection-heading">Your Scout account</h1>
+            <p id="connection-status" class="muted">Profile stays in this browser until you connect.</p>
+          </div>
+          <button id="connection-toggle" class="text-button" type="button">Set up</button>
+        </div>
+        <div id="connection-panel" class="connection-panel" hidden>
+          <label for="scout-origin">Scout address</label>
+          <div class="connection-controls">
+            <input id="scout-origin" type="url" inputmode="url" autocomplete="url" placeholder="https://your-scout.example" />
+            <button id="connect-scout" class="button button-dark" type="button">Connect</button>
+          </div>
+          <p class="field-help">Scout requests access only to this address. Sign in to Scout there, then connect to sync your profile and saved answers.</p>
+          <div class="connection-actions">
+            <button id="open-scout" class="text-button" type="button">Open Scout</button>
+            <button id="disconnect-scout" class="text-button danger-text" type="button" hidden>Disconnect and clear local data</button>
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="profile-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="profile-heading">Application profile</h2>
+            <p class="muted">Review these details before each application.</p>
+          </div>
+          <span id="profile-save-state" class="state-label">Local</span>
+        </div>
+        <p class="starter-note">Editable starter preferences include Canada, Mobile, Canada (+1), LinkedIn referral, previously employed No, preferred name Yes, and Chinese and English marked fluent with each proficiency set to 5 - Fluent. Existing saved values take priority. These defaults are staged locally; Sync with Scout is a separate action. Certifications and preferred-name text start empty.</p>
+        <form id="profile-form" autocomplete="on">
+          <div class="field-grid two-columns">
+            <label>First name<input name="firstName" autocomplete="given-name" /></label>
+            <label>Last name<input name="lastName" autocomplete="family-name" /></label>
+          </div>
+          <div class="field-grid two-columns">
+            <label>Email<input name="email" type="email" autocomplete="email" /></label>
+            <label>Phone<input name="phone" type="tel" autocomplete="tel" /></label>
+          </div>
+          <div class="field-grid two-columns">
+            <label>Phone type
+              <select name="phoneType">
+                <option value="">Choose if reviewed</option>
+                <option value="Mobile">Mobile</option>
+                <option value="Landline">Landline</option>
+              </select>
+            </label>
+            <label>Phone country code
+              <input name="phoneCountryCode" autocomplete="off" placeholder="Use the full label, e.g. Canada (+1)" />
+            </label>
+          </div>
+          <label>Phone extension<input name="phoneExtension" autocomplete="off" /></label>
+          <label>Street address<input name="address" autocomplete="street-address" /></label>
+          <div class="field-grid two-columns">
+            <label>City<input name="city" autocomplete="address-level2" /></label>
+            <label>Region / province<input name="region" autocomplete="address-level1" /></label>
+          </div>
+          <div class="field-grid two-columns">
+            <label>Postal code<input name="postalCode" autocomplete="postal-code" /></label>
+            <label>Country<input name="country" autocomplete="country-name" /></label>
+          </div>
+          <div class="field-grid two-columns">
+            <label>LinkedIn<input name="linkedin" type="url" /></label>
+            <label>GitHub<input name="github" type="url" /></label>
+          </div>
+          <label>Portfolio / personal site<input name="portfolio" type="url" /></label>
+          <label>Work authorization, with country
+            <input name="workAuthorization" autocomplete="off" placeholder="For example, authorized to work in Canada" />
+          </label>
+          <label>Sponsorship required now or in the future
+            <select name="requiresSponsorship">
+              <option value="">Choose if you have reviewed this</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <div class="field-grid two-columns">
+            <label>Previously employed by an employer
+              <select name="previousWorker">
+                <option value="">Not reviewed</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+              <span class="field-help">Used for direct past-employer yes/no questions, including the observed Workday previous-worker prompts. It does not answer student, legal, or essay questions.</span>
+            </label>
+            <label>Use a preferred name
+              <select name="hasPreferredName">
+                <option value="">Not reviewed</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+          </div>
+          <div class="field-grid two-columns">
+            <label>Preferred first name<input name="preferredFirstName" autocomplete="off" /></label>
+            <label>Preferred last name<input name="preferredLastName" autocomplete="off" /></label>
+          </div>
+          <div class="profile-subsection" role="group" aria-labelledby="education-label">
+            <div class="profile-subsection-heading">
+              <h3 id="education-label">Education</h3>
+              <label class="count-control" for="education-count">Entries
+                <input id="education-count" type="number" min="0" max="12" step="1" value="0" inputmode="numeric" />
+              </label>
+            </div>
+            <p class="field-help date-help">Start and end dates use month and year only.</p>
+            <div class="repeatable-list" id="education-list" aria-labelledby="education-label"></div>
+            <button id="add-education" class="text-button add-row" type="button">Add education entry</button>
+          </div>
+          <div class="profile-subsection" role="group" aria-labelledby="experience-label">
+            <div class="profile-subsection-heading">
+              <h3 id="experience-label">Experience</h3>
+              <label class="count-control" for="experience-count">Work experiences to include
+                <input id="experience-count" name="experienceCount" type="number" min="0" max="20" step="1" value="1" inputmode="numeric" />
+              </label>
+            </div>
+            <p class="field-help">Extra Workday experience entries will be removed to match this count. Other saved experience details stay in your profile; retained application fields stay as they are.</p>
+            <p class="field-help date-help">Start and end dates use month and year only.</p>
+            <div class="repeatable-list" id="experience-list" aria-labelledby="experience-label"></div>
+            <button id="add-experience" class="text-button add-row" type="button">Add experience entry</button>
+          </div>
+          <div class="profile-subsection" role="group" aria-labelledby="languages-label">
+            <div class="profile-subsection-heading">
+              <h3 id="languages-label">Languages</h3>
+              <label class="count-control" for="languages-count">Entries
+                <input id="languages-count" type="number" min="0" max="20" step="1" value="0" inputmode="numeric" />
+              </label>
+            </div>
+            <p class="field-help">Fluency and proficiency values are editable. Clear a checkbox to return it to Not reviewed.</p>
+            <div class="repeatable-list" id="languages-list" aria-labelledby="languages-label"></div>
+            <button id="add-language" class="text-button add-row" type="button">Add language</button>
+          </div>
+          <div class="profile-subsection" role="group" aria-labelledby="websites-label">
+            <div class="profile-subsection-heading">
+              <h3 id="websites-label">Websites</h3>
+              <label class="count-control" for="websites-count">Entries
+                <input id="websites-count" type="number" min="0" step="1" value="4" inputmode="numeric" />
+              </label>
+            </div>
+            <p class="field-help">Four blank website slots start here. Add or remove slots as needed; only reviewed addresses are used on application forms.</p>
+            <div class="repeatable-list" id="websites-list" aria-labelledby="websites-label"></div>
+            <button id="add-website" class="text-button add-row" type="button">Add website</button>
+          </div>
+          <label>Referral source choices
+            <textarea name="referralSources" rows="2" placeholder="One exact option label per line"></textarea>
+          </label>
+          <p class="field-help">Scout selects these only when an application offers the same exact options. It never guesses a phone country from the number.</p>
+          <div class="form-actions">
+            <button class="button button-dark" type="submit">Save profile</button>
+            <button id="copy-profile" class="button button-quiet" type="button">Copy profile</button>
+          </div>
+        </form>
+      </section>
+
+      <section aria-labelledby="documents-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="documents-heading">Documents</h2>
+            <p class="muted">Stored in this browser and attached only when you fill.</p>
+          </div>
+        </div>
+        <div class="field-grid two-columns document-grid">
+          <div class="document-control"><label>Resume / CV<input id="resume-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" /></label><button id="remove-resume" class="text-button danger-text" type="button" hidden>Remove stored resume</button></div>
+          <div class="document-control"><label>Cover letter<input id="cover-letter-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" /></label><button id="remove-cover-letter" class="text-button danger-text" type="button" hidden>Remove stored cover letter</button></div>
+        </div>
+        <p id="document-status" class="field-help">PDF or DOCX, 5 MB combined maximum. Existing files on the form are preserved.</p>
+      </section>
+
+      <section aria-labelledby="page-heading" class="page-section">
+        <div class="section-heading">
+          <div>
+            <h2 id="page-heading">Current application</h2>
+            <p id="page-status" class="muted">Check the active tab to see what Scout can fill.</p>
+          </div>
+          <button id="check-page" class="text-button" type="button">Check page</button>
+        </div>
+        <ul id="fill-report" class="report-list" aria-live="polite"></ul>
+        <label class="application-country-control" for="application-country">Job country for scoped answers
+          <select id="application-country" name="applicationCountry">
+            <option value="">Unknown / choose if reviewed</option>
+            <option value="Canada">Canada</option>
+            <option value="United States">United States</option>
+          </select>
+        </label>
+        <p class="field-help">This is the job’s country, separate from your address. Country-scoped answers stay unmatched when the job country is unknown.</p>
+        <label class="answer-choice written-answer-toggle"><input id="written-answer-drafting" type="checkbox" checked /> Use Luna for professional written responses</label>
+        <p class="field-help">Generated responses fill blank professional fields from your reviewed profile, resume, and same-job description. Edit them before you submit.</p>
+        <div id="workday-session-info" class="workday-session-info" hidden>
+          <p id="workday-session-note" class="field-help">Starting a Workday session asks for access to this exact employer site. It may replace Workday’s preselected country and phone code with your saved choices, and remove extra Work Experience panels to match your saved count. Other retained answers and later edits stay as they are.</p>
+          <div id="workday-written-drafts" class="workday-written-drafts" aria-live="polite" hidden></div>
+          <button id="stop-workday-session" class="text-button danger-text" type="button" hidden>Stop Workday session</button>
+        </div>
+        <div id="unknown-answers" class="unknown-answers" hidden>
+          <h3>Answers to review</h3>
+          <p class="field-help">Choose only exact answers you have reviewed. Sensitive, legal, and consent questions stay blank until you explicitly save an answer for the exact wording.</p>
+          <div id="unknown-list"></div>
+        </div>
+        <div id="answer-drafts-section" class="unknown-answers" hidden>
+          <h3>Suggested answers to review</h3>
+          <p class="field-help">These editable, scoped suggestions stay local until you save the reviewed answers. Saving activates exact-question matching; Scout sync is a separate action. Questions without a saved draft and legal or consent statements stay manual. Eligible professional essays can use Luna when enabled and the same-job description is available.</p>
+          <div id="answer-draft-list"></div>
+          <div class="form-actions">
+            <button id="save-answer-drafts" class="button button-quiet" type="button">Save reviewed answers</button>
+          </div>
+        </div>
+        <div id="saved-answers-section" class="unknown-answers" hidden>
+          <h3>Saved exact answers</h3>
+          <div id="saved-answer-list"></div>
+        </div>
+        <div class="form-actions action-row">
+          <button id="autofill" class="button button-primary" type="button">Fill blank fields</button>
+          <button id="sync-now" class="button button-quiet" type="button">Sync with Scout</button>
+        </div>
+        <p class="guardrail">Scout never submits forms, clicks Next or apply buttons, or fills credentials and captchas. Sensitive answers require an exact saved choice; unknown answers stay blank.</p>
+      </section>
+
+      <section aria-labelledby="submission-heading" class="submission-section">
+        <div class="section-heading">
+          <div>
+            <h2 id="submission-heading">Submission log</h2>
+            <p id="submission-detection" class="muted">Use this after you submit the application yourself.</p>
+          </div>
+        </div>
+        <div class="field-grid two-columns">
+          <label>Company<input id="application-company" autocomplete="organization" /></label>
+          <label>Role title<input id="application-title" /></label>
+        </div>
+        <label>Location<input id="application-location" /></label>
+        <div class="form-actions">
+          <button id="confirm-submitted" class="button button-dark" type="button">I submitted this application</button>
+        </div>
+        <p id="pending-status" class="field-help" aria-live="polite"></p>
+      </section>
+
+      <p id="feedback" class="feedback" role="status" aria-live="polite"></p>
+    </main>
+
+    <script src="answer-contract.js"></script>
+    <script src="profile-contract.js"></script>
+    <script src="personal-profile-preset.js"></script>
+    <script src="mercer-answer-drafts.js"></script>
+    <script src="workday-answer-drafts.js"></script>
+    <script src="application-context.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

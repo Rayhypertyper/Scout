@@ -1,0 +1,40 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-09",
+  "observationSource": "Live Codex in-app browser metadata relayed by the parent; candidate response values omitted.",
+  "tenant": "Semtech",
+  "host": "semtech.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "jobCountry": "Canada",
+  "step": {
+    "heading": "Voluntary Disclosures",
+    "index": 5,
+    "count": 6,
+    "sameSpaRoute": true
+  },
+  "visibleSections": [
+    "Terms and Conditions"
+  ],
+  "controls": [
+    {
+      "prompt": "Yes, I have read and agree to the terms and conditions*",
+      "selector": "#termsAndConditions--acceptTermsAndAgreements",
+      "name": "acceptTermsAndAgreements",
+      "type": "checkbox",
+      "wrapperAutomationId": "formField-acceptTermsAndAgreements",
+      "ariaRequired": true,
+      "nativeRequired": false,
+      "checkedValueRetained": false,
+      "manualOnly": true,
+      "visibleLabel": "Yes, I have read and agree to the terms and conditions*"
+    }
+  ],
+  "termsSummary": "A long authorization and release statement discusses background checks, interviews, criminal records, third parties, cross-border data transfer, reference consent, and truth certification.",
+  "otherDisclosureControlsObserved": false,
+  "candidateConsentRetained": false,
+  "stepActions": {
+    "termsActivatedByResearcher": false,
+    "applicationSubmitted": false
+  },
+  "boundary": "Observed live Semtech Voluntary Disclosures step 5 of 6. The visible step contained Terms and Conditions only; Mercer-style demographic controls were not present. The required consent checkbox was not selected by the researcher. Its exact choice and longer statement are not reusable answers. No consent value is stored in this metadata. The parent then proceeded to Review without submitting."
+}

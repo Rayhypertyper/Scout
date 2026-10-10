@@ -5,6 +5,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { encodeResponseBody, etagMatches, jsonResponse, responseWouldUseContentEncoding } from "./http.js";
+// Today feature is dormant for now.
+// import { todayPageHtml } from "./today.js";
 
 // These pages are server rendered by their owning routers or have request-
 // shaped metadata. Serving the raw templates would expose placeholders,
@@ -188,6 +190,9 @@ function jobsRobotsDirective(request: IncomingMessage): string {
 
 function replacePublicMetadata(body: Buffer, request: IncomingMessage, relativePath: string): Buffer {
   let content = body.toString("utf8");
+  /* Today feature is dormant for now.
+  if (relativePath === "index.html" && new URL(request.url ?? "/", "http://localhost").pathname.startsWith("/today")) content = todayPageHtml(content);
+  */
   if (relativePath === "landing.html") {
     content = content
       .replaceAll("__LANDING_CANONICAL_URL__", publicUrl(request, "/"))

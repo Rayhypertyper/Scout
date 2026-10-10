@@ -1,0 +1,76 @@
+<!doctype html>
+<!--
+  Synthetic read-only review fixture, not a captured Workday page. It models the
+  observed summary wrapper, section headings, automation-id families, and the
+  separate navigation buttons. All summary content is placeholder structure.
+-->
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>Software Engineer</title>
+  </head>
+  <body>
+    <h1>Careers at Mercer University</h1>
+    <h2>Software Engineer</h2>
+    <h3>Review</h3>
+    <div data-automation-id="applyFlowReviewPage">
+      <section data-automation-id="source-section">
+        <h3>My Information</h3>
+        <div data-automation-id="formField-source"></div>
+        <div data-automation-id="formField-previousWorker"></div>
+        <div data-automation-id="smartDivider"></div>
+      </section>
+      <section data-automation-id="Certifications-section">
+        <h3>My Experience</h3>
+        <div data-automation-id="formField-certification"></div>
+        <div data-automation-id="attachments-FileUpload">
+          <div data-automation-id="Resume/CV-section">
+            <div data-automation-id="file-upload-item">
+              <span data-automation-id="file-upload-item-name">Synthetic upload test; details omitted</span>
+              <span data-automation-id="file-upload-successful">Successfully Uploaded!</span>
+            </div>
+            <span data-automation-id="ariaLive"></span>
+            <span data-automation-id="ariaLiveMessage"></span>
+          </div>
+        </div>
+      </section>
+      <section data-automation-id="primaryQuestionnaire-section">
+        <h3>Application Questions</h3>
+        <div data-automation-id="formField-questionnaire-summary"></div>
+      </section>
+      <section data-automation-id="Voluntary-Demographic-Information-section">
+        <h3>Voluntary Disclosures</h3>
+        <div data-automation-id="ethnicityMulti"></div>
+        <div data-automation-id="formField-demographics"></div>
+        <div data-automation-id="richText"></div>
+      </section>
+      <section data-automation-id="Terms-and-Conditions-section">
+        <div data-automation-id="formField-terms"></div>
+      </section>
+    </div>
+    <button id="main-menu">Main menu</button>
+    <form id="synthetic-review-navigation">
+      <button id="review-back" data-automation-id="pageFooterBackButton">Back</button>
+      <button id="review-submit" data-automation-id="pageFooterNextButton">Submit</button>
+    </form>
+    <output id="main-menu-click-count" hidden>0</output>
+    <output id="back-click-count" hidden>0</output>
+    <output id="submit-click-count" hidden>0</output>
+    <output id="navigation-submit-count" hidden>0</output>
+    <script>
+      (() => {
+        const increment = (selector) => {
+          const output = document.querySelector(selector);
+          output.textContent = String(Number(output.textContent) + 1);
+        };
+        document.querySelector("#main-menu").addEventListener("click", () => increment("#main-menu-click-count"));
+        document.querySelector("#review-back").addEventListener("click", () => increment("#back-click-count"));
+        document.querySelector("#review-submit").addEventListener("click", () => increment("#submit-click-count"));
+        document.querySelector("#synthetic-review-navigation").addEventListener("submit", (event) => {
+          event.preventDefault();
+          increment("#navigation-submit-count");
+        });
+      })();
+    </script>
+  </body>
+</html>

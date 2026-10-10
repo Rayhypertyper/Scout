@@ -29,6 +29,8 @@ export interface OpenAIStructuredRequest {
   schema: OpenAIJsonSchema;
   signal?: AbortSignal | undefined;
   maxOutputTokens?: number;
+  /** Explicit per-call model override for tightly scoped server-only features. */
+  model?: string;
 }
 
 export class OpenAIApiError extends Error {
@@ -50,12 +52,12 @@ const MAX_RESPONSE_BYTES = 512 * 1024;
 const REQUEST_TIMEOUT_MS = 35_000;
 let activeCalls = 0;
 
-function providerConfig(): { apiKey: string; model: string } {
+function providerConfig(requestedModel?: string): { apiKey: string; model: string } {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) {
     throw new OpenAIApiError(503, "OpenAI drafting is not configured. Set OPENAI_API_KEY on the server, then restart Scout.");
   }
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_OPENAI_MODEL;
+  const model = requestedModel?.trim() || process.env.OPENAI_MODEL?.trim() || DEFAULT_OPENAI_MODEL;
   if (!/^[A-Za-z0-9._-]{1,100}$/.test(model)) {
     throw new OpenAIApiError(503, "OPENAI_MODEL must be a model name such as gpt-6-luna.");
   }
@@ -108,7 +110,7 @@ export async function generateOpenAIStructuredJson(request: OpenAIStructuredRequ
   activeCalls += 1;
   let combinedSignal: AbortSignal | undefined;
   try {
-    const { apiKey, model } = providerConfig();
+    const { apiKey, model } = providerConfig(request.model);
     if (request.parts.length === 0 || request.parts.length > 32) {
       throw new OpenAIApiError(400, "The OpenAI request content is invalid.");
     }

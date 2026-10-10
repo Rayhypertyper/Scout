@@ -58,6 +58,7 @@ describe("Useno current public index", () => {
 
   it("collects every public page and preserves capped coverage and unresolved links", async () => {
     const { directory, settings, logger } = setup();
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
     const feed = (page: number) => ({ roles: [row(`custom_careers:maple:hash-${page}`, "", `Maple Systems ${page}`)], page, pageCount: 2, pageSize: 1, total: 10, previewCapped: true });
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
@@ -75,6 +76,7 @@ describe("Useno current public index", () => {
     const artifact = JSON.parse(readFileSync(join(directory, "useno-internship-masterlist.json"), "utf8")) as { inventory: Record<string, unknown> };
     expect(artifact.inventory).toMatchObject({ rawRoleCount: 2, declaredTotal: 10, feedPages: 2, previewCapped: true, unresolvedApplicationLinks: 2 });
     expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(timeoutSpy.mock.calls.map(([timeout]) => timeout)).toEqual([10_000, 30_000, 30_000, 30_000]);
   });
 
   it("does not publish an incomplete feed when a later page fails", async () => {

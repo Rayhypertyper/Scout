@@ -19,6 +19,8 @@ import { dashboardLocalDayKey, parseDashboardSortDate } from "../src/dashboardSo
 
 import { dashboardAccountHeaders, installDashboardAccountFixture, DASHBOARD_TEST_USER } from "./dashboardAccountFixture.js";
 import { accountActionScope } from "../src/database/accountActions.js";
+import { setAuthGatewayFactoryForTests } from "../src/auth/router.js";
+import { createSupabaseAuthGateway } from "../src/auth/provider.js";
 
 interface CapturedResponse {
   statusCode: number;
@@ -216,6 +218,118 @@ describe("dashboard fast API", () => {
     else process.env.SCOUT_EDITION = originalScoutEdition;
   });
 
+  it("loads a complete analytics summary without a role-page request", async () => {
+    clearFastDashboardCacheForTests();
+    const captured = response();
+    const build = vi.fn(() => { throw new Error("Analytics must not build role cards"); });
+    setFastDashboardIndexBuildHookForTests(build);
+    try {
+      await requestHandler(request("GET", "/api/analytics") as never, captured as never, databasePath);
+      expect(build).not.toHaveBeenCalled();
+    } finally {
+      setFastDashboardIndexBuildHookForTests(null);
+    }
+    expect(captured.statusCode).toBe(200);
+    const payload = JSON.parse(captured.body.toString("utf8")) as {
+      contract: string;
+      stats: { open: number; closed: number; hidden: number; new: number; updated: number };
+      runs: Array<{ id: number }>;
+      latestRun: { id: number };
+      sources: Array<{ url: string; isConfigured: boolean }>;
+      sourceResults: Array<{ url: string }>;
+      failures24h: unknown[];
+    };
+    expect(payload.contract).toBe("dashboard.analytics.v1");
+    expect(payload.stats.open).toBeGreaterThan(0);
+    for (const field of ["closed", "new", "updated"] as const) expect(typeof payload.stats[field]).toBe("number");
+    expect(payload.stats).not.toHaveProperty("hidden");
+    expect(payload.runs[0]?.id).toBe(payload.latestRun.id);
+    expect(payload.sources.some((source) => source.isConfigured)).toBe(true);
+    expect(payload.sourceResults.length).toBeGreaterThan(0);
+    expect(Array.isArray(payload.failures24h)).toBe(true);
+    expect(payload).not.toHaveProperty("items");
+    const unchanged = response();
+    await requestHandler(request("GET", "/api/analytics", { "if-none-match": captured.headers.ETag! }) as never, unchanged as never, databasePath);
+    expect(unchanged.statusCode).toBe(304);
+    const head = response();
+    await requestHandler(request("HEAD", "/api/analytics") as never, head as never, databasePath);
+    expect(head.statusCode).toBe(200);
+    expect(head.body.length).toBe(0);
+    const missing = response();
+    await requestHandler(request("GET", "/api/analytics") as never, missing as never, join(directory, "missing-analytics.db"));
+    expect(missing.statusCode).toBe(503);
+    const mutation = response();
+    await requestHandler(request("POST", "/api/analytics") as never, mutation as never, databasePath);
+    expect(mutation.statusCode).toBe(405);
+  });
+
+  it("counts every saved decision for the verified account, including historical roles outside the feed", async () => {
+    const path = join(directory, "analytics-history.db");
+    const initialized = new InternshipDatabase(path);
+    initialized.close();
+    const stored = new DatabaseSync(path);
+    try {
+      const insert = stored.prepare(`INSERT INTO user_listing_actions
+        (user_id, listing_key, listing_type, listing_id, action, company, normalized_company, title, created_at)
+        VALUES (?, ?, 'internship', ?, ?, 'Historical', 'historical', 'Archived role', '2026-08-13')`);
+      for (const [id, action] of [["old-1", "applied"], ["old-2", "applied"], ["old-3", "cant_fit"]]) {
+        insert.run(DASHBOARD_TEST_USER, `internship:${id}`, id!, action!);
+      }
+      insert.run("another-account", "internship:other", "other", "cant_fit");
+      const captured = response();
+      await requestHandler(request("GET", "/api/analytics/account") as never, captured as never, path);
+      expect(captured.statusCode).toBe(200);
+      expect(JSON.parse(captured.body.toString())).toMatchObject({
+        account: { status: "authenticated", userId: DASHBOARD_TEST_USER }, hiddenCount: 1, appliedRoleCount: 2,
+      });
+      const anonymous = response();
+      await requestHandler(request("GET", "/api/analytics/account", { cookie: "" }) as never, anonymous as never, path);
+      expect(JSON.parse(anonymous.body.toString())).toMatchObject({ account: { status: "anonymous" }, hiddenCount: null, appliedRoleCount: null });
+      insert.run(DASHBOARD_TEST_USER, "internship:new-hidden", "new-hidden", "cant_fit");
+      const updated = response();
+      await requestHandler(request("GET", "/api/analytics/account") as never, updated as never, path);
+      expect(JSON.parse(updated.body.toString())).toMatchObject({ hiddenCount: 2, appliedRoleCount: 2 });
+    } finally {
+      stored.close();
+    }
+  });
+
+  it("keeps private crawl history out of public analytics", async () => {
+    setDashboardEditionForTests("public");
+    try {
+      const captured = response();
+      await requestHandler(request("GET", "/api/analytics") as never, captured as never, databasePath);
+      expect(captured.statusCode).toBe(200);
+      const payload = JSON.parse(captured.body.toString("utf8")) as Record<string, unknown>;
+      expect(payload).toHaveProperty("stats");
+      for (const field of ["latestRun", "runs", "sources", "sourceResults", "failures", "failures24h", "errors24h", "scan"]) {
+        expect(payload).not.toHaveProperty(field);
+      }
+    } finally {
+      setDashboardEditionForTests("personal");
+    }
+  });
+
+  it("keeps crawler analytics available when the account provider fails", async () => {
+    const getCurrentUser = vi.fn(() => { throw new Error("Account provider unavailable"); });
+    setAuthGatewayFactoryForTests((request, config, state) => ({
+      ...createSupabaseAuthGateway(request, config, state), getCurrentUser,
+    }));
+    try {
+      const crawler = response();
+      await requestHandler(request("GET", "/api/analytics") as never, crawler as never, databasePath);
+      expect(crawler.statusCode).toBe(200);
+      expect(getCurrentUser).not.toHaveBeenCalled();
+      const account = response();
+      await requestHandler(request("GET", "/api/analytics/account") as never, account as never, databasePath);
+      expect(account.statusCode).toBe(503);
+      expect(getCurrentUser).toHaveBeenCalledOnce();
+      expect(JSON.parse(account.body.toString())).not.toHaveProperty("hiddenCount");
+    } finally {
+      installDashboardAccountFixture();
+    }
+  });
+
   it("publishes ready jobs during a running source and separates card revisions from heartbeats", async () => {
     const path = join(directory, "ready-jobs.db");
     const source = "https://example.com/careers";
@@ -259,9 +373,9 @@ describe("dashboard fast API", () => {
     } finally { database.close(); }
   });
 
-  it("serves the landing page at root and preserves the listings application at /jobs", async () => {
+  it("serves the landing page at root for signed-in users and preserves listings at /jobs", async () => {
     const landing = response();
-    await requestHandler(request("GET", "/") as never, landing as never, databasePath);
+    await requestHandler(request("GET", "/", dashboardAccountHeaders()) as never, landing as never, databasePath);
     expect(landing.statusCode).toBe(200);
     expect(landing.headers["Content-Type"]).toBe("text/html; charset=utf-8");
     expect(landing.headers["Cache-Control"]).toBe("no-store");

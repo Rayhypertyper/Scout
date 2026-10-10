@@ -1,0 +1,56 @@
+<!doctype html>
+<!--
+  Synthetic test fixture from sanitized Semtech My Information observations.
+  This is not a Workday capture. The popup roles/behavior and surrounding
+  layout are test scaffolding; only the noted control selectors, prompt, and
+  visible choice labels are live-derived.
+-->
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8">
+    <title>Synthetic Semtech My Information step</title>
+    <style>
+      body { font: 16px sans-serif; margin: 2rem; }
+      [data-fixture-popup][hidden] { display: none; }
+      [data-fixture-counter] { display: none; }
+      input[type="radio"] { display: inline-block; }
+      button { min-height: 2.75rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <ol data-automation-id="progressBar">
+        <li data-automation-id="progressBarActiveStep">current step 2 of 6</li>
+        <li>step1of6</li>
+        <li>step3of6</li>
+        <li>step4of6</li>
+        <li>step5of6</li>
+        <li>step6of6</li>
+      </ol>
+      <h3>My Information</h3>
+
+      <div data-automation-id="formField-source">
+        <label for="source--source">How Did You Hear About Us?*</label>
+        <button id="source--source" name="source" type="button" aria-haspopup="listbox"
+          onclick="document.querySelector('[data-fixture-popup=\"source\"]').hidden = !document.querySelector('[data-fixture-popup=\"source\"]').hidden; const count = document.querySelector('#source-picker-click-count'); count.textContent = String(Number(count.textContent) + 1)">Select One</button>
+        <ul role="listbox" data-fixture-popup="source" hidden>
+          <li role="option" aria-disabled="true">Select One</li>
+          <li role="option" onclick="document.querySelector('#source--source').textContent = this.textContent; document.querySelector('[data-fixture-popup=\"source\"]').hidden = true; const count = document.querySelector('#source-option-click-count'); count.textContent = String(Number(count.textContent) + 1)">Agency</li>
+          <li role="option" onclick="document.querySelector('#source--source').textContent = this.textContent; document.querySelector('[data-fixture-popup=\"source\"]').hidden = true; const count = document.querySelector('#source-option-click-count'); count.textContent = String(Number(count.textContent) + 1)">Corporate Website</li>
+          <li role="option" onclick="document.querySelector('#source--source').textContent = this.textContent; document.querySelector('[data-fixture-popup=\"source\"]').hidden = true; const count = document.querySelector('#source-option-click-count'); count.textContent = String(Number(count.textContent) + 1)">Indeed</li>
+          <li role="option" onclick="document.querySelector('#source--source').textContent = this.textContent; document.querySelector('[data-fixture-popup=\"source\"]').hidden = true; const count = document.querySelector('#source-option-click-count'); count.textContent = String(Number(count.textContent) + 1)">LinkedIn</li>
+          <li role="option" onclick="document.querySelector('#source--source').textContent = this.textContent; document.querySelector('[data-fixture-popup=\"source\"]').hidden = true; const count = document.querySelector('#source-option-click-count'); count.textContent = String(Number(count.textContent) + 1)">Recruiter</li>
+          <li role="option" onclick="document.querySelector('#source--source').textContent = this.textContent; document.querySelector('[data-fixture-popup=\"source\"]').hidden = true; const count = document.querySelector('#source-option-click-count'); count.textContent = String(Number(count.textContent) + 1)">Semtech Employee Referral</li>
+        </ul>
+      </div>
+
+      <fieldset data-automation-id="formField-candidateIsPreviousWorker">
+        <legend>Have you previously been employed by Semtech as a Full-time, Part-time, Contractor or Temporary worker in any of our global locations?*</legend>
+        <label><input type="radio" name="candidateIsPreviousWorker" value="Yes">Yes</label>
+        <label><input type="radio" name="candidateIsPreviousWorker" value="No">No</label>
+      </fieldset>
+      <output id="source-picker-click-count" data-fixture-counter>0</output>
+      <output id="source-option-click-count" data-fixture-counter>0</output>
+    </main>
+  </body>
+</html>

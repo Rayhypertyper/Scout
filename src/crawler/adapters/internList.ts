@@ -208,7 +208,7 @@ export class InternListAdapter implements SourceAdapter {
       throwIfAborted(currentSourceAbortSignal());
       retrievalUrls.add(url);
       try {
-        const response = await this.http.get(url, { cache: true, timeoutMs: 30_000, retryCount: 1,
+        const response = await this.http.get(url, { cache: true, timeoutMs: 30_000, retryCount: 1, staleIfError: true,
           allowedRedirectOrigins: ["https://www.intern-list.com", "https://intern-list.com", "https://jobright.ai"] });
         attempts += response.attempts;
         pages += 1;
@@ -219,7 +219,7 @@ export class InternListAdapter implements SourceAdapter {
         throwIfAborted(currentSourceAbortSignal());
         if (error instanceof CrawlCancelledError || error instanceof CrawlDeadlineExceededError || error instanceof SourceStalledError) throw error;
         const failure = adapterFailure(sourceUrl, url, error, (error as { statusCode?: number }).statusCode ?? null);
-        attempts += Math.max(1, failure.retryCount);
+        attempts += failure.errorType === "source_retired" ? 0 : failure.retryCount + 1;
         failures.push(failure);
         await options.onProgress?.(pages);
         return null;
@@ -239,7 +239,7 @@ export class InternListAdapter implements SourceAdapter {
     const root = await get(INTERN_LIST_SOURCE_URL);
     const tabs = root ? discoverInternListTabs(root.body) : [];
     parts.push({ id: "tab_discovery", kind: "listing_pages", url: INTERN_LIST_SOURCE_URL, inventoryCount: null,
-      retrievedCount: tabs.length, complete: Boolean(root && tabs.some((tab) => tab.country === "us") && tabs.some((tab) => tab.country === "ca")), notes: [`Discovered ${tabs.length} country/category tabs from data-job-path attributes.`] });
+      retrievedCount: tabs.length, complete: Boolean(root && !root.stale && tabs.some((tab) => tab.country === "us") && tabs.some((tab) => tab.country === "ca")), notes: [`Discovered ${tabs.length} country/category tabs from data-job-path attributes.`] });
     if (root && tabs.length === 0) parseFailure(INTERN_LIST_SOURCE_URL, "No country/category tabs were found in the public root page.");
     await map(tabs, async (tab) => {
       const response = await get(tab.embeddedUrl);
@@ -247,10 +247,11 @@ export class InternListAdapter implements SourceAdapter {
       const ids = new Set(parsed?.jobs.map((job) => job.jobId!) ?? []);
       tabIds.set(tab.category, ids);
       for (const job of parsed?.jobs ?? []) addJob(job);
-      const complete = Boolean(parsed && ids.size === parsed.total && parsed.jobs.length === parsed.rowCount);
+      const complete = Boolean(parsed && !response?.stale && ids.size === parsed.total && parsed.jobs.length === parsed.rowCount);
       parts.push({ id: tab.category, kind: "tab", url: tab.embeddedUrl, country: tab.country, category: tab.category,
         inventoryCount: parsed?.total ?? null, retrievedCount: ids.size, complete,
-        notes: parsed ? [complete ? "The SSR page exposed the entire advertised tab inventory." : "Only the server-rendered first page is available; Load More depends on the retired endpoint."] : ["The public tab payload could not be retrieved or validated."] });
+        notes: response?.stale ? ["The last successful tab payload was retained after a transport failure; current inventory coverage is incomplete."]
+          : parsed ? [complete ? "The SSR page exposed the entire advertised tab inventory." : "Only the server-rendered first page is available; Load More depends on the retired endpoint."] : ["The public tab payload could not be retrieved or validated."] });
       if (response && !parsed) parseFailure(tab.embeddedUrl, `Invalid SSR tab payload for ${tab.category}.`);
     });
     const sitemapQueue = [`${INTERN_LIST_SOURCE_URL}sitemap.xml`];
@@ -261,6 +262,7 @@ export class InternListAdapter implements SourceAdapter {
       if (seenSitemaps.has(url)) continue;
       seenSitemaps.add(url);
       const response = await get(url);
+      if (response?.stale) sitemapComplete = false;
       const parsed = response ? parseInternListSitemap(response.body, url) : null;
       if (!parsed?.valid) { sitemapComplete = false; if (response) parseFailure(url, "Invalid Intern List sitemap XML."); continue; }
       for (const detail of parsed.details) details.add(detail);
@@ -279,6 +281,7 @@ export class InternListAdapter implements SourceAdapter {
         if (seen.has(url)) { complete = false; break; }
         seen.add(url);
         const response = await get(url);
+        if (response?.stale) complete = false;
         const parsed: ReturnType<typeof parseInternListListing> | null = response ? parseInternListListing(response.body, url) : null;
         if (!parsed?.valid) { complete = false; if (response) parseFailure(url, "Public listing page did not contain a valid CMS inventory."); break; }
         const before = found.size;
@@ -310,7 +313,7 @@ export class InternListAdapter implements SourceAdapter {
     });
     for (const id of closedIds) jobs.delete(id);
     parts.push({ id: "details", kind: "detail_pages", url: INTERN_LIST_SOURCE_URL, inventoryCount: details.size, retrievedCount: parsedDetails,
-      complete: sitemapComplete && parsedDetails === details.size,
+      complete: sitemapComplete && parsedDetails === details.size && !failures.some((failure) => failure.errorType === "stale_cache" && details.has(failure.url)),
       notes: [`${closedPages.length} explicitly closed pages; ${Math.max(0, details.size - parsedDetails)} detail pages unavailable or outside the configured bound.`,
         `${incompleteJobs.length} data-science pages expose content but have placeholder titles and broken Apply links; saved separately without inventing missing fields.`] });
     for (const part of parts.filter((part) => part.kind === "tab")) {

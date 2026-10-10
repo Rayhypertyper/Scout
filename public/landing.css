@@ -325,16 +325,18 @@ code,
 }
 
 .hero {
-  height: 175svh;
-  min-height: 1160px;
+  --hero-height-reduction: 44px;
+  height: calc(175svh - var(--hero-height-reduction));
+  min-height: calc(1160px - var(--hero-height-reduction));
 }
 
 .hero-stage {
   display: flex;
   flex-direction: column;
-  height: 100svh;
-  min-height: 660px;
-  overflow: hidden;
+  height: calc(100svh - var(--hero-height-reduction));
+  min-height: calc(660px - var(--hero-height-reduction));
+  /* The feed extends below the sticky stage into the hero's remaining space. */
+  overflow: visible;
   padding: calc(var(--nav-height) + clamp(24px, 4vh, 48px)) var(--page-pad) 30px;
   position: sticky;
   top: 0;
@@ -387,13 +389,6 @@ code,
   flex-direction: column;
   gap: 18px;
   margin-top: 22px;
-}
-
-.hero-support p {
-  color: var(--muted);
-  font-size: clamp(14px, 1.3vw, 18px);
-  max-width: 35ch;
-  text-wrap: pretty;
 }
 
 .primary-link {
@@ -467,7 +462,7 @@ code,
   }
 
   .hero-feed-map {
-    transform: translateY(24px);
+    transform: translateY(80px);
   }
 }
 
@@ -892,25 +887,6 @@ code,
   font: 500 9px/1 var(--font-mono);
   margin-left: auto;
   white-space: nowrap;
-}
-
-.hero-scroll-cue {
-  align-items: center;
-  bottom: 8px;
-  color: var(--muted);
-  display: flex;
-  font: 600 8px/1 var(--font-mono);
-  gap: 8px;
-  letter-spacing: .1em;
-  position: absolute;
-  right: var(--page-pad);
-  text-transform: uppercase;
-}
-
-.hero-scroll-cue span {
-  background: var(--ink);
-  height: 1px;
-  width: 26px;
 }
 
 .section-copy h2,
@@ -2670,7 +2646,7 @@ html.has-fragment-motion .fragment-stage[data-phase="2"] .fragment-shortlist-emp
   }
 
   .hero-stage {
-    min-height: 100svh;
+    min-height: calc(100svh - var(--hero-height-reduction));
     overflow: hidden;
     padding: calc(var(--nav-height) + 46px) var(--page-pad) 44px;
   }
@@ -2690,11 +2666,6 @@ html.has-fragment-motion .fragment-stage[data-phase="2"] .fragment-shortlist-emp
     flex-direction: column;
     gap: 18px;
     margin-top: 24px;
-  }
-
-  .hero-support p {
-    font-size: 15px;
-    max-width: 28ch;
   }
 
   .primary-link {
@@ -2918,10 +2889,6 @@ html.has-fragment-motion .fragment-stage[data-phase="2"] .fragment-shortlist-emp
 
   .ledger-role time {
     font-size: 7.5px;
-  }
-
-  .hero-scroll-cue {
-    display: none;
   }
 
   .fragment-stage,
@@ -3567,7 +3534,7 @@ html.has-fragment-motion .fragment-stage[data-phase="2"] .fragment-shortlist-emp
   }
 
   .hero-stage {
-    min-height: 100svh;
+    min-height: calc(100svh - var(--hero-height-reduction));
   }
 
   .fragment-stage,
@@ -3712,7 +3679,7 @@ html[data-static-capture="true"] .handoff-stage {
 }
 
 html[data-static-capture="true"] .hero-stage {
-  min-height: 100svh;
+  min-height: calc(100svh - var(--hero-height-reduction));
 }
 
 html[data-static-capture="true"] .fragment-stage {
@@ -3744,7 +3711,7 @@ html[data-static-capture="true"] [data-filter-role] {
   }
 
   html[data-static-capture="true"] .hero-stage {
-    min-height: 100svh;
+    min-height: calc(100svh - var(--hero-height-reduction));
   }
 }
 

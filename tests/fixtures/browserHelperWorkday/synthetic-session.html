@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  Synthetic adapter harness only. This is not a copied Workday page and its wrappers
+  are not asserted as Mercer selectors. It uses observed labels, input names,
+  IDs, and the Landline/Mobile popup semantics to exercise the adapter offline.
+  The referral menu begins empty to test the no-guess state; a test phase injects
+  explicitly synthetic options. This HTML is not a captured Workday document
+  and its added controls/options are test-only.
+-->
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>Workday adapter synthetic fixture</title>
+    <style>
+      [hidden] { display: none !important; }
+      body { font: 16px sans-serif; }
+      label { display: block; margin: 0.5rem 0; }
+      [role="listbox"] { border: 1px solid; padding: 0.25rem; }
+      [role="option"] { cursor: pointer; padding: 0.25rem; }
+    </style>
+  </head>
+  <body>
+    <h1>My Information</h1>
+    <form id="synthetic-application">
+      <label for="name--legalName--firstName">First Name*</label>
+      <input id="name--legalName--firstName" name="legalName--firstName" autocomplete="given-name" aria-required="true" />
+
+      <label for="name--legalName--lastName">Last Name*</label>
+      <input id="name--legalName--lastName" name="legalName--lastName" autocomplete="family-name" aria-required="true" />
+
+      <label><input id="name--preferredCheck" name="preferredCheck" type="checkbox" /> I have a preferred name</label>
+
+      <label for="phoneNumber--phoneNumber">Phone Number*</label>
+      <input id="phoneNumber--phoneNumber" name="phoneNumber" type="tel" autocomplete="tel-national" aria-required="true" />
+
+      <label for="phoneNumber--extension">Phone Extension</label>
+      <input id="phoneNumber--extension" name="extension" />
+
+      <fieldset>
+        <legend>Previous Worker Confirmation Text: Were you a previous employee or student at Mercer University OR are you a current Mercer Engineering Research Center (MERC) employee? If so, please enter your information below. FOR CURRENT MERCER UNIVERSITY EMPLOYEES ONLY: You must apply via the internal career portal. Please log in to your Workday account to submit your application.</legend>
+        <label><input type="radio" name="candidateIsPreviousWorker" value="Yes" /> Yes</label>
+        <label><input type="radio" name="candidateIsPreviousWorker" value="No" /> No</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Which work locations would you consider?</legend>
+        <label><input type="checkbox" name="workLocations" value="Hybrid" /> Hybrid</label>
+        <label><input type="checkbox" name="workLocations" value="Remote" /> Remote</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Legacy duplicate radio label check</legend>
+        <label><input type="radio" name="duplicateNo" value="No" /> No</label>
+        <label><input type="radio" name="duplicateNo" value="No" /> No</label>
+      </fieldset>
+
+      <div data-automation-id="multiSelectContainer">
+        <label for="source--source">How Did You Hear About Us?*</label>
+        <input id="source--source" name="source" placeholder="Search" aria-required="true" aria-controls="source-listbox" aria-expanded="false" />
+        <ul id="source-listbox" role="listbox" hidden></ul>
+        <ul id="source-selected" role="listbox" data-automation-id="selectedItemList"></ul>
+      </div>
+
+      <label for="phoneNumber--phoneType">Phone Device Type*</label>
+      <button id="phoneNumber--phoneType" name="phoneType" type="button" aria-label="Phone Device Type" aria-controls="phone-type-listbox" aria-expanded="false">Select One</button>
+      <ul id="phone-type-listbox" role="listbox" hidden>
+        <li role="option">Landline</li>
+        <li role="option">Mobile</li>
+      </ul>
+
+      <button id="synthetic-next" type="submit">Save and Continue</button>
+    </form>
+    <output id="synthetic-submit-count">0</output>
+    <script>
+      (() => {
+        const phone = document.querySelector("#phoneNumber--phoneType");
+        const phoneList = document.querySelector("#phone-type-listbox");
+        const source = document.querySelector("#source--source");
+        const sourceList = document.querySelector("#source-listbox");
+        let phoneArrowDownCount = 0;
+        const open = (control, list) => {
+          control.setAttribute("aria-expanded", "true");
+          list.hidden = false;
+        };
+        phone.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowDown") {
+            phoneArrowDownCount += 1;
+            document.querySelector("#phone-arrow-count").textContent = String(phoneArrowDownCount);
+            open(phone, phoneList);
+          }
+        });
+        phone.addEventListener("click", () => open(phone, phoneList));
+        phoneList.addEventListener("click", (event) => {
+          const option = event.target.closest('[role="option"]');
+          if (!option) return;
+          phone.textContent = option.textContent.trim();
+          phone.setAttribute("aria-expanded", "false");
+          phoneList.hidden = true;
+        });
+        source.addEventListener("keydown", (event) => {
+          if (event.key === "ArrowDown") open(source, sourceList);
+        });
+        source.addEventListener("click", () => open(source, sourceList));
+        source.addEventListener("input", () => {
+          if (sourceList.dataset.fixtureOptions !== "ready") return;
+          sourceList.replaceChildren();
+          for (const label of ["Synthetic Alpha", "Synthetic Beta"]) {
+            if (!label.toLowerCase().includes(source.value.toLowerCase())) continue;
+            const option = document.createElement("button");
+            // Intentionally omit type=button to verify choice activation cannot submit.
+            option.setAttribute("role", "option");
+            option.textContent = label;
+            option.addEventListener("click", () => {
+              const tag = document.createElement("li");
+              tag.textContent = label;
+              const remove = document.createElement("button");
+              remove.setAttribute("aria-label", `Remove ${label}`);
+              remove.textContent = "×";
+              tag.append(remove);
+              document.querySelector("#source-selected").append(tag);
+              source.value = "";
+            });
+            sourceList.append(option);
+          }
+        });
+        document.querySelector("#synthetic-application").addEventListener("submit", (event) => {
+          event.preventDefault();
+          const counter = document.querySelector("#synthetic-submit-count");
+          counter.textContent = String(Number(counter.textContent) + 1);
+        });
+      })();
+    </script>
+    <output id="phone-arrow-count" hidden>0</output>
+  </body>
+</html>

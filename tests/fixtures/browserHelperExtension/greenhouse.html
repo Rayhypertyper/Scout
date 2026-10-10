@@ -1,0 +1,54 @@
+<!doctype html>
+<html><head><title>Software Engineer Intern | Acme</title></head><body>
+  <h1>Software Engineer Intern</h1>
+  <label for="profile-resume">Resume</label><input id="profile-resume" type="file" style="display:none">
+  <form id="application">
+    <label for="first">First name <span aria-hidden="true">*</span></label>
+    <input id="first" name="first_name" autocomplete="given-name">
+    <label for="last">Last name</label>
+    <input id="last" name="last_name" value="Already present">
+    <label for="email">EMAIL ADDRESS</label>
+    <input id="email" name="email" type="email">
+    <label for="phone">PHONE NUMBER</label>
+    <input id="phone" name="phone" type="tel">
+    <label for="tell">Tell us about your interest in the role</label>
+    <textarea id="tell" name="tell_us"></textarea>
+    <label for="why">Why us?</label>
+    <textarea id="why" name="description"></textarea>
+    <label for="company-essay">Why do you want to work at our company?</label>
+    <textarea id="company-essay" name="description"></textarea>
+    <label for="work">Are you authorized to work in the United States?</label>
+    <input id="work" name="work_authorization">
+    <label for="canada-work">ARE YOU AUTHORIZED TO WORK IN CANADA?</label>
+    <input id="canada-work" name="canada_work_authorization">
+    <label for="multi-country-work">Are you authorized to work in the United States and Canada?</label>
+    <input id="multi-country-work" name="multi_country_work_authorization">
+    <label for="region">State / Province</label>
+    <input id="region" name="region">
+    <label for="sponsorship">Do you require sponsorship?</label>
+    <select id="sponsorship" name="sponsorship"><option value="">Choose one</option><option value="yes">Yes</option><option value="no">No</option></select>
+    <label for="choice-label-wins">Which country option?</label>
+    <select id="choice-label-wins" name="choice_label_wins"><option value="">Choose one</option><option value="USA">Canada</option><option value="Canada">United States</option></select>
+    <label for="boolean-label-only">Please confirm the reviewed option</label>
+    <select id="boolean-label-only" name="boolean_label_only"><option value="">Choose one</option><option value="true">No</option><option value="unknown">Maybe</option></select>
+    <fieldset>
+      <legend>Will you now or in the future require sponsorship?</legend>
+      <label><input type="radio" name="future_sponsorship" value="yes"> Yes</label>
+      <label><input type="radio" name="future_sponsorship" value="no"> No</label>
+    </fieldset>
+    <label for="manual-file">A file already attached</label>
+    <input id="manual-file" type="file" name="other_attachment">
+    <label for="resume">Resume / CV</label>
+    <input id="resume" type="file" name="resume" accept=".pdf,application/pdf" style="display:none">
+    <label for="company0">Company</label><input id="company0" name="experience_company_0" value="Acme">
+    <label for="company1">Company</label><input id="company1" name="experience_company_1">
+    <label for="disabled">Email (disabled)</label><input id="disabled" name="disabled_email" autocomplete="email" disabled>
+    <label for="readonly">Email (read only)</label><input id="readonly" name="readonly_email" autocomplete="email" readonly>
+    <label for="password">Password</label><input id="password" name="password" type="password">
+    <label for="consent">Consent to receive hiring updates</label><input id="consent" name="consent" type="checkbox">
+    <label for="cpp">What is your C++ experience?</label><textarea id="cpp" name="cpp_answer"></textarea>
+    <label for="csharp">What is your C# experience?</label><textarea id="csharp" name="csharp_answer"></textarea>
+    <button type="submit">Submit application</button>
+  </form>
+  <iframe title="reCAPTCHA" srcdoc="<p>Captcha</p>"></iframe>
+</body></html>

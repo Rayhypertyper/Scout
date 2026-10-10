@@ -21,6 +21,14 @@ bounded while its disk cache remains available for future runs.
 ApplyBolt requests receive a 30-second budget so a transient slow response does
 not repeatedly hit the default ten-second connect/read ceiling.
 
+An HTTP 404 from an ApplyBolt listing or pagination page immediately ends that
+source's pass. Pending pagination requests are cancelled, and the crawl moves
+on without detail fetching, alternate retrieval, browser recovery, or a
+deferred source retry. The skipped pass produces no failed-page entries and
+does not treat previous listings as closed. This rule applies only to
+`applybolt.app` and its subdomains; other HTTP failures retain their existing
+handling.
+
 A failed pagination request, a safety-bound truncation, or fewer unique
 postings than the source advertises leaves coverage incomplete. Healthy rows
 still reach the board, but absence in this crawl cannot close existing jobs.

@@ -1,0 +1,62 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-08",
+  "observationSource": "Live Codex IAB read-only inspection reported by the parent task; summary values omitted.",
+  "tenant": "Mercer University",
+  "host": "merceruniversity.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "path": "/en-US/external/job/Warner-Robins%2C-GA--31088-7810/Software-Engineer_26-SW-14/apply/applyManually",
+  "step": { "heading": "Review", "index": 5, "count": 5 },
+  "sanitization": "Page and control structure only. Candidate information, questionnaire responses, demographic selections, certifications, and file contents/names are omitted.",
+  "reviewWrapper": {
+    "tag": "div",
+    "dataAutomationId": "applyFlowReviewPage",
+    "heading": { "tag": "h3", "text": "Review" },
+    "subsectionHeadings": ["My Information", "My Experience", "Application Questions", "Voluntary Disclosures"],
+    "groups": [
+      "source-section",
+      "previousWorker-section",
+      "Certifications-section",
+      "Resume/CV-section",
+      "primaryQuestionnaire-section",
+      "Voluntary-Demographic-Information-section",
+      "Terms-and-Conditions-section"
+    ],
+    "descendantAutomationIds": [
+      "smartDivider",
+      "formField-*",
+      "attachments-FileUpload",
+      "file-upload-item",
+      "ariaLive",
+      "ariaLiveMessage",
+      "file-upload-item-name",
+      "richText",
+      "ethnicityMulti"
+    ],
+    "interactiveDescendants": {
+      "input": 0,
+      "textarea": 0,
+      "select": 0,
+      "button": 0,
+      "link": 0,
+      "roleButton": 0
+    }
+  },
+  "pageActionsOutsideReviewWrapper": [
+    { "label": "main menu", "tag": "button", "type": null },
+    { "label": "Back", "tag": "button", "type": null, "dataAutomationId": "pageFooterBackButton" },
+    { "label": "Submit", "tag": "button", "type": null, "dataAutomationId": "pageFooterNextButton" }
+  ],
+  "syntheticUploadTestItem": {
+    "presentInResumeCvSummary": true,
+    "detailsRetained": false,
+    "deleteControlPresentInReview": false,
+    "mustBeReplacedBeforeRealSubmission": true
+  },
+  "stepActions": {
+    "reviewOpened": true,
+    "submitActivated": false,
+    "applicationSubmitted": false
+  },
+  "boundary": "A read-only summary with no interactive descendants does not imply the separate Submit button or application workflow is supported for automation."
+}

@@ -2,15 +2,28 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { chromium } from "playwright";
 import { readFileSync } from "node:fs";
 
-// @ts-expect-error The browser helper is JavaScript and has no emitted declaration file.
 import { createRequestPool, createScrollLoadTrigger, createVirtualWindow, createVisibilityScheduler, pageIsVisible, resolveFeedScrollTarget, waitForVisibilityOrDelay } from "../public/app/feed-performance.js";
-// @ts-expect-error The browser client is JavaScript and has no emitted declaration file.
-import { BACKGROUND_PAGE_SIZE, PREFETCH_REQUEST_LIMIT, PREFETCH_TAB_LIMIT } from "../public/app.js";
 import { createAuthenticatedHarness } from "./authenticatedHarness.js";
 
 function source(path: string): string {
   return readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 }
+
+function exportedNumber(name: string): number | undefined {
+  const match = new RegExp(`export const ${name}\\s*=\\s*(\\d+)\\s*;`).exec(source("public/app.js"));
+  const value = match?.[1];
+  return value === undefined ? undefined : Number(value);
+}
+
+function requiredExportedNumber(name: string): number {
+  const value = exportedNumber(name);
+  if (value === undefined) throw new Error(`public/app.js must export numeric constant ${name}.`);
+  return value;
+}
+
+const BACKGROUND_PAGE_SIZE = requiredExportedNumber("BACKGROUND_PAGE_SIZE");
+const EXPECTED_PREFETCH_TAB_LIMIT = 2;
+const EXPECTED_PREFETCH_REQUEST_LIMIT = 4;
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -156,7 +169,7 @@ describe("Scout feed runtime primitives", () => {
 
   it("chooses the document on mobile overflow-visible layouts and the panel on desktop", () => {
     const windowRef = { getComputedStyle: vi.fn((element: { style?: { overflowY?: string } }) => ({ overflowY: element.style?.overflowY || "" })) };
-    const documentRef = { documentElement: { clientHeight: 800 } };
+    const documentRef = { visibilityState: "visible", documentElement: { clientHeight: 800 } };
     const mobileRoot = { style: { overflowY: "visible" }, scrollHeight: 1_500, clientHeight: 800 };
     const desktopRoot = { style: { overflowY: "auto" }, scrollHeight: 1_500, clientHeight: 800 };
     const windowTarget = { addEventListener: vi.fn() };
@@ -243,9 +256,9 @@ describe("Scout feed runtime primitives", () => {
   });
 
   it("caps each speculative prefetch cycle before it reaches every inactive tab", () => {
-    expect(PREFETCH_TAB_LIMIT).toBe(2);
-    expect(PREFETCH_REQUEST_LIMIT).toBe(4);
-    expect(PREFETCH_TAB_LIMIT).toBeLessThan(6);
+    expect(exportedNumber("PREFETCH_TAB_LIMIT")).toBe(EXPECTED_PREFETCH_TAB_LIMIT);
+    expect(exportedNumber("PREFETCH_REQUEST_LIMIT")).toBe(EXPECTED_PREFETCH_REQUEST_LIMIT);
+    expect(EXPECTED_PREFETCH_TAB_LIMIT).toBeLessThan(6);
   });
 
   it("defers dashboard motion vendor requests until a usable feed paints", () => {
@@ -367,7 +380,7 @@ describe("Scout feed browser runtime", () => {
             try {
               await page.locator("#role-list .job-card[data-listing-key]").first().waitFor({ state: "visible", timeout: 8_000 });
             } catch (error) {
-              throw new Error(`${error instanceof Error ? error.message : String(error)}\nrole-list: ${await page.locator("#role-list").innerText().catch(() => "<missing>")}`);
+              throw new Error(`${error instanceof Error ? error.message : String(error)}\nrole-list: ${await page.locator("#role-list").innerText().catch(() => "<missing>")}`, { cause: error });
             }
             await page.waitForFunction(() => document.querySelectorAll("#role-list .job-card[data-listing-key]").length > 0);
             await page.waitForTimeout(180);
@@ -414,8 +427,8 @@ describe("Scout feed browser runtime", () => {
           expect(initialMetrics.setSize).toBe("5000");
           expect(initialMetrics.countText).toContain("5,000");
           const inactiveRequests = roleRequests.filter(({ tab }) => tab !== "canada");
-          expect(new Set(inactiveRequests.map(({ tab }) => tab)).size).toBeLessThanOrEqual(PREFETCH_TAB_LIMIT);
-          expect(inactiveRequests.length).toBeLessThanOrEqual(PREFETCH_REQUEST_LIMIT);
+          expect(new Set(inactiveRequests.map(({ tab }) => tab)).size).toBeLessThanOrEqual(EXPECTED_PREFETCH_TAB_LIMIT);
+          expect(inactiveRequests.length).toBeLessThanOrEqual(EXPECTED_PREFETCH_REQUEST_LIMIT);
 
           const firstCard = page.locator("#role-list .job-card[data-listing-key]").first();
           const firstKey = await firstCard.getAttribute("data-listing-key");
@@ -428,15 +441,22 @@ describe("Scout feed browser runtime", () => {
           expect(await page.locator("#role-list .job-card[data-listing-key]").count()).toBeLessThanOrEqual(96);
           await page.locator("#close-role-detail").click();
           await page.waitForTimeout(150);
-          const afterDetailClose = await page.evaluate(() => ({
-            keys: [...document.querySelectorAll("#role-list .job-card[data-listing-key]")].slice(0, 3).map((row) => row.getAttribute("data-listing-key")),
-            positions: [...document.querySelectorAll("#role-list .job-card[data-listing-key]")].slice(0, 3).map((row) => row.getAttribute("aria-posinset")),
-            rootScrollTop: (document.querySelector("#jobs-scroll") as HTMLElement | null)?.scrollTop ?? null,
-            rootRect: document.querySelector("#jobs-scroll")?.getBoundingClientRect?.().toJSON?.() || null,
-            listRect: document.querySelector("#role-list")?.getBoundingClientRect?.().toJSON?.() || null,
-            topSpacer: document.querySelector("[data-feed-virtual-spacer='top']")?.getAttribute("style") || "",
-            active: document.activeElement?.outerHTML?.slice(0, 180) || document.activeElement?.nodeName || "",
-          }));
+          const afterDetailClose = await page.evaluate(() => {
+            const rectSnapshot = (element: Element | null) => {
+              if (!element) return null;
+              const { top, right, bottom, left, width, height } = element.getBoundingClientRect();
+              return { top, right, bottom, left, width, height };
+            };
+            return {
+              keys: [...document.querySelectorAll("#role-list .job-card[data-listing-key]")].slice(0, 3).map((row) => row.getAttribute("data-listing-key")),
+              positions: [...document.querySelectorAll("#role-list .job-card[data-listing-key]")].slice(0, 3).map((row) => row.getAttribute("aria-posinset")),
+              rootScrollTop: document.querySelector<HTMLElement>("#jobs-scroll")?.scrollTop ?? null,
+              rootRect: rectSnapshot(document.querySelector("#jobs-scroll")),
+              listRect: rectSnapshot(document.querySelector("#role-list")),
+              topSpacer: document.querySelector("[data-feed-virtual-spacer='top']")?.getAttribute("style") || "",
+              active: document.activeElement?.outerHTML?.slice(0, 180) || document.activeElement?.nodeName || "",
+            };
+          });
           expect(await page.locator(`#role-list .job-card[data-listing-key="${firstKey}"]`).count(), JSON.stringify(afterDetailClose)).toBe(1);
 
           const boundary = page.locator("#role-list .job-card[data-listing-key]").last();
@@ -470,7 +490,7 @@ describe("Scout feed browser runtime", () => {
 
           await loadFixture(120, true);
           await page.evaluate(() => {
-            const root = document.querySelector("#jobs-scroll") as HTMLElement | null;
+            const root = document.querySelector<HTMLElement>("#jobs-scroll");
             if (root && getComputedStyle(root).overflowY !== "visible") {
               root.scrollTop = root.scrollHeight;
               root.dispatchEvent(new Event("scroll", { bubbles: true }));
@@ -479,17 +499,19 @@ describe("Scout feed browser runtime", () => {
           try {
             await page.waitForFunction(() => document.querySelector("#jobs-status")?.textContent?.includes("160") || false, null, { timeout: 8_000 });
           } catch (error) {
-            const appendDebug = await page.evaluate(() => {
-              const root = document.querySelector("#jobs-scroll");
-              const sentinel = document.querySelector("#load-more-sentinel");
-              return {
-                status: document.querySelector("#jobs-status")?.textContent || "",
-                requests: (window as Window & { __feedRoleRequests?: unknown[] }).__feedRoleRequests || [],
-                root: root ? { scrollTop: (root as HTMLElement).scrollTop, scrollHeight: (root as HTMLElement).scrollHeight, clientHeight: (root as HTMLElement).clientHeight } : null,
-                sentinel: sentinel?.getBoundingClientRect?.().toJSON?.() || null,
-              };
-            });
-            throw new Error(`${error instanceof Error ? error.message : String(error)} ${JSON.stringify(appendDebug)}`);
+            const appendDebug = {
+              requests: roleRequests.map(({ tab, offset, limit }) => ({ tab, offset, limit })),
+              page: await page.evaluate(() => {
+                const root = document.querySelector<HTMLElement>("#jobs-scroll");
+                const rect = document.querySelector("#load-more-sentinel")?.getBoundingClientRect();
+                return {
+                  status: document.querySelector("#jobs-status")?.textContent || "",
+                  root: root ? { scrollTop: root.scrollTop, scrollHeight: root.scrollHeight, clientHeight: root.clientHeight } : null,
+                  sentinel: rect ? { top: rect.top, right: rect.right, bottom: rect.bottom, left: rect.left, width: rect.width, height: rect.height } : null,
+                };
+              }),
+            };
+            throw new Error(`${error instanceof Error ? error.message : String(error)} ${JSON.stringify(appendDebug)}`, { cause: error });
           }
           expect(roleRequests.some(({ tab, offset }) => tab === "canada" && offset === 120)).toBe(true);
           expect(await page.locator("#role-list .job-card[data-listing-key]").count()).toBeLessThanOrEqual(96);
@@ -498,7 +520,7 @@ describe("Scout feed browser runtime", () => {
           });
           await page.waitForTimeout(120);
           const afterAppendTop = await page.evaluate(() => {
-            const root = document.querySelector("#jobs-scroll") as HTMLElement | null;
+            const root = document.querySelector<HTMLElement>("#jobs-scroll");
             const cards = [...document.querySelectorAll("#role-list .job-card[data-listing-key]")];
             return {
               firstPosition: cards[0]?.getAttribute("aria-posinset"),

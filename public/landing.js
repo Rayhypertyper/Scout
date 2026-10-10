@@ -328,7 +328,6 @@
       .from(".hero-feed-center", { opacity: .52, scale: .76, transformOrigin: "center", duration: .34, ease: "none" }, .34)
       .from(".hero-feed-role", { opacity: .68, x: 36, scale: .96, stagger: .035, duration: .44, ease: "none" }, .42)
       .from(".hero-feed-live-dot", { opacity: .35, scale: .4, transformOrigin: "center", stagger: .04, duration: .18, ease: "none" }, .68)
-      .to(".hero-scroll-cue", { opacity: 0, y: -10, duration: .18, ease: "none" }, .08)
       .to(".hero-title-line", { y: -12, stagger: .04, duration: .22, ease: "none" }, .7);
 
     if (isDesktopHero) {

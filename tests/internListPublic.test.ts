@@ -127,6 +127,52 @@ describe("Intern List public routes", () => {
     expect(result.failures).toHaveLength(1);
   });
 
+  it("retains an expired cached detail while marking detail coverage incomplete", async () => {
+    const { adapter, get } = fixture();
+    const freshGet = get.getMockImplementation()!;
+    get.mockImplementation(async (url: string) => url === detailA
+      ? { requestedUrl: url, url, status: 200, contentType: "text/html", body: detail("alpha"), headers: {}, attempts: 2, fromCache: true, stale: true }
+      : freshGet(url));
+
+    const result = await adapter.collect(INTERN_LIST_SOURCE_URL);
+
+    expect(get).toHaveBeenCalledWith(detailA, expect.objectContaining({ staleIfError: true, retryCount: 1 }));
+    expect(result.snapshots.flatMap(extractJobs).map((job) => job.jobId)).toContain("alpha");
+    expect(result.failures).toContainEqual(expect.objectContaining({ url: detailA, errorType: "stale_cache" }));
+    expect(result.inventoryParts?.find((part) => part.id === "details")).toMatchObject({ complete: false, retrievedCount: 3 });
+    expect(result.inventoryComplete).toBe(false);
+  });
+
+  it("counts the initial request plus the exhausted retry as two attempts", async () => {
+    const retryError = Object.assign(new Error("HTTP 503"), { attempts: 1 });
+    const { adapter, get } = fixture({ [orphan]: retryError });
+
+    const result = await adapter.collect(INTERN_LIST_SOURCE_URL);
+
+    expect(result.failures).toContainEqual(expect.objectContaining({ url: orphan, retryCount: 1 }));
+    expect(result.attempts).toBe(get.mock.calls.length + 1);
+  });
+
+  it.each([
+    [INTERN_LIST_SOURCE_URL, "tab_discovery"],
+    ["https://jobright.ai/minisites-jobs/intern/us/swe?embed=true", "intern:us:swe"],
+    [`${INTERN_LIST_SOURCE_URL}swe-intern-list`, "swe-intern-list"],
+    [`${INTERN_LIST_SOURCE_URL}sitemap.xml`, "sitemap"],
+  ])("retains stale data from %s without declaring its inventory part complete", async (url, partId) => {
+    const { adapter, get } = fixture({
+      "https://jobright.ai/minisites-jobs/intern/us/swe?embed=true": tab("intern:us:swe", ["alpha"], 1),
+    });
+    const freshGet = get.getMockImplementation()!;
+    get.mockImplementation(async (requestedUrl: string) => ({
+      ...await freshGet(requestedUrl), ...(requestedUrl === url ? { fromCache: true, stale: true } : {}),
+    }));
+    const result = await adapter.collect(INTERN_LIST_SOURCE_URL);
+    expect(result.inventoryParts?.find((part) => part.id === partId)?.complete).toBe(false);
+    if (partId === "sitemap") expect(result.inventoryParts?.find((part) => part.id === "details")?.complete).toBe(false);
+    expect(result.inventoryComplete).toBe(false);
+    expect(result.snapshots.flatMap(extractJobs).map((job) => job.jobId)).toContain("alpha");
+  });
+
   it("detects a repeated pagination window rather than silently treating it as exhaustion", async () => {
     const { adapter } = fixture({ [`${INTERN_LIST_SOURCE_URL}swe-intern-list?unknown_token_page=2`]: listing([detailA], "?unknown_token_page=3") });
     const result = await adapter.collect(INTERN_LIST_SOURCE_URL);

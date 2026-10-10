@@ -2,12 +2,17 @@ import "./config/env.js";
 
 import { accountActionScope, accountActionReadTable, accountActionUserId, accountActionCacheKey, ensureAccountActionSchema } from "./database/accountActions.js";
 import { dashboardAccountAccess } from "./dashboard/privateAccess.js";
+// Today feature is dormant for now.
+// import { buildTodayListings, readTodayVisit, recordTodayVisit, saveApplicationReminders, todayPageHtml } from "./dashboard/today.js";
+// import { DashboardValidationError as TodayValidationError } from "./dashboard/http.js";
 
 import { createApplicationDraft } from "./resume/drafts.js";
 import { generateResume, compileResumePdf, ResumeError } from "./resume/service.js";
 import { resumeSchema } from "./resume/tailor.js";
 import { resolveResumeForRequest } from "./resume/profile.js";
 import { handleResumeProfileRequest } from "./resume/profileHttp.js";
+import { handleBrowserHelperRequest } from "./browserHelper/http.js";
+import { recordBrowserHelperApplication } from "./browserHelper/tracker.js";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
@@ -1648,6 +1653,8 @@ async function serveStatic(request: IncomingMessage, response: ServerResponse, p
     ? "landing.html"
     : pathname === "/jobs" || pathname === "/jobs/"
       ? "index.html"
+      : ["/browser-helper", "/browser-helper/"].includes(pathname)
+        ? "browser-helper.html"
       : pathname.replace(/^\/+/, "");
   if (relativePath.includes("..") || relativePath.includes("\\")) {
     jsonResponse(response, 400, { error: "Invalid path" }, { request });
@@ -1657,6 +1664,9 @@ async function serveStatic(request: IncomingMessage, response: ServerResponse, p
   try {
     let body = await readFile(filePath);
     if (relativePath === "index.html") {
+      /* Today feature is dormant for now.
+      if (pathname.startsWith("/today")) body = Buffer.from(todayPageHtml(body.toString("utf8")));
+      */
       const appVersion = sha256((await readFile(join(PUBLIC_ROOT, "app.js"))).toString("utf8")).slice(0, 12);
       const cssVersion = sha256((await readFile(join(PUBLIC_ROOT, "styles.css"))).toString("utf8")).slice(0, 12);
       body = Buffer.from(
@@ -2048,6 +2058,8 @@ function ensureListingActionsTable(databasePath: string): void {
       ensureRunCancellationSchema(database);
       ensureListingActionSchema(database);
       ensureDashboardRevisionSchema(database);
+      database.exec(`CREATE INDEX IF NOT EXISTS internships_analytics_inventory_idx
+        ON internships(availability_status, lifecycle_status, first_seen_at, id)`);
       backfillListingActionIdentities(database);
       database.exec("COMMIT");
     } catch (error) {
@@ -2189,6 +2201,16 @@ async function serveApplications(
         `).all() as unknown as ApplicationActionRow[];
       }
       const destinations = readJobrightDestinationMap(database);
+      /* Today/application reminder support is dormant for now.
+      const hasReminders = database.prepare("SELECT 1 FROM sqlite_master WHERE name = 'user_application_reminders'").get();
+      const reminders = hasReminders ? database.prepare("SELECT listing_key, follow_up_at, interview_at FROM user_application_reminders WHERE user_id = ?")
+        .all(accountActionUserId() ?? "") as unknown as Array<{ listing_key: string; follow_up_at: string | null; interview_at: string | null }> : [];
+      const reminderMap = new Map(reminders.map((row) => [row.listing_key, row]));
+      const applications = rows.map((row) => ({ ...toApplicationItem(row, destinations),
+        followUpAt: reminderMap.get(row.listing_key)?.follow_up_at ?? null,
+        interviewAt: reminderMap.get(row.listing_key)?.interview_at ?? null,
+      }));
+      */
       const applications = rows.map((row) => toApplicationItem(row, destinations));
       jsonResponse(response, 200, {
         contract: "dashboard.applications.v1",
@@ -4768,6 +4790,50 @@ async function staleFastDashboardIndexStillSafe(
   }
 }
 
+/* Today feature and its application reminders are dormant for now.
+async function serveTodayRequest(request: IncomingMessage, response: ServerResponse, databasePath: string, pathname: string): Promise<void> {
+  if (request.method !== "POST") {
+    jsonResponse(response, 405, { error: "Use POST for Today and application reminders." }, { request, cacheControl: "private, no-store" });
+    return;
+  }
+  try {
+    const body = JSON.parse(await readRequestBody(request)) as Record<string, unknown>;
+    if (!body || typeof body !== "object" || Array.isArray(body)) throw new DashboardValidationError("Send a JSON object.");
+    const userId = accountActionUserId()!;
+    if (pathname === "/api/today/visit" || pathname === "/api/applications/reminders") {
+      const database = new DatabaseSync(databasePath);
+      try {
+        database.exec("PRAGMA busy_timeout = 5000");
+        if (pathname === "/api/today/visit") recordTodayVisit(database, userId, body.visitedAt, body.savedSnapshots);
+        else {
+          if (!isListingType(body.listingType)) throw new DashboardValidationError("Invalid listing type.");
+          saveApplicationReminders(database, userId, listingActionKey(body.listingType, requiredString(body.listingId, "listingId")), body.followUpAt, body.interviewAt);
+        }
+        jsonResponse(response, 200, { ok: true }, { request, cacheControl: "private, no-store" });
+      } finally { database.close(); }
+      return;
+    }
+    const now = Date.now();
+    const index = await readFastDashboardIndex(databasePath, 0);
+    const database = new DatabaseSync(databasePath);
+    try {
+      database.exec("PRAGMA busy_timeout = 5000");
+      const visit = readTodayVisit(database, userId);
+      const requestedSince = typeof body.since === "string" ? Date.parse(body.since) : NaN;
+      if (body.since !== undefined && (!Number.isFinite(requestedSince) || requestedSince > now)) {
+        throw new DashboardValidationError("Send a valid past timestamp for since.");
+      }
+      const since = body.since === undefined ? visit.visitedAt : new Date(requestedSince).toISOString();
+      const listings = buildTodayListings({ roles: index.entries.map((entry) => entry.card), since, now });
+      jsonResponse(response, 200, roleForBrowserClientForTests(listings), { request, cacheControl: "private, no-store" });
+    } finally { database.close(); }
+  } catch (error) {
+    const status = error instanceof DashboardValidationError || error instanceof TodayValidationError || error instanceof SyntaxError ? 400 : 503;
+    jsonResponse(response, status, { error: error instanceof Error ? error.message : String(error) }, { request, cacheControl: "private, no-store" });
+  }
+}
+*/
+
 async function serveFastRoles(
   request: IncomingMessage,
   response: ServerResponse,
@@ -4967,6 +5033,98 @@ async function serveFastChanges(
     });
   } catch (error) {
     jsonResponse(response, 503, { error: error instanceof Error ? error.message : String(error) }, { request });
+  }
+}
+
+async function serveFastAnalytics(
+  request: IncomingMessage,
+  response: ServerResponse,
+  databasePath: string,
+): Promise<void> {
+  let database: DatabaseSync | null = null;
+  try {
+    if (!existsSync(databasePath)) throw new Error(`Database not found: ${databasePath}`);
+    database = new DatabaseSync(databasePath, { readOnly: true });
+    database.exec("PRAGMA busy_timeout = 500");
+    database.exec("BEGIN");
+    // Crawler analytics summarize the stored inventory, independently of
+    // listing filters, card construction, external services, and account auth.
+    // A SQLite read snapshot also remains coherent during crawler writes.
+    const stats = database.prepare(`
+      WITH inventory AS (
+        SELECT availability_status, lifecycle_status,
+          CASE WHEN first_seen_at >= @cutoff THEN EXISTS (
+            SELECT 1 FROM run_internships ri
+            WHERE ri.internship_id = internships.id AND ri.lifecycle_status = 'NEW'
+          ) ELSE 0 END AS is_new
+        FROM internships
+      )
+      SELECT COUNT(*) AS total,
+        COALESCE(SUM(availability_status = 'open'), 0) AS open,
+        COALESCE(SUM(availability_status = 'closed'), 0) AS closed,
+        COALESCE(SUM(availability_status = 'unknown'), 0) AS unknown,
+        COALESCE(SUM(availability_status = 'open' AND is_new), 0) AS new,
+        COALESCE(SUM(availability_status = 'open' AND NOT is_new AND lifecycle_status = 'UPDATED'), 0) AS updated,
+        COALESCE(SUM(availability_status = 'open' AND NOT is_new AND lifecycle_status = 'UNCHANGED'), 0) AS unchanged
+      FROM inventory
+    `).get({ cutoff: newRoleBannerCutoffIso() });
+    const runs = readDashboardRuns(database, RECENT_DASHBOARD_RUN_LIMIT);
+    const latestRun = asRun(runs[0]);
+    const latestCompletedRun = readLatestCompletedRun(database);
+    const sourceHealth = dashboardEdition === "personal" ? liveSourceState(database, latestRun, latestCompletedRun) : null;
+    const payload = {
+      contract: "dashboard.analytics.v1",
+      generatedAt: new Date().toISOString(),
+      statisticsScope: "crawler_inventory",
+      stats,
+      capabilities: {
+        crawlerAdministration: resolveScoutEditionConfig(dashboardEdition).features.crawlerAdministration,
+      },
+      ...(sourceHealth ? {
+        latestRun,
+        latestCompletedRun,
+        runs: compactRecentDashboardRuns(runs),
+        configuredSourceCount: sourceHealth.sources.filter((source) => source.isConfigured).length,
+        ...sourceHealth,
+      } : {}),
+    };
+    const version = sha256(JSON.stringify({ ...payload, generatedAt: undefined }));
+    jsonResponse(response, 200, { ...payload, version }, {
+      request,
+      etag: `"${version}"`,
+      cacheControl: "private, no-cache, must-revalidate",
+    });
+  } catch (error) {
+    jsonResponse(response, 503, { error: error instanceof Error ? error.message : String(error) }, { request });
+  } finally {
+    database?.close();
+  }
+}
+
+function serveAnalyticsAccount(request: IncomingMessage, response: ServerResponse, databasePath: string): void {
+  let database: DatabaseSync | null = null;
+  try {
+    const userId = accountActionUserId();
+    if (!userId) {
+      jsonResponse(response, 200, { contract: "dashboard.analytics-account.v1", account: { status: "anonymous" },
+        hiddenCount: null, appliedRoleCount: null }, { request, cacheControl: "private, no-store" });
+      return;
+    }
+    if (!existsSync(databasePath)) throw new Error(`Database not found: ${databasePath}`);
+    database = new DatabaseSync(databasePath, { readOnly: true });
+    database.exec("PRAGMA busy_timeout = 500");
+    // Count saved decisions, including roles which have since closed or left
+    // the current listing feed. Never join them to today's visible role cards.
+    const counts = database.prepare(`SELECT
+      COALESCE(SUM(action = 'cant_fit'), 0) AS hiddenCount,
+      COALESCE(SUM(action = 'applied'), 0) AS appliedRoleCount
+      FROM ${accountActionReadTable()}`).get();
+    jsonResponse(response, 200, { contract: "dashboard.analytics-account.v1",
+      account: { status: "authenticated", userId }, ...counts }, { request, cacheControl: "private, no-store" });
+  } catch (error) {
+    jsonResponse(response, 503, { error: error instanceof Error ? error.message : String(error) }, { request });
+  } finally {
+    database?.close();
   }
 }
 
@@ -5519,7 +5677,7 @@ export async function requestHandler(request: IncomingMessage, response: ServerR
   }
   const privateRoute = pathname === "/api/applications" || pathname === "/api/applications/status" || pathname === "/api/actions";
   const accountRead = privateRoute || pathname === "/api/roles" || pathname.startsWith("/api/roles/")
-    || pathname === "/api/status" || pathname === "/api/changes" || pathname === "/api/runs";
+    || pathname === "/api/status" || pathname === "/api/changes" || pathname === "/api/runs" || pathname === "/api/analytics/account";
   if (!accountRead) {
     await accountActionScope.run({ userId: null }, () => dispatchDashboardRequest(request, response, databasePath));
     return;
@@ -5542,7 +5700,34 @@ async function dispatchDashboardRequest(request: IncomingMessage, response: Serv
   }
   if (await handleAuthRequest(request, response, requestUrl)) return;
   if (await handlePreferenceRequest(request, response, requestUrl, databasePath)) return;
+  if (await handleBrowserHelperRequest(request, response, databasePath, {
+    logApplication: async (userId, submission) => {
+      const result = await recordBrowserHelperApplication(
+        databasePath,
+        userId,
+        submission,
+        () => Promise.resolve(grindJobBoardClient.getCachedSnapshot()),
+      );
+      invalidateDashboardDataCache();
+      return result;
+    },
+  })) return;
   if (await handleResumeProfileRequest(request, response, databasePath)) return;
+  /* Today feature and its application reminders are dormant for now.
+  if (pathname === "/api/today" || pathname === "/api/today/visit" || pathname === "/api/applications/reminders") {
+    await serveTodayRequest(request, response, databasePath, pathname);
+    return;
+  }
+  */
+  if (pathname === "/api/analytics" || pathname === "/api/analytics/account") {
+    if (request.method !== "GET" && request.method !== "HEAD") {
+      jsonResponse(response, 405, { error: "Only GET is supported for analytics" }, { request });
+      return;
+    }
+    if (pathname === "/api/analytics/account") serveAnalyticsAccount(request, response, databasePath);
+    else await serveFastAnalytics(request, response, databasePath);
+    return;
+  }
   if (pathname === "/api/changes" || pathname === "/api/status") {
     if (request.method !== "GET" && request.method !== "HEAD") {
       jsonResponse(response, 405, { error: "Only GET is supported for dashboard status" }, { request });

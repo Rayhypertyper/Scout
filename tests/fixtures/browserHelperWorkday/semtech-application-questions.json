@@ -1,0 +1,165 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-09",
+  "observationSource": "Live Codex in-app browser metadata relayed by the parent; exact selectors and public labels only, no candidate answers retained.",
+  "tenant": "Semtech",
+  "host": "semtech.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "jobCountry": "Canada",
+  "jobCountrySource": "The observed public job location and CAN job-path segment; separate from interface locale and applicant address.",
+  "step": {
+    "heading": "Application Questions",
+    "index": 4,
+    "count": 6,
+    "sameSpaRoute": true
+  },
+  "state": {
+    "choiceMenusOpenedAndRead": 7,
+    "choiceMenuSelectionsRetained": false,
+    "userCompletedChoicesLater": true,
+    "userChoiceValuesRetained": false,
+    "requiredEssayFields": 2,
+    "essayValuesRetained": false,
+    "applicationSubmitted": false,
+    "choiceQuestionCount": 7,
+    "essayFieldCount": 2,
+    "totalRequiredQuestionCount": 9,
+    "requiredChoicePrompts": 7
+  },
+  "choiceControl": {
+    "selectorPattern": "button[id^=primaryQuestionnaire--<opaque>]",
+    "namePattern": "same opaque token as button id suffix",
+    "type": "button",
+    "ariaHasPopup": "listbox",
+    "ariaLabel": " Select One Required",
+    "ariaControls": null,
+    "ariaLabelledBy": null,
+    "fieldsetLegendIsQuestion": true,
+    "popup": {
+      "selector": "ul[role=listbox][aria-activedescendant]",
+      "optionSelector": "li[role=option]",
+      "placeholder": {
+        "label": "Select One",
+        "disabled": true
+      },
+      "listboxAndOptionIds": "dynamic; not retained"
+    },
+    "additionalInputs": {
+      "count": 7,
+      "selector": "input[type=text] without id or name inside each fieldset",
+      "measuredWidth": 0,
+      "measuredHeight": 0,
+      "hiddenAttribute": false,
+      "ariaHidden": null,
+      "tabIndex": 0,
+      "autocomplete": null,
+      "retainedAsAnswerFields": false
+    }
+  },
+  "questions": [
+    {
+      "number": 1,
+      "prompt": "Are you legally eligible to work in the country in which you are applying?*",
+      "control": "shared choice button under fieldset direct legend",
+      "options": [
+        "Select One",
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "number": 2,
+      "prompt": "Will you require visa sponsorship at any time?*",
+      "control": "shared choice button under fieldset direct legend",
+      "options": [
+        "Select One",
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "number": 3,
+      "prompt": "Are you local or willing to relocate?*",
+      "control": "shared choice button under fieldset direct legend",
+      "options": [
+        "Select One",
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "number": 4,
+      "prompt": "What are your base salary expectations (CAD)?*",
+      "control": "shared choice button under fieldset direct legend",
+      "options": [
+        "Select One",
+        "30,000 CAD  - 42,000 CAD",
+        "43,000 CAD  - 54,000 CAD",
+        "55,000 CAD  - 79,000 CAD",
+        "80,000 CAD  - 104,000 CAD",
+        "105,000 CAD  -124,000 CAD",
+        "125,000 CAD  - 149,000 CAD",
+        "150,000 CAD  - 174,000 CAD",
+        "175,000 CAD  - 199,000 CAD",
+        "200,000 CAD  - 224,000 CAD",
+        "225,000 CAD+"
+      ]
+    },
+    {
+      "number": 5,
+      "prompt": "Are you related to any current employee of Semtech or any of its subsidiaries?*",
+      "control": "shared choice button under fieldset direct legend",
+      "options": [
+        "Select One",
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "number": 6,
+      "prompt": "Do you meet the minimum education requirements for this position?*",
+      "control": "shared choice button under fieldset direct legend",
+      "options": [
+        "Select One",
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "number": 7,
+      "prompt": "Do you have experience working in the semiconductors/electronics/manufacturing/or similar industry?*",
+      "control": "shared choice button under fieldset direct legend",
+      "options": [
+        "Select One",
+        "Yes",
+        "No"
+      ]
+    },
+    {
+      "number": 8,
+      "prompt": "Please take a moment to briefly highlight your relevant work experience.*",
+      "control": "textarea",
+      "idPattern": "primaryQuestionnaire--<opaque>",
+      "name": null,
+      "ariaRequired": true,
+      "valueRetained": false
+    },
+    {
+      "number": 9,
+      "prompt": "Do you have experience using the tools/systems/technology outlined in the job posting? Please explain.*",
+      "control": "textarea",
+      "idPattern": "primaryQuestionnaire--<opaque>",
+      "name": null,
+      "ariaRequired": true,
+      "valueRetained": false
+    }
+  ],
+  "stepActions": {
+    "requiredChoiceMenusOpenedReadAndDismissed": 7,
+    "choiceValuesChosenByResearcher": false,
+    "userEnteredChoiceValuesLater": true,
+    "essayValuesEnteredByResearcher": false,
+    "applicationSubmitted": false
+  },
+  "boundary": "Observed live Semtech Application Questions step 4 of 6. Seven dynamic custom choice buttons exposed the listed options, and two required professional textareas were blank at the initial read-only capture. Zero-sized nameless auxiliary text inputs were present but are not treated as answer fields. The user later answered the choice questions; no answer values are retained. This sanitized metadata is not a DOM capture or proof of extension execution."
+}

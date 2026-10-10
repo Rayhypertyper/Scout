@@ -8,6 +8,19 @@ export interface PublicSourceFallback {
 
 export type KnownSourceStrategy = "github_api" | "greenhouse_api" | "lever_api" | "workday_http" | "static_http" | "browser_required";
 
+export function isApplyBoltPage(url: string): boolean {
+  try {
+    return /(?:^|\.)applybolt\.app$/i.test(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/** ApplyBolt listing and pagination 404s end the source pass immediately. */
+export function isApplyBoltNotFoundPage(url: string, status: number | null): boolean {
+  return status === 404 && isApplyBoltPage(url);
+}
+
 /** The saved project URL redirects to this canonical Early Career Radar host. */
 const EARLY_CAREER_RADAR_CANONICAL_HOST = "earlycareerradar.com";
 const EARLY_CAREER_RADAR_REDIRECT_HOST = "internship-radar-2027.yuxhuang.com";

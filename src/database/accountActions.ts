@@ -1,6 +1,8 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { DatabaseSync } from "node:sqlite";
 import type { AuthResponseState } from "../auth/types.js";
+// Today feature is dormant for now.
+// import { ensureTodaySchema } from "../dashboard/today.js";
 
 // HTTP requests always enter this scope, including anonymous requests. Offline
 // tools may still use the original local decision store outside an HTTP scope.
@@ -29,6 +31,8 @@ export function accountActionReadTable(identities = false): string {
 }
 
 export function ensureAccountActionSchema(database: DatabaseSync): void {
+  // Today feature is dormant for now.
+  // ensureTodaySchema(database);
   database.exec(`
     CREATE TABLE IF NOT EXISTS user_listing_actions (
       user_id TEXT NOT NULL,

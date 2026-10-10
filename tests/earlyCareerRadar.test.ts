@@ -10,7 +10,8 @@ import {
   parseEarlyCareerRadarJobs,
   selectEarlyCareerRadarJobs,
 } from "../src/crawler/adapters/earlyCareerRadar.js";
-import type { HttpClient, HttpResponseSnapshot } from "../src/crawler/http.js";
+import { HttpRequestError, type HttpClient, type HttpResponseSnapshot } from "../src/crawler/http.js";
+import { CrawlCancelledError } from "../src/domain/cancellation.js";
 import { Logger } from "../src/utils/logger.js";
 
 const sourceUrl = "https://earlycareerradar.com/summer-internships?locations=country%3ACanada%7Cus&years=1st+year%2C2nd+year%2C3rd+year%2C4th+year%2CAny+undergraduate+year%2CUndergraduate+%E2%80%94+year+not+stated%2CNot+stated";
@@ -144,7 +145,9 @@ describe("Early Career Radar feed adapter", () => {
     const result = await adapter.collect(sourceUrl);
 
     expect(get).toHaveBeenCalledWith(sourceUrl, expect.objectContaining({
-      cache: false,
+      cache: true,
+      revalidate: true,
+      staleIfError: true,
       headers: { accept: "text/html,application/xhtml+xml" },
       respectRobots: false,
     }));
@@ -209,7 +212,9 @@ describe("Early Career Radar feed adapter", () => {
 
     expect(get).toHaveBeenNthCalledWith(1, sourceUrl, expect.objectContaining({ respectRobots: false }));
     expect(get).toHaveBeenNthCalledWith(2, EARLY_CAREER_RADAR_API_URL, expect.objectContaining({
-      cache: false,
+      cache: true,
+      revalidate: true,
+      staleIfError: true,
       headers: { accept: "application/json" },
       respectRobots: false,
     }));
@@ -233,5 +238,36 @@ describe("Early Career Radar feed adapter", () => {
 
   it("keeps the discovered first-party page route explicit", () => {
     expect(EARLY_CAREER_RADAR_LISTING_URL).toBe("https://earlycareerradar.com/summer-internships?locations=all");
+  });
+
+  it("retains an outage cache without granting complete inventory coverage", async () => {
+    const get = vi.fn(async () => ({ ...response(embeddedHtml(feedJobs)), fromCache: true, stale: true }));
+    const adapter = new EarlyCareerRadarAdapter({ get } as unknown as HttpClient, new Logger("error"));
+    const result = await adapter.collect(sourceUrl);
+    expect(result.snapshots[0]?.links).toHaveLength(4);
+    expect(result.snapshots[0]?.stale).toBe(true);
+    expect(result.inventoryComplete).toBe(false);
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the failures and actual attempts of both exhausted HTTP routes", async () => {
+    const get = vi.fn(async (url: string) => {
+      throw new HttpRequestError(url === sourceUrl ? "fetch failed" : "The operation was aborted due to timeout", null, 2, url === sourceUrl ? "network_error" : "timeout");
+    });
+    const adapter = new EarlyCareerRadarAdapter({ get } as unknown as HttpClient, new Logger("error"));
+    const result = await adapter.collect(sourceUrl);
+    expect(result.attempts).toBe(6);
+    expect(result.failures).toEqual([
+      expect.objectContaining({ url: sourceUrl, errorType: "network_error", retryCount: 2 }),
+      expect.objectContaining({ url: EARLY_CAREER_RADAR_API_URL, errorType: "timeout", retryCount: 2 }),
+    ]);
+  });
+
+  it("propagates crawl cancellation without trying another route", async () => {
+    const cancelled = new CrawlCancelledError();
+    const get = vi.fn().mockRejectedValue(cancelled);
+    const adapter = new EarlyCareerRadarAdapter({ get } as unknown as HttpClient, new Logger("error"));
+    await expect(adapter.collect(sourceUrl)).rejects.toBe(cancelled);
+    expect(get).toHaveBeenCalledTimes(1);
   });
 });

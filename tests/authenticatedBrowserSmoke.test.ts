@@ -72,7 +72,7 @@ describe("authenticated onboarding browser smoke", () => {
           page.on("response", (response) => {
             if (response.status() >= 400) consoleErrors.push(`${response.status()} ${response.url()}`);
           });
-          await page.goto(`${harness.baseUrl}/jobs`, { waitUntil: "domcontentloaded" });
+          await page.goto(`${harness.baseUrl}/jobs?view=all&tab=main`, { waitUntil: "domcontentloaded" });
           const roleRows = page.locator("#role-list .job-card[data-listing-key]");
           await roleRows.first().waitFor({ state: "visible", timeout: 8_000 });
           await page.waitForTimeout(250);
@@ -107,7 +107,7 @@ describe("authenticated onboarding browser smoke", () => {
           expect(await page.locator("#more-filters-button").count()).toBe(0);
           expect(await page.locator("#settings-filters-panel").isVisible()).toBe(true);
           expect(await page.locator("#status-filter").isVisible()).toBe(true);
-          await page.locator("[data-nav='dashboard']").click();
+          await page.locator("[data-nav='roles']").click();
           await roleRows.first().waitFor({ state: "visible", timeout: 8_000 });
 
           const waitForRolePresence = async (key: string, present: boolean): Promise<void> => {
@@ -204,14 +204,14 @@ describe("authenticated onboarding browser smoke", () => {
           page.on("response", (response) => {
             if (response.status() >= 400) consoleErrors.push(`${response.status()} ${response.url()}`);
           });
-          await page.goto(`${harness.baseUrl}/jobs`, { waitUntil: "domcontentloaded" });
+          await page.goto(`${harness.baseUrl}/jobs?view=all&tab=main`, { waitUntil: "domcontentloaded" });
           await page.locator("#role-list .job-card[data-listing-key]").first().waitFor({ state: "visible", timeout: 8_000 });
           await page.locator("[data-nav='settings']").click();
           await page.locator("#settings-view").waitFor({ state: "visible" });
           expect(await page.locator("#more-filters-button").count()).toBe(0);
           expect(await page.locator("#settings-filters-panel").isVisible()).toBe(true);
           expect(await page.locator("#status-filter").isVisible()).toBe(true);
-          await page.locator("[data-nav='dashboard']").click();
+          await page.locator("[data-nav='roles']").click();
           await page.locator("#role-list .job-card[data-listing-key]").first().waitFor({ state: "visible", timeout: 8_000 });
           const desktopMetrics = await page.evaluate(() => ({
             panelHeight: document.querySelector(".jobs-panel")?.getBoundingClientRect().height ?? 0,

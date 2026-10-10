@@ -11,6 +11,8 @@ import {
 } from "./roleSorting.js";
 import { authClient, wireLogoutButton } from "./auth/auth-client.js";
 import { clearListingSnapshots, readListingSnapshot, rememberListingSnapshot } from "./app/listing-snapshot.js";
+// Today feature is dormant for now.
+// import { createTodayController } from "./app/today.js";
 
 const SERVER_ROLE_TABS = ["main", "canada", "summer", "internship", "quant", "non-intern"];
 const SAVED_ROLE_TAB = "saved";
@@ -295,6 +297,12 @@ const state = {
   loadingMore: false,
   listError: null,
   changesRequest: null,
+  analyticsRequest: null,
+  analyticsEtag: null,
+  analyticsReady: false,
+  analyticsData: null,
+  analyticsAccount: null,
+  analyticsAccountRequest: null,
   searchTimer: null,
   scanning: false,
   terminating: false,
@@ -335,6 +343,21 @@ const state = {
 };
 
 const $ = (selector) => document.querySelector(selector);
+/* Today feature is dormant for now.
+const todayController = typeof document === "undefined" ? null : createTodayController({
+  authClient,
+  getSavedRoles: () => state.watchlistRoles,
+  saveRole: (role) => {
+    const key = listingKeyForRole(role);
+    const saved = state.watchlistRoles.some((candidate) => listingKeyForRole(candidate) === key);
+    state.watchlistRoles = saved ? removeWatchlistRole(state.watchlistRoles, key) : upsertWatchlistRole(state.watchlistRoles, role);
+    writeWatchlistRoles(state.watchlistRoles);
+    renderWatchlistCount();
+    showToast(saved ? "Removed from watchlist" : "Saved to watchlist");
+  },
+
+});
+*/
 
 function roleArray(value) {
   return Array.isArray(value) ? value : value === undefined || value === null || value === "" ? [] : [value];
@@ -363,6 +386,8 @@ const WATCHLIST_ROLE_FIELDS = [
   "normalizedLocations", "eligibilityStatus", "sponsorshipOfferStatus", "description",
   "responsibilities", "requiredQualifications", "preferredQualifications",
   "workAuthorizationRequirements", "sponsorshipInformation", "qualificationDetails",
+  // Today feature is dormant for now.
+  // "deadline", "salary",
 ];
 
 export function watchlistRoleKey(role) {
@@ -796,8 +821,10 @@ function accountInitials(user, label) {
 }
 
 function renderAccountIdentity(authState = state.auth) {
+  const previousUserId = state.auth?.user?.id;
   state.auth = authState;
   const user = authState?.status === "authenticated" ? authState.user : null;
+  if (previousUserId !== user?.id) state.analyticsAccount = null;
   const label = user ? accountLabel(user) : authState?.status === "unavailable" ? "Account unavailable" : "Sign in";
   const email = user?.email || (authState?.status === "unavailable" ? "Account access unavailable" : "No active account");
   const initials = user ? accountInitials(user, label) : "AC";
@@ -829,6 +856,10 @@ function renderAccountIdentity(authState = state.auth) {
   }
   const logout = $("#dashboard-logout");
   if (logout) logout.hidden = !user;
+  if (isAnalyticsView()) {
+    renderCrawlStatistics(state.data);
+    if (user && previousUserId !== user.id) void syncAnalyticsAccount();
+  }
 }
 
 function normalizeDashboardSettings(value) {
@@ -1679,7 +1710,7 @@ function crawlStatCount(value) {
 
 function crawlStatHtml(className, value, label) {
   return `<div class="crawl-stat ${className}">
-    <span class="crawl-stat-value">${escapeHtml(formatNumber(value))}</span>
+    <span class="crawl-stat-value">${value == null ? "—" : escapeHtml(formatNumber(value))}</span>
     <span class="crawl-stat-label">${label}</span>
   </div>`;
 }
@@ -3520,15 +3551,18 @@ function setupRoleDetailMotion(panel) {
 }
 
 function renderCrawlStatistics(data) {
-  const stats = data?.stats || {};
+  const analytics = isAnalyticsView() && state.analyticsData ? state.analyticsData : data;
+  const stats = analytics?.stats || {};
+  const account = state.analyticsAccount;
+  const savedCountsReady = account?.status === "authenticated" && account.userId === state.auth?.user?.id;
   const crawlStatistics = $("#crawl-statistics");
   if (crawlStatistics) {
-    const open = crawlStatCount(stats.open);
-    const fresh = crawlStatCount(stats.new);
-    const updated = crawlStatCount(stats.updated);
-    const closed = crawlStatCount(stats.closed);
-    const hidden = crawlStatCount(stats.hidden);
-    const applied = crawlStatCount(data?.appliedRoleCount);
+    const open = stats.open == null ? null : crawlStatCount(stats.open);
+    const fresh = stats.new == null ? null : crawlStatCount(stats.new);
+    const updated = stats.updated == null ? null : crawlStatCount(stats.updated);
+    const closed = stats.closed == null ? null : crawlStatCount(stats.closed);
+    const hidden = savedCountsReady ? account.hiddenCount : null;
+    const applied = savedCountsReady ? account.appliedRoleCount : null;
     crawlStatistics.innerHTML = `<div class="crawl-stat-row crawl-stat-row-top">
         ${crawlStatHtml("crawl-stat-primary", open, "Open roles")}
         ${crawlStatHtml("crawl-stat-new", fresh, "New")}
@@ -3540,8 +3574,20 @@ function renderCrawlStatistics(data) {
         ${crawlStatHtml("crawl-stat-applied", applied, "Applied roles")}
       </div>`;
   }
+  const accountStatus = $("#analytics-account-status");
+  if (accountStatus) {
+    accountStatus.hidden = false;
+    const signInHref = `/login?next=${encodeURIComponent(`${window.location.pathname}${window.location.search}#analytics`)}`;
+    accountStatus.innerHTML = savedCountsReady && !account.error
+      ? `Saved counts for ${escapeHtml(state.auth.user.email || "your account")}.`
+      : state.auth?.status === "anonymous"
+      ? `Your saved counts are linked to your account. <a href="${escapeHtml(signInHref)}">Sign in to see them</a>.`
+      : account?.error || state.auth?.status === "unavailable"
+        ? `${escapeHtml(account?.error || "Your account could not be checked.")} <button class="text-link" type="button" data-retry-analytics-account>Retry saved counts</button>`
+        : "Checking your saved counts…";
+  }
   const updated = $("#analytics-updated-value");
-  if (updated) updated.textContent = data?.generatedAt ? formatDate(data.generatedAt, true) : "Waiting for data";
+  if (updated) updated.textContent = analytics?.generatedAt ? formatDate(analytics.generatedAt, true) : "Waiting for data";
 }
 
 function renderRoleTabs(data) {
@@ -3925,6 +3971,13 @@ function applicationCardHtml(application) {
     postingUrl !== "#" ? `<a href="${escapeHtml(postingUrl)}" target="_blank" rel="noopener noreferrer">View posting</a>` : "",
     applicationUrl !== "#" ? `<a href="${escapeHtml(applicationUrl)}" target="_blank" rel="noopener noreferrer">Open application</a>` : "",
   ].filter(Boolean).join("");
+  /* Today/application reminder support is dormant for now.
+  const localDateTime = (value) => {
+    if (!value || !Number.isFinite(Date.parse(value))) return "";
+    const date = new Date(value);
+    return new Date(date.valueOf() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  };
+  */
   return `<article class="application-card" data-application-key="${escapeHtml(key)}" role="listitem">
     ${companyLogoHtml(role, "sm")}
     <div class="application-card-main">
@@ -3943,6 +3996,14 @@ function applicationCardHtml(application) {
           </ol>
         </div>
       </div>
+      ${/* Today/application reminder form is dormant for now.
+      `<form class="application-reminder-form" data-application-reminders data-listing-type="${escapeHtml(application.listingType)}" data-listing-id="${escapeHtml(application.listingId)}" aria-label="Reminders for ${escapeHtml(application.title)} at ${escapeHtml(application.company)}">
+        <label>Follow-up date<input type="datetime-local" name="followUpAt" value="${escapeHtml(localDateTime(application.followUpAt))}" /></label>
+        <label>Interview date<input type="datetime-local" name="interviewAt" value="${escapeHtml(localDateTime(application.interviewAt))}" /></label>
+        <button class="button button-subtle" type="submit">Save reminders</button>
+        <p class="application-reminder-feedback" role="status" aria-live="polite">Dates use your local timezone.</p>
+      </form>`
+      */ ""}
     </div>
     <div class="application-card-actions">
       ${links ? `<div class="application-links">${links}</div>` : ""}
@@ -4061,6 +4122,34 @@ function openApplicationsView({ updateLocation = true } = {}) {
   void loadApplications();
 }
 
+/* Today/application reminder support is dormant for now.
+async function saveApplicationReminderForm(form) {
+  const button = form.querySelector("button[type='submit']");
+  const feedback = form.querySelector(".application-reminder-feedback");
+  if (button?.disabled) return;
+  button.disabled = true;
+  feedback.textContent = "Saving reminders…";
+  const dates = {};
+  try {
+    for (const name of ["followUpAt", "interviewAt"]) {
+      const input = form.querySelector(`[name="${name}"]`);
+      dates[name] = input.value ? new Date(input.value).toISOString() : null;
+    }
+    const csrfHeaders = await authClient.csrfHeaders();
+    const response = await fetch("/api/applications/reminders", { method: "POST", cache: "no-store",
+      headers: { Accept: "application/json", "Content-Type": "application/json", ...csrfHeaders },
+      body: JSON.stringify({ listingType: form.dataset.listingType, listingId: form.dataset.listingId, ...dates }),
+    });
+    await readJsonResponse(response);
+    const application = state.applications.find((item) => item.listingType === form.dataset.listingType && item.listingId === form.dataset.listingId);
+    if (application) Object.assign(application, dates);
+    feedback.textContent = "Reminders saved.";
+  } catch (error) {
+    feedback.textContent = error?.message || "Reminders couldn’t be saved. Try again.";
+  } finally { button.disabled = false; }
+}
+*/
+
 function openDashboardView({ updateLocation = true } = {}) {
   const cameFromSettings = state.activeView === "settings";
   const cameFromSavedRoles = isSavedRoleView();
@@ -4108,6 +4197,7 @@ function openAnalyticsView({ updateLocation = true } = {}) {
   renderNavigation();
   renderViewChrome();
   if (state.data) renderChrome(state.data);
+  void syncAnalytics({ force: true });
 }
 
 function openSourcesView({ updateLocation = true } = {}) {
@@ -4116,6 +4206,7 @@ function openSourcesView({ updateLocation = true } = {}) {
   renderNavigation();
   renderViewChrome();
   if (state.data) renderChrome(state.data);
+  void syncAnalytics({ force: true });
   $("#source-list")?.scrollIntoView({ block: "nearest" });
 }
 
@@ -5047,7 +5138,7 @@ async function readJsonResponse(response) {
     if (!response.ok) throw new Error(`Request failed (${response.status})`);
     payload = {};
   }
-  if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status})`);
+  if (!response.ok) throw new Error(payload?.error?.message || payload?.error || `Request failed (${response.status})`);
   return payload;
 }
 
@@ -5409,7 +5500,97 @@ export function shouldRefreshRoleListings(currentContentVersion, nextContentVers
   return hasVersionChanged(currentVersion, nextVersion) && (!scanning || !nextContentVersion);
 }
 
+function isAnalyticsView() {
+  return state.activeView === "analytics" || state.activeView === "sources";
+}
+
+async function syncAnalyticsAccount({ force = false } = {}) {
+  if (state.analyticsAccountRequest) return state.analyticsAccountRequest;
+  const request = (async () => {
+    if (state.auth?.status === "loading" || force) await authClient.bootstrap();
+    const user = state.auth?.status === "authenticated" ? state.auth.user : null;
+    if (!user) return false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10_000);
+    try {
+      const response = await fetch("/api/analytics/account", { cache: "no-store", headers: { Accept: "application/json" }, signal: controller.signal });
+      const payload = await readJsonResponse(response);
+      if (state.auth?.user?.id !== user.id) return false;
+      if (payload.contract !== "dashboard.analytics-account.v1" || payload.account?.userId !== user.id
+        || !Number.isSafeInteger(payload.hiddenCount) || payload.hiddenCount < 0
+        || !Number.isSafeInteger(payload.appliedRoleCount) || payload.appliedRoleCount < 0) {
+        throw new Error("Your saved counts need an active account session. Sign in again to reconnect.");
+      }
+      state.analyticsAccount = { ...payload.account, hiddenCount: payload.hiddenCount, appliedRoleCount: payload.appliedRoleCount };
+      return true;
+    } finally {
+      clearTimeout(timeout);
+    }
+  })().catch((error) => {
+    state.analyticsAccount = { ...(state.analyticsAccount || {}), error: error?.message || "Could not load your saved counts." };
+    return false;
+  }).finally(() => {
+    state.analyticsAccountRequest = null;
+    renderCrawlStatistics(state.data);
+  });
+  state.analyticsAccountRequest = request;
+  return request;
+}
+
+async function syncAnalytics({ force = false } = {}) {
+  if (!force && document.visibilityState === "hidden") return false;
+  void syncAnalyticsAccount({ force });
+  if (state.analyticsRequest) return state.analyticsRequest;
+  const status = $("#analytics-load-status");
+  const message = $("#analytics-load-message");
+  const retry = $("#analytics-retry");
+  if (!state.analyticsReady && status) {
+    status.hidden = false;
+    status.dataset.error = "false";
+    if (message) message.textContent = "Loading saved analytics…";
+  }
+  if (retry) retry.hidden = true;
+  $("#analytics-view")?.setAttribute("aria-busy", "true");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const request = (async () => {
+    const headers = { Accept: "application/json" };
+    if (!force && state.analyticsEtag) headers["If-None-Match"] = state.analyticsEtag;
+    const response = await fetch("/api/analytics", { cache: "no-store", headers, signal: controller.signal });
+    if (response.status === 304) {
+      if (status) status.hidden = true;
+      return false;
+    }
+    const payload = await readJsonResponse(response);
+    if (payload.contract !== "dashboard.analytics.v1" || !payload.stats) throw new Error("Scout returned incomplete analytics. Try again.");
+    state.analyticsEtag = response.headers.get("ETag");
+    const latestRun = payload.latestRun !== undefined ? payload.latestRun : state.data?.latestRun || null;
+    const runs = rememberRunHistory(payload.runs || []);
+    const hydrated = applyRememberedSourceHealth({ ...payload, latestRun }, state.data);
+    state.analyticsData = payload;
+    state.data = { ...(state.data || {}), ...hydrated, latestRun, runs, stats: mergeDashboardStats(state.data?.stats, payload.stats) };
+    state.statusVersion = payload.version || state.statusVersion;
+    if (state.scanning && !isScanActive(state.data)) state.scanning = false;
+    state.analyticsReady = true;
+    renderChrome(state.data);
+    if (status) status.hidden = true;
+    return true;
+  })().catch((error) => {
+    if (status) { status.hidden = false; status.dataset.error = "true"; }
+    if (message) message.textContent = `${state.analyticsReady ? "Showing the last analytics snapshot. " : "Analytics could not load. "}${controller.signal.aborted ? "The request timed out. Retry to reconnect." : error?.message || "Retry to reconnect."}`;
+    if (retry) retry.hidden = false;
+    return false;
+  }).finally(() => {
+    clearTimeout(timeout);
+    state.analyticsRequest = null;
+    $("#analytics-view")?.setAttribute("aria-busy", "false");
+  });
+  state.analyticsRequest = request;
+  return request;
+}
+
 async function syncChanges({ force = false } = {}) {
+  if (isAnalyticsView()) return syncAnalytics({ force });
   if (!force && document.visibilityState === "hidden") return false;
   // A slow session refresh must finish once; polling must not abort and
   // restart the initial head request every five seconds.
@@ -5951,6 +6132,19 @@ function applySavedView(view) {
 }
 
 function bindEvents() {
+  $("#analytics-retry")?.addEventListener("click", () => void syncAnalytics({ force: true }));
+  $("#analytics-account-status")?.addEventListener("click", (event) => {
+    if (event.target.closest("[data-retry-analytics-account]")) void syncAnalyticsAccount({ force: true });
+  });
+  /* Today/application reminder support is dormant for now.
+  document.addEventListener("submit", (event) => {
+    if (!(event.target instanceof Element)) return;
+    const form = event.target.closest("[data-application-reminders]");
+    if (!form) return;
+    event.preventDefault();
+    void saveApplicationReminderForm(form);
+  });
+  */
   $("#refresh-button")?.addEventListener("click", () => void checkAllSources());
   $("#terminate-button")?.addEventListener("click", () => void terminateCurrentRun());
   $("#quick-refresh-button")?.addEventListener("click", () => void checkAllSources());
@@ -6495,6 +6689,14 @@ async function initialLoad() {
   try {
     state.watchlistRoles = readWatchlistRoles();
     renderWatchlistCount();
+    // Open the operating summary immediately. Its data is independent of
+    // listing filters, matches, and the first role-page request.
+    if (isAnalyticsView()) {
+      renderNavigation();
+      renderViewChrome();
+      await syncAnalytics({ force: true });
+      return;
+    }
     await loadInitialRoles();
     void syncChanges({ force: true }).catch(() => undefined);
     void prefetchRoleTabs();

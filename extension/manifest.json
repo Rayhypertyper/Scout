@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Scout Application Helper",
+  "version": "1.0.0",
+  "description": "Fill blank application fields with your reviewed Scout profile. You submit every application yourself.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Scout Application Helper",
+    "default_popup": "popup.html"
+  }
+}

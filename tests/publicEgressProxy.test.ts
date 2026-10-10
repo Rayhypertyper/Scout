@@ -15,8 +15,9 @@ describe("public browser egress proxy", () => {
       throw new Error("resolver must not be called for a literal private target");
     });
     const proxy = new PublicEgressProxy(resolver);
+    const writeHead = vi.fn();
     const response = {
-      writeHead: vi.fn(),
+      writeHead,
       end: vi.fn(),
     } as unknown as ServerResponse;
     const request = {
@@ -27,7 +28,7 @@ describe("public browser egress proxy", () => {
     await (proxy as unknown as { handleForwardRequest: (request: IncomingMessage, response: ServerResponse) => Promise<void> })
       .handleForwardRequest(request, response);
     expect(resolver).not.toHaveBeenCalled();
-    expect(response.writeHead).toHaveBeenCalledWith(403, expect.any(Object));
+    expect(writeHead).toHaveBeenCalledWith(403, expect.any(Object));
   });
 
   it("rejects every answer when DNS returns a mixed public/private set", () => {
@@ -47,8 +48,9 @@ describe("public browser egress proxy", () => {
       { address: "93.184.216.34", family: 4 },
     ]);
     const proxy = new PublicEgressProxy(resolver);
+    const end = vi.fn();
     const client = {
-      end: vi.fn(),
+      end,
       destroy: vi.fn(),
       once: vi.fn(),
       on: vi.fn(),
@@ -57,7 +59,7 @@ describe("public browser egress proxy", () => {
 
     await (proxy as unknown as { handleConnect: (request: IncomingMessage, client: Duplex, head: Buffer) => Promise<void> })
       .handleConnect({ url: "127.0.0.1:443" } as IncomingMessage, client, Buffer.alloc(0));
-    expect(client.end).toHaveBeenCalledWith("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
+    expect(end).toHaveBeenCalledWith("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
     expect(resolver).not.toHaveBeenCalled();
     expect(browserRequestPolicyUrl("wss://public.example/socket")).toBe("https://public.example/socket");
     expect(browserRequestPolicyUrl("ws://user:pass@public.example/socket")).toBeNull();
@@ -66,13 +68,19 @@ describe("public browser egress proxy", () => {
 
   it("caps a CONNECT response stream after the configured decoded byte budget", async () => {
     const proxy = new PublicEgressProxy();
+    let destroyed = false;
+    const destroy = vi.fn(() => {
+      destroyed = true;
+    });
     const response = {
       headersSent: true,
-      destroyed: false,
+      get destroyed() {
+        return destroyed;
+      },
       writeHead: vi.fn(),
       write: vi.fn(),
       end: vi.fn(),
-      destroy: vi.fn(() => { response.destroyed = true; }),
+      destroy,
     } as unknown as ServerResponse;
     const upstream = Object.assign(
       (await import("node:stream")).Readable.from([Buffer.alloc(25_000_001)]),
@@ -82,6 +90,6 @@ describe("public browser egress proxy", () => {
     (proxy as unknown as { pipeResponse: (upstream: IncomingMessage, response: ServerResponse) => void })
       .pipeResponse(upstream as unknown as IncomingMessage, response);
     await new Promise<void>((resolve) => setImmediate(resolve));
-    expect(response.destroy).toHaveBeenCalled();
+    expect(destroy).toHaveBeenCalled();
   });
 });

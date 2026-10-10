@@ -1,5 +1,3 @@
-/* global document, fetch, setTimeout, clearTimeout */
-
 export const OPERATIONS_ENDPOINT = "/api/admin/operations";
 export const OPERATIONS_REFRESH_MS = 30_000;
 const OPERATIONS_CONTRACT = "operations.v1";
@@ -56,9 +54,16 @@ function integerValue(value) {
   return number === null ? null : Math.floor(number);
 }
 
+function replaceControlCharacters(value) {
+  return Array.from(value, (character) => {
+    const code = character.charCodeAt(0);
+    return code < 0x20 || code === 0x7f ? " " : character;
+  }).join("");
+}
+
 function boundedString(value, max = 320) {
   if (typeof value !== "string") return "";
-  const clean = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim();
+  const clean = replaceControlCharacters(value).replace(/\s+/g, " ").trim();
   return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
 }
 
@@ -194,11 +199,11 @@ export async function readOperations(fetchImpl) {
   } catch {
     throw new OperationsRequestError();
   }
-  let payload = null;
+  let payload;
   try {
     payload = await response.json();
   } catch {
-    payload = null;
+    // A malformed or empty body is rejected by the contract check below.
   }
   if (response.status === 401 || response.status === 403 || response.status === 404) {
     throw new OperationsAccessError();
@@ -350,7 +355,7 @@ function anomalyContext(anomaly) {
   return values.length ? values.join(" · ") : "No comparison values reported";
 }
 
-function anomalyRows(payload, { now, exact }) {
+function anomalyRows(payload, { now }) {
   return [...payload.anomalies]
     .sort((left, right) => (SEVERITY_RANK[left.severity] ?? 2) - (SEVERITY_RANK[right.severity] ?? 2))
     .map((anomaly) => {

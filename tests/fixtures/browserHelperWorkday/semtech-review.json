@@ -1,0 +1,107 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-09",
+  "observationSource": "Live Codex in-app browser metadata relayed by the parent; no candidate values retained and no page action performed on this step.",
+  "tenant": "Semtech",
+  "host": "semtech.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "jobCountry": "Canada",
+  "step": {
+    "heading": "Review",
+    "index": 6,
+    "count": 6,
+    "sameSpaRoute": true
+  },
+  "reviewWrapper": {
+    "dataAutomationId": "applyFlowReviewPage",
+    "tag": "div",
+    "headings": [
+      {
+        "level": 3,
+        "text": "My Information"
+      },
+      {
+        "level": 4,
+        "text": "Legal Name"
+      },
+      {
+        "level": 4,
+        "text": "Preferred Name"
+      },
+      {
+        "level": 4,
+        "text": "Address"
+      },
+      {
+        "level": 4,
+        "text": "Email Address"
+      },
+      {
+        "level": 4,
+        "text": "Phone"
+      },
+      {
+        "level": 3,
+        "text": "My Experience"
+      },
+      {
+        "level": 4,
+        "text": "Work Experience"
+      },
+      {
+        "level": 4,
+        "text": "Education"
+      },
+      {
+        "level": 4,
+        "text": "Languages"
+      },
+      {
+        "level": 4,
+        "text": "Resume/CV"
+      },
+      {
+        "level": 4,
+        "text": "Websites"
+      },
+      {
+        "level": 4,
+        "text": "Social Network URLs"
+      },
+      {
+        "level": 3,
+        "text": "Application Questions"
+      },
+      {
+        "level": 3,
+        "text": "Voluntary Disclosures"
+      },
+      {
+        "level": 4,
+        "text": "Terms and Conditions"
+      }
+    ],
+    "interactiveDescendants": {
+      "input": 0,
+      "textarea": 0,
+      "select": 0,
+      "button": 0,
+      "link": 0,
+      "roleButton": 0
+    }
+  },
+  "pageActionsOutsideReviewWrapper": [
+    {
+      "label": "Submit",
+      "tag": "button",
+      "dataAutomationId": "pageFooterNextButton",
+      "type": null,
+      "disabled": false
+    }
+  ],
+  "stepActions": {
+    "submitActivated": false,
+    "applicationSubmitted": false
+  },
+  "boundary": "All six Semtech steps have now been observed in the Codex in-app browser. Review is a summary surface with no interactive descendants inside its wrapper; the live Submit action is outside it and was not activated. The extension's native MV3 execution has not been verified."
+}

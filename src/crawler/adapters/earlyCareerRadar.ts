@@ -6,7 +6,7 @@ import type { Logger } from "../../utils/logger.js";
 import { HttpRequestError, type HttpClient, type HttpResponseSnapshot } from "../http.js";
 import { adapterFailure, type SourceAdapter, type SourceAdapterResult } from "./types.js";
 import { isEarlyCareerRadarNotFoundPage, isEarlyCareerRadarSource } from "../publicSources.js";
-import { currentSourceAbortSignal } from "../../domain/cancellation.js";
+import { CrawlCancelledError, CrawlDeadlineExceededError, SourceStalledError, currentSourceAbortSignal, throwIfAborted } from "../../domain/cancellation.js";
 
 /**
  * The public listing route is the source of truth for Radar's current client.
@@ -399,6 +399,7 @@ function feedSnapshot(
     links,
     attempts: response.attempts,
     fromCache: response.fromCache,
+    ...(response.stale ? { stale: true } : {}),
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -449,12 +450,13 @@ function feedResult(
     notes: [
       `${feedLabel} contained ${allJobs.length} jobs; ${selectedJobs.length} matched the source URL filters.`,
       ...(limited ? [limitNote] : []),
+      ...(response.stale ? ["Retained the last successful Radar feed after a transport failure; inventory coverage is incomplete."] : []),
     ],
     failures: limited
       ? [{ ...adapterFailure(sourceUrl, response.url, new Error(limitNote), response.status), errorType: "source_limit" }]
       : [],
     strategy: "static_html",
-    inventoryComplete: !limited,
+    inventoryComplete: !limited && !response.stale,
     inventoryCount: selectedJobs.length,
     maxRawListings: EARLY_CAREER_RADAR_MAX_FEED_JOBS,
   };
@@ -524,7 +526,9 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
       this.listingFeedSignal = undefined;
     }
     const request = this.http.get(sourceUrl, {
-      cache: false,
+      cache: true,
+      revalidate: true,
+      staleIfError: true,
       timeoutMs: 30_000,
       headers: { accept: "text/html,application/xhtml+xml" },
       allowedRedirectOrigins: ["https://earlycareerradar.com"],
@@ -560,7 +564,9 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
       this.apiFeedSignal = undefined;
     }
     const request = this.http.get(EARLY_CAREER_RADAR_API_URL, {
-      cache: false,
+      cache: true,
+      revalidate: true,
+      staleIfError: true,
       timeoutMs: 30_000,
       headers: { accept: "application/json" },
       allowedRedirectOrigins: ["https://earlycareerradar.com"],
@@ -601,6 +607,8 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
       this.logger.debug("ADAPTER", `Early Career Radar embedded HTML: ${feed.jobs.length} source jobs parsed`);
       return result;
     } catch (error) {
+      throwIfAborted(currentSourceAbortSignal());
+      if (error instanceof CrawlCancelledError || error instanceof CrawlDeadlineExceededError || error instanceof SourceStalledError) throw error;
       if (error instanceof HttpRequestError && error.statusCode === 404) {
         return skippedNotFoundResult(sourceUrl, error);
       }
@@ -623,6 +631,8 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
       this.logger.debug("ADAPTER", `Early Career Radar API fallback: ${feed.jobs.length} source jobs parsed`);
       return result;
     } catch (apiError) {
+      throwIfAborted(currentSourceAbortSignal());
+      if (apiError instanceof CrawlCancelledError || apiError instanceof CrawlDeadlineExceededError || apiError instanceof SourceStalledError) throw apiError;
       if (apiError instanceof HttpRequestError && apiError.statusCode === 404) {
         return skippedNotFoundResult(EARLY_CAREER_RADAR_API_URL, apiError);
       }
@@ -630,7 +640,16 @@ export class EarlyCareerRadarAdapter implements SourceAdapter {
         .filter((value): value is Error => value instanceof Error)
         .map((value) => value.message)
         .join("; ");
-      return browserRequiredResult(sourceUrl, sourceUrl, listingResponse, new Error(detail || "Early Career Radar feed unavailable"));
+      const result = browserRequiredResult(sourceUrl, sourceUrl, listingResponse, new Error(detail || "Early Career Radar feed unavailable"));
+      result.failures = [
+        adapterFailure(sourceUrl, sourceUrl, listingError, listingError instanceof HttpRequestError ? listingError.statusCode : null),
+        adapterFailure(sourceUrl, EARLY_CAREER_RADAR_API_URL, apiError, apiError instanceof HttpRequestError ? apiError.statusCode : null),
+      ].map((failure) => failure.errorType === "http_error" && failure.statusCode === null
+        ? { ...failure, errorType: "parse_error" }
+        : failure);
+      result.attempts = result.failures.reduce((total, failure) => total + failure.retryCount + 1, 0);
+      result.httpStatus = apiError instanceof HttpRequestError ? apiError.statusCode : null;
+      return result;
     }
   }
 }

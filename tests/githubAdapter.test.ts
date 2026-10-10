@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { resolveSettings } from "../src/config/settings.js";
 import { GitHubSourceAdapter, repositoryParts } from "../src/crawler/githubAdapter.js";
-import { HttpClient } from "../src/crawler/http.js";
+import { HttpClient, HttpRequestError } from "../src/crawler/http.js";
 import { extractPublicBoardJobs } from "../src/extractors/publicBoards.js";
 import { Logger } from "../src/utils/logger.js";
 
@@ -117,5 +117,47 @@ describe("GitHub source adapter", () => {
     expect(result.snapshots).toHaveLength(1);
     expect(result.failures).toHaveLength(1);
     expect(result.notes.some((note) => note.includes("Markdown file"))).toBe(true);
+  });
+
+  it("recovers a transient download_url failure through the contents API", async () => {
+    const markdown = "# Internship listings";
+    const get = vi.fn(async (url: string) => {
+      if (url.endsWith("/repo")) return { status: 200, attempts: 1, body: JSON.stringify({ default_branch: "main" }), contentType: "application/json" };
+      if (url.endsWith("/contents/?ref=main")) return { status: 200, attempts: 1, body: JSON.stringify([
+        { name: "README.md", path: "README.md", type: "file", download_url: "https://raw.githubusercontent.com/test/repo/main/README.md" },
+      ]), contentType: "application/json" };
+      if (url.startsWith("https://raw.githubusercontent.com/")) throw new HttpRequestError("temporary network failure", null, 2, "network_error");
+      if (url.endsWith("/contents/README.md?ref=main")) return { status: 200, attempts: 1, body: JSON.stringify({ encoding: "base64", content: Buffer.from(markdown).toString("base64") }), contentType: "application/json" };
+      throw new Error(`Unexpected request ${url}`);
+    });
+    const adapter = new GitHubSourceAdapter(new Logger("error"), { get } as unknown as HttpClient);
+
+    const result = await adapter.collect("https://github.com/test/repo");
+
+    expect(result.snapshots).toHaveLength(1);
+    expect(result.snapshots[0]?.text).toBe(markdown);
+    expect(result.failures).toEqual([]);
+    expect(result.attempts).toBe(6);
+  });
+
+  it("reports the final raw HTTP failure and accumulated attempts when every file path fails", async () => {
+    const get = vi.fn(async (url: string) => {
+      if (url.endsWith("/repo")) return { status: 200, attempts: 1, body: JSON.stringify({ default_branch: "main" }), contentType: "application/json" };
+      if (url.endsWith("/contents/?ref=main")) return { status: 200, attempts: 1, body: JSON.stringify([
+        { name: "README.md", path: "README.md", type: "file", download_url: "https://raw.githubusercontent.com/test/repo/main/README.md" },
+      ]), contentType: "application/json" };
+      if (url.startsWith("https://raw.githubusercontent.com/")) throw new HttpRequestError("raw service unavailable", 503, 2, "http_error");
+      if (url.endsWith("/contents/README.md?ref=main")) throw new HttpRequestError("contents API unavailable", 502, 3, "http_error");
+      throw new Error(`Unexpected request ${url}`);
+    });
+    const adapter = new GitHubSourceAdapter(new Logger("error"), { get } as unknown as HttpClient);
+
+    const result = await adapter.collect("https://github.com/test/repo");
+
+    expect(result.snapshots).toHaveLength(0);
+    expect(result.failures).toHaveLength(1);
+    expect(result.failures?.[0]).toMatchObject({ errorType: "http_error", statusCode: 503, retryCount: 9 });
+    expect(result.attempts).toBe(12);
+    expect(result.failures?.[0]?.message).toContain("raw service unavailable");
   });
 });

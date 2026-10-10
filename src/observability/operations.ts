@@ -161,7 +161,7 @@ export interface OperationsAnomaly {
 
 export interface OperationsRunSummary {
   id: number;
-  status: "RUNNING" | "COMPLETED" | "FAILED" | string;
+  status: string;
   startedAt: string | null;
   heartbeatAt: string | null;
   finishedAt: string | null;
@@ -410,10 +410,16 @@ function ageMs(value: string | null, nowMs: number): number | null {
   return Math.max(0, nowMs - parsed);
 }
 
+function replaceControlCharacters(value: string): string {
+  return Array.from(value, (character) => {
+    const code = character.charCodeAt(0);
+    return code < 0x20 || code === 0x7f ? " " : character;
+  }).join("");
+}
+
 function sanitiseDiagnostic(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  let message = value
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+  let message = replaceControlCharacters(value)
     .replace(/(?:bearer|authorization|cookie|set-cookie|token|secret|password)\s*[:=]\s*[^\s,;]+/gi, "$1=[redacted]")
     .replace(/https?:\/\/[^\s)]+/gi, "[url]")
     .replace(/file:\/\/[^\s)]+/gi, "[path]")

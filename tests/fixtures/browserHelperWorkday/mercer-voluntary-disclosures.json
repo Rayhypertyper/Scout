@@ -1,0 +1,95 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-08",
+  "observationSource": "Live Codex IAB inspection reported by the parent task; selected answers omitted.",
+  "tenant": "Mercer University",
+  "host": "merceruniversity.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "path": "/en-US/external/job/Warner-Robins%2C-GA--31088-7810/Software-Engineer_26-SW-14/apply/applyManually",
+  "step": { "heading": "Voluntary Disclosures", "index": 4, "count": 5 },
+  "sanitization": "Control patterns, option labels, and terms-description summary only. Candidate demographic and certification values are omitted.",
+  "controls": [
+    {
+      "prompt": "Please select one of the options below:",
+      "selector": "#personalInfoUS--veteranStatus",
+      "name": "veteranStatus",
+      "wrapperAutomationId": "formField-veteranStatus",
+      "tag": "button",
+      "type": "button",
+      "ariaHasPopup": "listbox",
+      "ariaRequired": false,
+      "accessibleName": "label plus current selection; current selection omitted",
+      "options": [
+        "Select One",
+        "I IDENTIFY AS ONE OR MORE OF THE CLASSIFICATIONS OF PROTECTED VETERANS LISTED ABOVE",
+        "I IDENTIFY AS A VETERAN, JUST NOT A PROTECTED VETERAN",
+        "I AM NOT A VETERAN",
+        "I DO NOT WISH TO SELF-IDENTIFY"
+      ],
+      "selectedValueRetained": false
+    },
+    {
+      "prompt": "Are you Hispanic or Latino?",
+      "selector": "#personalInfoUS--hispanicOrLatino",
+      "name": "hispanicOrLatino",
+      "wrapperAutomationId": "formField-hispanicOrLatino",
+      "tag": "button",
+      "type": "button",
+      "ariaHasPopup": "listbox",
+      "ariaRequired": false,
+      "accessibleName": "label plus current selection; current selection omitted",
+      "options": ["Select One", "Yes", "No"],
+      "selectedValueRetained": false
+    },
+    {
+      "prompt": "Gender",
+      "selector": "#personalInfoUS--gender",
+      "name": "gender",
+      "wrapperAutomationId": "formField-gender",
+      "tag": "button",
+      "type": "button",
+      "ariaHasPopup": "listbox",
+      "ariaRequired": false,
+      "accessibleName": "label plus current selection; current selection omitted",
+      "options": ["Select One", "Female", "Male", "Not declared"],
+      "selectedValueRetained": false
+    },
+    {
+      "prompt": "Race Category: (Please select all that apply.)",
+      "wrapperAutomationId": "formField-ethnicityMulti",
+      "kind": "native checkbox group",
+      "count": 5,
+      "idPattern": "generated id ending in -ethnicityMulti",
+      "name": null,
+      "dataAutomationId": null,
+      "ariaRequired": false,
+      "options": [
+        "American Indian or Alaska Native (United States of America)",
+        "Asian (United States of America)",
+        "Black or African American (United States of America)",
+        "Native Hawaiian or Other Pacific Islander (United States of America)",
+        "White (United States of America)"
+      ],
+      "selectedValuesRetained": false
+    },
+    {
+      "prompt": "Certification*",
+      "selector": "#termsAndConditions--acceptTermsAndAgreements",
+      "name": "acceptTermsAndAgreements",
+      "wrapperAutomationId": "formField-acceptTermsAndAgreements",
+      "tag": "input",
+      "type": "checkbox",
+      "ariaRequired": true,
+      "required": false,
+      "checkedValueRetained": false,
+      "selectedValueRetained": false
+    }
+  ],
+  "termsDescription": "Mercer is an Equal Opportunity Employer. The requested information assists Federal/State reporting and is stored in a separate limited-access statistical file. Participation is voluntary and does not determine employment eligibility.",
+  "disabilityFieldPresent": false,
+  "userSelectionsRetained": false,
+  "stepActions": {
+    "applicationSubmitted": false,
+    "pageLaterAdvancedToReview": true
+  }
+}

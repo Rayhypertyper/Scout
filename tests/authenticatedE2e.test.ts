@@ -247,19 +247,19 @@ describe("authenticated onboarding and matches harness", () => {
     const final = await saveStep(harness, csrfToken, 3, canadaEligibility);
     expect(final.response.status).toBe(200);
     const finalPayload = payload<PreferenceResponse>(final);
-    expect(finalPayload.redirect).toBe("/jobs?view=all&tab=main&sort=posted");
+    expect(finalPayload.redirect).toBe("/jobs?view=all&tab=canada&sort=posted");
     expect(finalPayload.preferences.onboardingCompleted).toBe(true);
     expect(finalPayload.preferences.completedAt).toEqual(expect.any(String));
 
     const defaultJobs = await harness.request("/jobs");
     expect(defaultJobs.response.status).toBe(303);
-    expect(location(defaultJobs)).toBe("/jobs?view=all&tab=main&sort=posted");
+    expect(location(defaultJobs)).toBe("/jobs?view=all&tab=canada&sort=posted");
     const postLogin = await harness.request("/post-login");
     expect(postLogin.response.status).toBe(303);
-    expect(location(postLogin)).toBe("/jobs?view=all&tab=main&sort=posted");
+    expect(location(postLogin)).toBe("/jobs?view=all&tab=canada&sort=posted");
     const onboardingAfterCompletion = await harness.request("/onboarding");
     expect(onboardingAfterCompletion.response.status).toBe(303);
-    expect(location(onboardingAfterCompletion)).toBe("/jobs?view=all&tab=main&sort=posted");
+    expect(location(onboardingAfterCompletion)).toBe("/jobs?view=all&tab=canada&sort=posted");
 
     const matches = await harness.request("/api/roles?view=matches&tab=main&sort=relevance&limit=10");
     expect(matches.response.status).toBe(200);
@@ -309,7 +309,7 @@ describe("authenticated onboarding and matches harness", () => {
     expect(payload<PreferenceResponse>(edited).preferences.onboardingCompleted).toBe(true);
     const editedPostLogin = await harness.request("/post-login");
     expect(editedPostLogin.response.status).toBe(303);
-    expect(location(editedPostLogin)).toBe("/jobs?view=all&tab=main&sort=posted");
+    expect(location(editedPostLogin)).toBe("/jobs?view=all&tab=canada&sort=posted");
 
     // The zero profile selects a reliably incompatible country and term. The
     // fixture's unknown-term role has an explicit Canadian remote scope, so

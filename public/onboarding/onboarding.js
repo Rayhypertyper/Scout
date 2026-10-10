@@ -797,7 +797,7 @@ async function onboardingApp() {
       } else {
         navigating = true;
         history.replaceState(history.state, "", window.location.pathname);
-        window.location.assign(payload.redirect || "/jobs?view=all&tab=main&sort=posted");
+        window.location.assign(payload.redirect || "/jobs?view=all&tab=canada&sort=posted");
       }
     } catch (error) {
       if (error.redirect) {

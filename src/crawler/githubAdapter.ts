@@ -4,9 +4,15 @@ import { extractPublicBoardJobs } from "../extractors/publicBoards.js";
 import { extractZshahDashboardInventory } from "../extractors/zshah.js";
 import { canonicalizeUrl, redactSensitiveUrl } from "../utils/url.js";
 import type { Logger } from "../utils/logger.js";
-import { HttpClient, HttpRequestError } from "./http.js";
+import { HttpClient, HttpRequestError, isTransientHttpRequestError } from "./http.js";
 import { mapBounded } from "./staticAdapters.js";
 import { snapshotFromStructuredJson } from "./adapters/static.js";
+import { CrawlCancelledError, CrawlDeadlineExceededError, SourceStalledError, currentSourceAbortSignal, throwIfAborted } from "../domain/cancellation.js";
+
+function throwIfCancelled(error: unknown): void {
+  throwIfAborted(currentSourceAbortSignal());
+  if (error instanceof CrawlCancelledError || error instanceof CrawlDeadlineExceededError || error instanceof SourceStalledError) throw error;
+}
 
 interface RepositoryEntry {
   name?: unknown;
@@ -30,6 +36,8 @@ export interface GitHubAdapterResult {
   failures?: FetchFailure[];
   inventoryComplete?: boolean;
 }
+
+const GITHUB_REQUEST_TIMEOUT_MS = 30_000;
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -122,8 +130,9 @@ export class GitHubSourceAdapter {
   private async collectZshahSource(sourceUrl: string): Promise<GitHubAdapterResult> {
     let attempts = 0;
     let fallbackReason: string;
+    let dashboardFailure: FetchFailure | undefined;
     try {
-      const response = await this.http.get(ZSHAH_JOBS_URL, { cache: true });
+      const response = await this.http.get(ZSHAH_JOBS_URL, { cache: true, timeoutMs: GITHUB_REQUEST_TIMEOUT_MS });
       attempts += response.attempts;
       const snapshot = snapshotFromStructuredJson(response, response.body);
       const inventory = extractZshahDashboardInventory(snapshot);
@@ -136,9 +145,23 @@ export class GitHubSourceAdapter {
         };
       }
       fallbackReason = "The dashboard JSON export did not expose a complete, parseable internship inventory.";
+      dashboardFailure = {
+        sourceUrl, url: ZSHAH_JOBS_URL, errorType: "parse_error",
+        message: fallbackReason, statusCode: response.status,
+        retryCount: Math.max(0, response.attempts - 1), occurredAt: new Date().toISOString(),
+      };
     } catch (error) {
+      throwIfCancelled(error);
       if (error instanceof HttpRequestError) attempts += error.attempts + 1;
       fallbackReason = `The dashboard was unavailable: ${error instanceof Error ? error.message : String(error)}`;
+      dashboardFailure = {
+        sourceUrl, url: ZSHAH_JOBS_URL,
+        errorType: error instanceof HttpRequestError ? error.errorType : "parse_error",
+        message: fallbackReason,
+        statusCode: error instanceof HttpRequestError ? error.statusCode : null,
+        retryCount: error instanceof HttpRequestError ? error.attempts : 0,
+        occurredAt: new Date().toISOString(),
+      };
     }
     // The README lists only a subset of the dashboard. Never inspect sibling
     // files or use that smaller fallback to close unseen dashboard listings.
@@ -148,7 +171,10 @@ export class GitHubSourceAdapter {
       retrievalMethod: `zshah README fallback (${fallback.retrievalMethod})`,
       attempts: attempts + fallback.attempts,
       notes: [fallbackReason, "The README is a limited fallback; dashboard inventory coverage is incomplete.", ...fallback.notes],
-      failures: fallback.failures?.map((failure) => ({ ...failure, sourceUrl })) ?? [],
+      failures: [
+        ...(dashboardFailure ? [dashboardFailure] : []),
+        ...fallback.failures?.map((failure) => ({ ...failure, sourceUrl })) ?? [],
+      ],
       inventoryComplete: false,
     };
   }
@@ -172,13 +198,13 @@ export class GitHubSourceAdapter {
     const authHeaders: HeadersInit = token ? { authorization: `Bearer ${token}`, accept: "application/vnd.github+json" } : { accept: "application/vnd.github+json" };
 
     try {
-      const metadataResponse = await this.http.get(apiBase, { headers: authHeaders });
+      const metadataResponse = await this.http.get(apiBase, { headers: authHeaders, timeoutMs: GITHUB_REQUEST_TIMEOUT_MS });
       attempts += metadataResponse.attempts;
       lastStatus = metadataResponse.status;
       const metadata = jsonValue(metadataResponse.body) as RepositoryMetadata | null;
       branch ??= stringValue(metadata?.default_branch);
       if (branch && !requestedFile) {
-        const rootResponse = await this.http.get(`${apiBase}/contents/?ref=${encodeURIComponent(branch)}`, { headers: authHeaders });
+        const rootResponse = await this.http.get(`${apiBase}/contents/?ref=${encodeURIComponent(branch)}`, { headers: authHeaders, timeoutMs: GITHUB_REQUEST_TIMEOUT_MS });
         attempts += rootResponse.attempts;
         lastStatus = rootResponse.status;
         entries = entriesFrom(rootResponse.body);
@@ -186,6 +212,7 @@ export class GitHubSourceAdapter {
       }
       if (branch && requestedFile) apiSucceeded = true;
     } catch (error) {
+      throwIfCancelled(error);
       if (error instanceof HttpRequestError) {
         attempts += error.attempts + 1;
         lastStatus = error.statusCode;
@@ -218,7 +245,7 @@ export class GitHubSourceAdapter {
       const directoryResults = await mapBounded(directories, 4, async (directory) => {
         const path = stringValue(directory.path);
         if (!path) return { path: "", entries: [] as RepositoryEntry[] };
-        const response = await this.http.get(`${apiBase}/contents/${encodeRepositoryPath(path)}?ref=${encodeURIComponent(ref)}`, { headers: authHeaders });
+        const response = await this.http.get(`${apiBase}/contents/${encodeRepositoryPath(path)}?ref=${encodeURIComponent(ref)}`, { headers: authHeaders, timeoutMs: GITHUB_REQUEST_TIMEOUT_MS });
         return { path, entries: entriesFrom(response.body), attempts: response.attempts, status: response.status };
       });
       for (const [index, result] of directoryResults.entries()) {
@@ -233,6 +260,7 @@ export class GitHubSourceAdapter {
             if (filePath) files.set(filePath, entry);
           }
         } else {
+          throwIfCancelled(result.reason);
           const reason = result.reason instanceof Error ? result.reason : new Error(String(result.reason));
           notes.push(`Could not inspect GitHub directory ${path}: ${reason.message}`);
           failures.push({
@@ -259,6 +287,7 @@ export class GitHubSourceAdapter {
     const fileResults = await mapBounded(fileEntries, 6, async ([path, entry]) => {
       const rawUrl = `https://raw.githubusercontent.com/${parts.owner}/${parts.repository}/${encodeURIComponent(branch).replaceAll("%2F", "/")}/${path.split("/").map(encodeURIComponent).join("/")}`;
       let markdown: string | null = null;
+      let fileAttempts = 0;
       // Repository listings expose download_url for public files. Prefer it
       // to spending a second API quota unit per file; synthetic/requested
       // paths without that field use the API content endpoint first to retain
@@ -266,50 +295,72 @@ export class GitHubSourceAdapter {
       const downloadUrl = stringValue(entry.download_url);
       if (downloadUrl) {
         try {
-          const response = await this.http.get(downloadUrl, { cache: true });
+          const response = await this.http.get(downloadUrl, { cache: true, timeoutMs: GITHUB_REQUEST_TIMEOUT_MS });
+          fileAttempts += response.attempts;
           markdown = response.body;
-          return { path, entry, rawUrl, markdown, attempts: response.attempts, status: response.status };
+          return { path, entry, rawUrl, markdown, attempts: fileAttempts, status: response.status };
         } catch (error) {
+          throwIfCancelled(error);
+          if (error instanceof HttpRequestError) fileAttempts += error.attempts + 1;
           if (!(error instanceof HttpRequestError && error.statusCode === 404)) {
-            throw new Error(`Could not retrieve ${redactSensitiveUrl(downloadUrl)}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+            if (!apiSucceeded || !isTransientHttpRequestError(error)) {
+              throw new Error(`Could not retrieve ${redactSensitiveUrl(downloadUrl)}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+            }
           }
         }
       }
       if (apiSucceeded) {
         try {
-          const response = await this.http.get(`${apiBase}/contents/${encodeRepositoryPath(path)}?ref=${encodeURIComponent(branch)}`, { headers: authHeaders });
+          const response = await this.http.get(`${apiBase}/contents/${encodeRepositoryPath(path)}?ref=${encodeURIComponent(branch)}`, { headers: authHeaders, timeoutMs: GITHUB_REQUEST_TIMEOUT_MS });
+          fileAttempts += response.attempts;
           const payload = jsonValue(response.body) as { content?: unknown; encoding?: unknown } | null;
           if (payload?.encoding === "base64" && typeof payload.content === "string") {
             markdown = Buffer.from(payload.content.replace(/\s+/g, ""), "base64").toString("utf8");
           } else if (response.contentType.includes("text") || response.body.startsWith("#") || response.body.includes("|")) {
             markdown = response.body;
           }
-          if (markdown) return { path, entry, rawUrl, markdown, attempts: response.attempts, status: response.status };
-        } catch {
+          if (markdown) return { path, entry, rawUrl, markdown, attempts: fileAttempts, status: response.status };
+        } catch (error) {
+          throwIfCancelled(error);
+          if (error instanceof HttpRequestError) fileAttempts += error.attempts + 1;
           notes.push(`GitHub API file fetch failed for ${path}; trying raw content.`);
         }
       }
-      const response = await this.http.get(rawUrl, { cache: true });
+      let response;
+      try {
+        response = await this.http.get(rawUrl, { cache: true, timeoutMs: GITHUB_REQUEST_TIMEOUT_MS });
+      } catch (error) {
+        throwIfCancelled(error);
+        if (error instanceof HttpRequestError) {
+          throw new HttpRequestError(error.message, error.statusCode, fileAttempts + error.attempts, error.errorType, error.retryAfterMs, error.headers);
+        }
+        throw error;
+      }
+      fileAttempts += response.attempts;
       markdown = response.body;
-      return { path, entry, rawUrl, markdown, attempts: response.attempts, status: response.status };
+      return { path, entry, rawUrl, markdown, attempts: fileAttempts, status: response.status };
     });
     const snapshots: PageSnapshot[] = [];
     const retrievalUrls: string[] = [];
     for (const [index, result] of fileResults.entries()) {
       if (result.status === "rejected") {
+        throwIfCancelled(result.reason);
         const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
         notes.push(`Could not retrieve a GitHub Markdown file: ${reason}`);
         const entry = fileEntries[index];
         const path = entry?.[0] ?? "unknown";
         const rawUrl = `https://raw.githubusercontent.com/${parts.owner}/${parts.repository}/${encodeURIComponent(branch).replaceAll("%2F", "/")}/${path.split("/").map(encodeURIComponent).join("/")}`;
         const cause = result.reason instanceof Error && result.reason.cause instanceof HttpRequestError ? result.reason.cause : result.reason instanceof HttpRequestError ? result.reason : null;
+        const failureError = cause ?? (result.reason instanceof HttpRequestError ? result.reason : null);
+        const rawAttempts = failureError?.attempts ?? 0;
+        attempts += rawAttempts + 1;
         failures.push({
           sourceUrl,
           url: rawUrl,
-          errorType: cause?.errorType ?? "http_error",
+          errorType: failureError?.errorType ?? "http_error",
           message: result.reason instanceof Error ? result.reason.message : String(result.reason),
-          statusCode: cause?.statusCode ?? null,
-          retryCount: cause?.attempts ?? 0,
+          statusCode: failureError?.statusCode ?? null,
+          retryCount: rawAttempts,
           occurredAt: new Date().toISOString(),
         });
         continue;

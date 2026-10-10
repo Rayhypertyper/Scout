@@ -100,7 +100,7 @@ describe("Grind job-board sync", () => {
       if (fail) return new Response("unavailable", { status: 503 });
       return feedResponse(queryPath(init));
     };
-    const client = new GrindJobBoardClient({ fetchImpl, now: () => 1_786_552_800_000 });
+    const client = new GrindJobBoardClient({ fetchImpl, now: () => 1_786_552_800_000, retryBackoffMs: 0 });
     const first = await client.getSnapshot();
     fail = true;
 
@@ -132,6 +132,67 @@ describe("Grind job-board sync", () => {
     expect(snapshot.failures).toEqual([]);
     expect(callCount).toBe(GRIND_JOB_BOARD_FEEDS.length + 1);
     expect(snapshot.attempts).toBe(callCount);
+  });
+
+  it("reports per-feed retry counts and error types for mixed failures", async () => {
+    let amazonCalls = 0;
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      const path = queryPath(init);
+      if (path === "amazon:getJobs") {
+        amazonCalls += 1;
+        return new Response("temporary", { status: 503 });
+      }
+      if (path === "netflix:getJobs") return new Response("forbidden", { status: 403 });
+      return feedResponse(path);
+    };
+    const client = new GrindJobBoardClient({ fetchImpl, retryCount: 2, retryBackoffMs: 0 });
+
+    const snapshot = await client.getSnapshot();
+
+    expect(amazonCalls).toBe(3);
+    expect(snapshot.failures).toEqual(expect.arrayContaining([
+      expect.objectContaining({ company: "Amazon", retryCount: 2, errorType: "http", statusCode: 503 }),
+      expect.objectContaining({ company: "Netflix", retryCount: 0, errorType: "access", statusCode: 403 }),
+    ]));
+  });
+
+  it("reports two retries for each feed during a complete outage", async () => {
+    const client = new GrindJobBoardClient({
+      fetchImpl: async () => new Response("offline", { status: 503 }),
+      retryCount: 2,
+      retryBackoffMs: 0,
+      concurrency: 30,
+    });
+
+    const snapshot = await client.getSnapshot();
+
+    expect(snapshot.attempts).toBe(GRIND_JOB_BOARD_FEEDS.length * 3);
+    expect(snapshot.failures).toHaveLength(GRIND_JOB_BOARD_FEEDS.length);
+    expect(snapshot.failures.every((failure) => failure.retryCount === 2 && failure.errorType === "http")).toBe(true);
+  });
+
+  it("propagates cancellation without turning it into feed failures or discarding cached jobs", async () => {
+    const controller = new AbortController();
+    let shouldAbort = false;
+    const client = new GrindJobBoardClient({
+      fetchImpl: async (_input, init) => {
+        if (shouldAbort) {
+          controller.abort(new Error("crawl cancelled"));
+          const reason: unknown = init?.signal?.reason;
+          throw reason instanceof Error ? reason : new Error("crawl cancelled");
+        }
+        return feedResponse(queryPath(init));
+      },
+      cancellationSignal: controller.signal,
+      retryCount: 0,
+    });
+    const initial = await client.getSnapshot();
+    shouldAbort = true;
+
+    await expect(client.getSnapshot(true)).rejects.toThrow("crawl cancelled");
+    const cached = client.getCachedSnapshot();
+    expect(cached.jobCount).toBe(initial.jobCount);
+    expect(cached.failures).toEqual([]);
   });
 
   it("persists a last-known cache and serves it when the feed is fully unavailable", async () => {

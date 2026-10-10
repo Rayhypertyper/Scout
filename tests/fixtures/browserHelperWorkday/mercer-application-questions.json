@@ -1,0 +1,137 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-08",
+  "observationSource": "Live Codex IAB inspection reported by the parent task; no candidate values retained.",
+  "tenant": "Mercer University",
+  "host": "merceruniversity.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "path": "/en-US/external/job/Warner-Robins%2C-GA--31088-7810/Software-Engineer_26-SW-14/apply/applyManually",
+  "step": {
+    "heading": "Application Questions",
+    "index": 3,
+    "count": 5,
+    "routeNote": "The SPA stayed on the same applyManually route through the observed step transition."
+  },
+  "sanitization": "Exact visible prompt and option text plus control patterns only. Dynamic question and popup IDs, candidate values, and any answer selections are omitted.",
+  "state": {
+    "requiredPrompts": 11,
+    "allAnswersBlank": true,
+    "dropdownsOpenedAndDismissed": 10,
+    "choicesSelected": 0,
+    "salaryTextareaFilled": false,
+    "declarationAccepted": false
+  },
+  "validationAtBlankSnapshot": {
+    "visibleHeading": "Errors Found",
+    "requiredErrorCount": 11
+  },
+  "subsequentUserAction": {
+    "questionsCompletedByUser": true,
+    "answerAndDeclarationValuesRetained": false
+  },
+  "sharedChoiceControl": {
+    "selector": "button[id^=primaryQuestionnaire--]",
+    "name": "matches full dynamic button id",
+    "type": "button",
+    "ariaHasPopup": "listbox",
+    "ariaLabel": " Select One Required",
+    "ariaControls": null,
+    "ariaLabelledBy": null,
+    "required": false,
+    "container": "fieldset with a direct legend containing the full prompt and required asterisk",
+    "outerAutomationIdPattern": "formField-<same dynamic question id>",
+    "state": "Select One placeholder; no answer selected",
+    "popup": {
+      "selector": "ul[role=listbox][aria-activedescendant]",
+      "optionSelector": "li[role=option]",
+      "ids": "dynamic; not retained",
+      "placeholder": { "label": "Select One", "disabled": true }
+    }
+  },
+  "yesNoOptions": ["Yes", "No"],
+  "questions": [
+    {
+      "number": 1,
+      "prompt": "Have you ever been employed at Mercer University or Mercer Engineering Research Center (MERC)?",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 2,
+      "prompt": "Are you currently enrolled as a student at Mercer University?",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 3,
+      "prompt": "What is your desired starting salary?",
+      "control": {
+        "selector": "textarea[id^=primaryQuestionnaire--]",
+        "type": "textarea",
+        "ariaRequired": true,
+        "name": null,
+        "required": false,
+        "outerAutomationIdPattern": "formField-<same dynamic question id>",
+        "state": "blank"
+      }
+    },
+    {
+      "number": 4,
+      "prompt": "Is the desired salary negotiable?",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 5,
+      "prompt": "Have you, since the age of 18, ever been convicted of a misdemeanor or felony, excluding speeding tickets? (NOTE: It is of vital importance that this question be answered truthfully. A conviction will not necessarily bar you from employment. Each conviction will be judged on its own merits with respect to time, circumstances and seriousness.)",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 6,
+      "prompt": "Are you a U.S. citizen?",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 7,
+      "prompt": "Do you currently hold a security clearance?",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 8,
+      "prompt": "Have you ever held a security clearance?",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 9,
+      "prompt": "Have you ever been denied a security clearance?",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 10,
+      "prompt": "Have you signed a non-compete agreement in the last 5 years?",
+      "control": "shared-choice-control",
+      "options": ["Yes", "No"]
+    },
+    {
+      "number": 11,
+      "prompt": "In compliance with federal law, all persons hired will be required to verify identity and eligibility to work in the United States and to complete the required employment eligibility verification document form upon hire. I authorize representatives of Mercer University/MERC to contact the references that I have provided, and to make inquiries concerning my employment history with current or former employers if I am selected as a finalist. I understand that all final and official offers of employment shall be made by the MERC Executive Director.",
+      "control": "shared-choice-control",
+      "options": ["Yes - I certify that I have read and agree with these statements.", "-"]
+    }
+  ],
+  "stepActions": {
+    "dropdownsOpened": 10,
+    "dropdownOptionsRead": true,
+    "dropdownsDismissedWithoutSelection": true,
+    "applicationSubmitted": false
+  },
+  "unseenOrUnverified": [
+    "The user later completed these required questions, but response values were not retained. Post-selection values are omitted.",
+    "The button trigger pattern is recorded, but no stable dynamic question IDs are available for selector use."
+  ]
+}

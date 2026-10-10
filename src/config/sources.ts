@@ -15,6 +15,7 @@ export const SOURCES: string[] = [
   "https://github.com/SuryaHarikrishnan/2027-internship-tracker/blob/master/listings/data-science-ai-machine-learning.md",
   "https://github.com/SuryaHarikrishnan/2027-internship-tracker/blob/master/listings/software-engineering.md",
   "https://github.com/dreamworkhq/Tech-Internships-2027",
+  "https://github.com/jobbie-bot/Summer-2027-Tech-Internships",
   "https://github.com/hanzili/canada_sde_intern_position",
   "https://github.com/michelleokolie/canada-tech-internships-summer-2027",
   "https://github.com/negarprh/Canadian-Tech-Internships-2027/blob/main/README.md",

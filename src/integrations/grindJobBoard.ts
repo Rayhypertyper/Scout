@@ -17,7 +17,7 @@ export const GRIND_JOB_BOARD_SOURCE_URL = "https://didtheboysgrindleetcodetoday.
 export const DEFAULT_GRIND_JOB_BOARD_CONVEX_URL = "https://bright-shrimp-175.convex.cloud";
 const GRIND_JOB_BOARD_USER_AGENT = "Internshipmatic/1.0";
 const DEFAULT_GRIND_JOB_BOARD_RETRY_COUNT = 1;
-const DEFAULT_GRIND_JOB_BOARD_RETRY_BACKOFF_MS = 100;
+const DEFAULT_GRIND_JOB_BOARD_RETRY_BACKOFF_MS = 1_000;
 
 export interface GrindJobBoardFeed {
   company: string;
@@ -106,6 +106,9 @@ export interface GrindJobBoardFailure {
   moduleName: string;
   message: string;
   statusCode?: number | null;
+  /** Number of additional feed requests made after its first request. */
+  retryCount?: number;
+  errorType?: "network" | "timeout" | "access" | "rate_limit" | "http" | "parse";
 }
 
 export type GrindJobBoardStatus = "ready" | "partial" | "stale" | "unavailable";
@@ -262,7 +265,12 @@ export class GrindJobBoardClient {
       const discoveredConvexUrl = await this.discoverConvexUrl();
       if (discoveredConvexUrl && discoveredConvexUrl !== this.convexUrl) {
         this.convexUrl = discoveredConvexUrl;
+        const firstResults = results;
         results = await this.fetchFeeds(semaphore, GRIND_JOB_BOARD_FEEDS);
+        results = results.map((result, index) => ({
+          ...result,
+          retryCount: result.retryCount + (firstResults[index]?.attemptCount ?? 0),
+        }));
       }
     }
 
@@ -276,6 +284,8 @@ export class GrindJobBoardClient {
           moduleName: result.feed.moduleName,
           message: result.error ?? "Unknown feed error",
           statusCode: result.statusCode,
+          retryCount: result.retryCount,
+          ...(result.errorType ? { errorType: result.errorType } : {}),
         });
         continue;
       }
@@ -303,12 +313,13 @@ export class GrindJobBoardClient {
   private async fetchFeeds(
     semaphore: Semaphore,
     feeds: readonly GrindJobBoardFeed[],
-  ): Promise<Array<{ feed: GrindJobBoardFeed; jobs: GrindJob[] | null; error: string | null; statusCode: number | null }>> {
+  ): Promise<Array<{ feed: GrindJobBoardFeed; jobs: GrindJob[] | null; error: string | null; statusCode: number | null; retryCount: number; attemptCount: number; errorType?: GrindJobBoardFailure["errorType"] }>> {
     return Promise.all(feeds.map(async (feed) => (
       semaphore.use(async () => {
         try {
           throwIfAborted(this.activeSignal());
-          return { feed, jobs: await this.fetchFeed(feed.company, feed.moduleName), error: null, statusCode: null };
+          const result = await this.fetchFeed(feed.company, feed.moduleName);
+          return { feed, ...result, error: null, statusCode: null };
         } catch (error) {
           this.throwIfCrawlAborted();
 
@@ -317,17 +328,22 @@ export class GrindJobBoardClient {
             jobs: null,
             error: errorMessage(error),
             statusCode: errorStatusCode(error),
+            retryCount: Math.max(0, ((error as { attemptCount?: number }).attemptCount ?? 1) - 1),
+            attemptCount: (error as { attemptCount?: number }).attemptCount ?? 1,
+            errorType: classifyFeedError(error),
           };
         }
       }, this.activeSignal())
     )));
   }
 
-  private async fetchFeed(company: string, moduleName: string): Promise<GrindJob[]> {
+  private async fetchFeed(company: string, moduleName: string): Promise<{ jobs: GrindJob[]; retryCount: number; attemptCount: number }> {
     let lastError: unknown = new Error(`${company} feed failed without a response`);
+    let attemptCount = 0;
     for (let attempt = 0; attempt <= this.retryCount; attempt += 1) {
       throwIfAborted(this.activeSignal());
       this.attempts += 1;
+      attemptCount += 1;
       try {
         const response = await this.fetchImpl(`${this.convexUrl}/api/query`, {
           method: "POST",
@@ -347,7 +363,7 @@ export class GrindJobBoardClient {
           throw new Error(envelope.errorMessage ?? `${company} feed returned ${envelope.status}`);
         }
         const jobs = z.array(RawGrindJobSchema).nullable().parse(envelope.value) ?? [];
-        return jobs.map((job) => ({
+        return { jobs: jobs.map((job) => ({
           id: `${moduleName}:${job.jobId}`,
           company,
           title: job.title.trim(),
@@ -355,7 +371,7 @@ export class GrindJobBoardClient {
           link: safeCanonicalizeUrl(job.link) ?? job.link,
           firstSeen: job.firstSeen,
           jobId: job.jobId,
-        }));
+        })), retryCount: attemptCount - 1, attemptCount };
       } catch (error) {
         this.throwIfCrawlAborted();
         lastError = error;
@@ -363,7 +379,9 @@ export class GrindJobBoardClient {
         await sleep(this.retryBackoffMs * (2 ** attempt), this.activeSignal());
       }
     }
-    throw lastError;
+    const finalError = lastError instanceof Error ? lastError : new Error(errorMessage(lastError));
+    Object.assign(finalError, { attemptCount });
+    throw finalError;
   }
 
   private async discoverConvexUrl(): Promise<string | null> {
@@ -492,7 +510,20 @@ function errorStatusCode(error: unknown): number | null {
 function isRetryableFeedError(error: unknown): boolean {
   const statusCode = errorStatusCode(error);
   if (statusCode !== null) return statusCode === 408 || statusCode === 425 || statusCode === 429 || statusCode >= 500;
-  return /(?:fetch failed|timeout|timed out|econnreset|eai_again|socket|network)/i.test(errorMessage(error));
+  return classifyFeedError(error) === "network" || classifyFeedError(error) === "timeout";
+}
+
+function classifyFeedError(error: unknown): GrindJobBoardFailure["errorType"] {
+  const statusCode = errorStatusCode(error);
+  if (statusCode === 429) return "rate_limit";
+  if (statusCode === 401 || statusCode === 403) return "access";
+  if (statusCode !== null) return "http";
+  if (error instanceof z.ZodError) return "parse";
+  const name = error && typeof error === "object" && "name" in error ? String(error.name) : "";
+  const message = errorMessage(error);
+  if (name === "TimeoutError" || /timeout|timed out/i.test(message)) return "timeout";
+  if (/(?:fetch failed|econnreset|eai_again|socket|network)/i.test(message)) return "network";
+  return "parse";
 }
 
 export function grindJobToInternship(

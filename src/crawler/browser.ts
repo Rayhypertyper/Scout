@@ -11,7 +11,7 @@ import type { Logger } from "../utils/logger.js";
 import { canonicalizeUrl, isAggregatorUrl, isJobrightJobUrl, isJobrightUrl, isLinkedInJobUrl, redactSensitiveText, redactSensitiveUrl, safeCanonicalizeUrl, sameSite } from "../utils/url.js";
 import { classifyLinkResponse } from "../verification/linkStatus.js";
 import { HostRateLimiter, HostRateLimitTimeoutError } from "./rateLimiter.js";
-import { isEarlyCareerRadarNotFoundPage, isEarlyCareerRadarPage, isEarlyCareerRadarSource } from "./publicSources.js";
+import { isApplyBoltNotFoundPage, isEarlyCareerRadarNotFoundPage, isEarlyCareerRadarPage, isEarlyCareerRadarSource } from "./publicSources.js";
 import { earlyCareerRadarDetailUrl, parseEarlyCareerRadarJobs, selectEarlyCareerRadarJobs } from "./adapters/earlyCareerRadar.js";
 import type { Profiler } from "../observability/profiler.js";
 import { cancellationError, composeAbortSignals, currentSourceAbortSignal, throwIfAborted } from "../domain/cancellation.js";
@@ -750,6 +750,9 @@ export class BrowserManager {
         throw new PageFetchError(error instanceof Error ? error.message : String(error), null, 0, "navigation_error");
       }
       const status = response?.status() ?? 200;
+      if (isApplyBoltNotFoundPage(requestedUrl, status) || isApplyBoltNotFoundPage(page.url(), status)) {
+        throw new PageFetchError("ApplyBolt page not found; skipped without retry.", 404, 0, "not_found");
+      }
       const radarUrl = isEarlyCareerRadarPage(page.url()) ? page.url() : requestedUrl;
       if (isEarlyCareerRadarNotFoundPage(radarUrl, status)) {
         throw new PageFetchError("Early Career Radar page not found; skipped without retry.", 404, 0, "not_found");

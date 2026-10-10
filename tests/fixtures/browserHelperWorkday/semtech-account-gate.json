@@ -1,0 +1,564 @@
+{
+  "fixtureType": "sanitized-dom-observation",
+  "captureDate": "2026-10-08",
+  "observationSource": "Live Codex IAB inspection reported by the parent task; no account or candidate values retained.",
+  "tenant": "Semtech",
+  "host": "semtech.wd1.myworkdayjobs.com",
+  "locale": "en-US",
+  "job": {
+    "headingLevel": 2,
+    "title": "Software Developer – Web/Cloud Application, Co-op",
+    "locationLabel": "CAN - Richmond, BC",
+    "country": "Canada",
+    "requisition": "REQ3644",
+    "countrySource": "Visible Canadian job-location label, not applicant address or locale."
+  },
+  "application": {
+    "path": "/en-US/semtechcareers/job/CAN---Richmond%2C-BC/Software-Developer---Web-Cloud-Application--Co-op_REQ3644/apply/autofillWithResume",
+    "entryChoice": "Autofill with Resume",
+    "stageCountBeforeSignIn": 7,
+    "stagesBeforeSignIn": [
+      "Create Account/Sign In",
+      "Autofill with Resume",
+      "My Information",
+      "My Experience",
+      "Application Questions",
+      "Voluntary Disclosures",
+      "Review"
+    ],
+    "accountGate": {
+      "initialHeading": {
+        "level": 3,
+        "text": "Create Account"
+      },
+      "handoffMode": "Sign In",
+      "stageIndexBeforeSignIn": 1,
+      "controlsCaptured": false
+    },
+    "stageCountAfterSignIn": 6,
+    "currentStepAfterSignIn": {
+      "headingLevel": 3,
+      "heading": "Autofill with Resume",
+      "index": 1,
+      "count": 6
+    },
+    "progressBarAfterSignIn": {
+      "containerSelector": "ol[data-automation-id=progressBar]",
+      "activeItemAutomationId": "progressBarActiveStep",
+      "activeItemText": "current step 1 of 6",
+      "activeItemAriaCurrent": null,
+      "activeItemAriaLabel": null,
+      "inactiveItemTextPattern": "stepNof6; step number only, no label"
+    },
+    "resumeUpload": {
+      "wrapperAutomationId": "resumeUpload",
+      "ancestorChainFromInput": [
+        "anonymous div",
+        "div[data-automation-id=resumeUpload]",
+        "anonymous div",
+        "anonymous div",
+        "formField-* wrapper"
+      ],
+      "visibleInstructionSummary": "Resume attachment is requested so relevant application information can load for hiring managers and HR.",
+      "visibleDropPrompt": "Drop file here or Select file",
+      "fileLimitMB": 5,
+      "acceptedExtensions": [
+        ".doc",
+        ".docx",
+        ".html",
+        ".pdf",
+        ".txt"
+      ],
+      "button": {
+        "selector": "button[data-automation-id=select-files]",
+        "text": "Select file",
+        "type": "button",
+        "generatedIdObservedButNotRetained": true
+      },
+      "input": {
+        "selector": "input[type=file][data-automation-id=file-upload-input-ref]",
+        "multiple": false,
+        "accept": null,
+        "name": null,
+        "id": null,
+        "required": false,
+        "ariaRequired": false
+      },
+      "existingFileCount": 0,
+      "existingUploadItemCount": 0,
+      "selectButtonClickedAtInitialSnapshot": false,
+      "uploadResult": {
+        "nativeChooserUsed": true,
+        "syntheticFileName": "scout-upload-test.pdf",
+        "sizeKB": 2.25,
+        "statusText": "Successfully Uploaded!",
+        "successAutomationId": "file-upload-successful",
+        "deleteButtonAutomationId": "delete-file",
+        "deleteButtonType": "button",
+        "deleteActivated": false,
+        "extensionAttachmentTested": false
+      }
+    },
+    "resumeWidgetObserved": true,
+    "fileUploaded": true,
+    "currentStepAfterContinue": {
+      "headingLevel": 3,
+      "heading": "My Information",
+      "index": 2,
+      "count": 6
+    },
+    "progressBarAfterContinue": {
+      "containerSelector": "ol[data-automation-id=progressBar]",
+      "activeItemAutomationId": "progressBarActiveStep",
+      "activeItemText": "current step 2 of 6",
+      "activeItemAriaCurrent": null,
+      "activeItemAriaLabel": null,
+      "inactiveItemTextPattern": "stepNof6; step number only, no label"
+    },
+    "myInformation": {
+      "step": {
+        "headingLevel": 3,
+        "heading": "My Information",
+        "index": 2,
+        "count": 6
+      },
+      "source": {
+        "prompt": "How Did You Hear About Us?",
+        "requiredMarkerObserved": true,
+        "selector": "#source--source",
+        "name": "source",
+        "element": "button",
+        "type": "button",
+        "ariaHasPopup": "listbox",
+        "wrapperAutomationId": "formField-source",
+        "options": [
+          "Select One",
+          "Agency",
+          "Corporate Website",
+          "Indeed",
+          "LinkedIn",
+          "Recruiter",
+          "Semtech Employee Referral"
+        ],
+        "selectionPresent": true,
+        "selectedValueRetained": false,
+        "absentAttributes": [
+          "aria-controls",
+          "aria-owns",
+          "aria-expanded"
+        ]
+      },
+      "previousWorker": {
+        "prompt": "Have you previously been employed by Semtech as a Full-time, Part-time, Contractor or Temporary worker in any of our global locations?",
+        "requiredMarkerObserved": true,
+        "type": "radio",
+        "name": "candidateIsPreviousWorker",
+        "options": [
+          "Yes",
+          "No"
+        ],
+        "selectedValueRetained": false
+      },
+      "country": {
+        "selector": "#country--country",
+        "element": "button",
+        "selectedValueRetained": false,
+        "absentAttributes": [
+          "aria-controls",
+          "aria-owns",
+          "aria-expanded"
+        ]
+      },
+      "phoneType": {
+        "selector": "#phoneNumber--phoneType",
+        "element": "button",
+        "options": [
+          "Select One",
+          "Landline",
+          "Mobile"
+        ],
+        "selectedValueRetained": false,
+        "absentAttributes": [
+          "aria-controls",
+          "aria-owns",
+          "aria-expanded"
+        ]
+      },
+      "phoneCountryCode": {
+        "searchInputBlank": true,
+        "selectedItemListPresent": true,
+        "selectedValueRetained": false
+      },
+      "provinceOrTerritory": {
+        "selector": "#address--countryRegion",
+        "prompt": "Province or Territory",
+        "required": false,
+        "listboxOptionCount": 13,
+        "optionLabelsRetained": false,
+        "selectedValueRetained": false,
+        "absentAttributes": [
+          "aria-controls",
+          "aria-owns",
+          "aria-expanded"
+        ]
+      },
+      "preferredName": {
+        "checkboxSelector": "#name--preferredCheck",
+        "checkboxValueRetained": false,
+        "conditionalFieldsVisible": true,
+        "conditionalFields": [
+          {
+            "selector": "#name--preferredName--firstName",
+            "name": "preferredName--firstName",
+            "label": "First Name*",
+            "required": true,
+            "blank": true
+          },
+          {
+            "selector": "#name--preferredName--lastName",
+            "name": "preferredName--lastName",
+            "label": "Last Name*",
+            "required": true,
+            "blank": true
+          }
+        ]
+      },
+      "legalNameAndPhoneBlank": true,
+      "optionalAddressFieldsBlank": true,
+      "unreportedFieldSelectors": "Legal-name and phone selector IDs were not included in the observation and are not inferred from Mercer.",
+      "nextControl": {
+        "automationId": "pageFooterNextButton",
+        "text": "Save and Continue",
+        "visible": true,
+        "activated": false
+      },
+      "candidateResponseValuesRetained": false
+    },
+    "currentStepAfterMyInformation": {
+      "headingLevel": 3,
+      "heading": "My Experience",
+      "index": 3,
+      "count": 6
+    },
+    "myExperience": {
+      "captureDate": "2026-10-09",
+      "step": {
+        "headingLevel": 3,
+        "heading": "My Experience",
+        "index": 3,
+        "count": 6
+      },
+      "workExperience": {
+        "sectionLabelledBy": "Work-Experience-section",
+        "sectionHeading": {
+          "level": 4,
+          "id": "Work-Experience-section"
+        },
+        "rowLabelPattern": "Work-Experience-N-panel",
+        "rowHeadingPattern": {
+          "level": 5,
+          "id": "WorkExperienceN",
+          "title": "WorkExperienceN"
+        },
+        "visibleRowCount": 1,
+        "preexistingNonblankRowCountObserved": 2,
+        "secondRowDeletedByUserDirection": true,
+        "candidateFieldValuesRetained": false,
+        "fields": {
+          "jobTitle": {
+            "idPattern": "workExperience-N--jobTitle",
+            "label": "Job Title*",
+            "ariaRequired": true
+          },
+          "companyName": {
+            "idPattern": "workExperience-N--companyName",
+            "label": "Company Name*",
+            "ariaRequired": true
+          },
+          "location": {
+            "idPattern": "workExperience-N--location",
+            "label": "Location*",
+            "ariaRequired": true
+          },
+          "currentlyWorkHere": {
+            "idPattern": "workExperience-N--currentlyWorkHere",
+            "name": "currentlyWorkHere",
+            "type": "checkbox",
+            "label": "I currently work here",
+            "selectedStateRetained": false
+          },
+          "startDate": {
+            "wrapperAutomationId": "formField-startDate",
+            "label": "From*",
+            "month": {
+              "automationId": "dateSectionMonth-input",
+              "role": "spinbutton",
+              "typeAttribute": null,
+              "ariaLabel": "Month",
+              "minimum": 1,
+              "maximum": 12
+            },
+            "year": {
+              "automationId": "dateSectionYear-input",
+              "role": "spinbutton",
+              "typeAttribute": null,
+              "ariaLabel": "Year",
+              "minimum": 1,
+              "maximum": 9999
+            }
+          },
+          "endDate": {
+            "wrapperAutomationId": "formField-endDate",
+            "label": "To*",
+            "month": {
+              "automationId": "dateSectionMonth-input",
+              "role": "spinbutton",
+              "typeAttribute": null,
+              "ariaLabel": "Month",
+              "minimum": 1,
+              "maximum": 12
+            },
+            "year": {
+              "automationId": "dateSectionYear-input",
+              "role": "spinbutton",
+              "typeAttribute": null,
+              "ariaLabel": "Year",
+              "minimum": 1,
+              "maximum": 9999
+            }
+          },
+          "roleDescription": {
+            "idPattern": "workExperience-N--roleDescription",
+            "label": "Role Description*",
+            "ariaRequired": true
+          }
+        },
+        "addAnother": {
+          "automationId": "add-button",
+          "text": "Add Another",
+          "typeAttribute": null
+        },
+        "deleteControl": {
+          "text": "Delete",
+          "typeAttribute": null,
+          "id": null,
+          "name": null,
+          "dataAutomationId": null,
+          "scope": "Work-Experience-N-panel; first row has no Delete control"
+        },
+        "extraRowDeletion": {
+          "userDirected": true,
+          "confirmationShown": false,
+          "secondPanelRemovedImmediately": true
+        }
+      },
+      "education": {
+        "sectionLabelledBy": "Education-section",
+        "visibleRowCount": 1,
+        "rowLabelPattern": "Education-N-panel",
+        "school": {
+          "idPattern": "education-N--schoolName",
+          "name": "schoolName",
+          "label": "School or University*",
+          "ariaRequired": true,
+          "control": "input"
+        },
+        "degree": {
+          "idPattern": "education-N--degree",
+          "name": "degree",
+          "label": "Degree*",
+          "control": "button",
+          "type": "button",
+          "selectionRequiredInAriaLabel": true
+        },
+        "fieldOfStudy": {
+          "idPattern": "education-N--fieldOfStudy",
+          "name": "fieldOfStudy",
+          "label": "Field of Study*",
+          "placeholder": "Search",
+          "ariaRequired": true,
+          "control": "input",
+          "enterKeyHint": "search",
+          "parentAutomationIds": [
+            "multiSelectContainer",
+            "multiselectInputContainer"
+          ],
+          "formAncestorPresent": false,
+          "catalogHelpMonikers": [
+            "SearchBox",
+            "searchBox",
+            "promptSearchButton",
+            "responsiveMonikerPrompt",
+            "promptAriaInstructionMinimized",
+            "promptAriaInstructionExpanded"
+          ],
+          "catalogHelpSummary": "The field catalog returns up to the first 100 alphabetically ordered items.",
+          "typedQueryAloneFilters": false,
+          "enterAfterQueryOpensOptions": true,
+          "queryResultOptionCount": 9,
+          "queryResultLabelsRetained": false,
+          "unfilteredPopup": {
+            "containerAutomationId": "activeListContainer",
+            "role": "listbox",
+            "hasAriaActiveDescendant": true,
+            "virtualized": true,
+            "visibleOptionCount": 12,
+            "visibleOptionRange": [
+              "Accounting",
+              "Agricultural Education"
+            ],
+            "dynamicOptionAutomationId": "menuItem",
+            "fullOptionListRetained": false
+          },
+          "selectionMadeDuringProbe": false,
+          "postProbeUserSelection": {
+            "userProvidedChoice": true,
+            "matchingCatalogOptionSelected": true,
+            "selectedItemDisplayed": true,
+            "choiceLabelRetained": false
+          }
+        },
+        "gradeAverage": {
+          "idPattern": "education-N--gradeAverage",
+          "name": "gradeAverage",
+          "label": "Overall Result (GPA)",
+          "control": "input",
+          "type": "text",
+          "ariaRequired": false
+        },
+        "addAnother": {
+          "automationId": "add-button",
+          "text": "Add Another",
+          "typeAttribute": null
+        }
+      },
+      "languages": {
+        "sectionLabelledBy": "Languages-section",
+        "visibleRowCount": 2,
+        "rowLabelPattern": "Languages-N-panel",
+        "language": {
+          "idPattern": "language-N--language",
+          "name": "language",
+          "label": "Language*",
+          "control": "button",
+          "type": "button",
+          "ariaRole": "listbox",
+          "choiceCount": 20,
+          "fullOptionListRetained": false
+        },
+        "fluent": {
+          "idPattern": "language-N--native",
+          "name": "native",
+          "control": "checkbox",
+          "label": "I am fluent in this language.",
+          "ariaRequired": false,
+          "selectedStateRetained": false
+        },
+        "proficiency": {
+          "control": "button",
+          "opaqueIdsRetained": false,
+          "labels": [
+            "Comprehension*",
+            "Overall*",
+            "Reading*",
+            "Speaking*",
+            "Writing*"
+          ],
+          "ariaLabelIncludesSelectOneRequired": true,
+          "options": [
+            "Select One",
+            "1 - Beginner",
+            "2 - Classroom Study",
+            "3 - Intermediate",
+            "4 - Advanced",
+            "5 - Fluent"
+          ]
+        },
+        "addAnother": {
+          "automationId": "add-button",
+          "text": "Add Another",
+          "typeAttribute": null
+        }
+      },
+      "websites": {
+        "sectionLabelledBy": "Websites-section",
+        "visibleRowCount": 0,
+        "rowLabelPattern": "Websites-N-panel",
+        "emptyProbeRowAdded": true,
+        "emptyProbeRowRemoved": true,
+        "url": {
+          "idPattern": "webAddress-N--url",
+          "name": "url",
+          "label": "URL*",
+          "control": "input",
+          "type": "text",
+          "ariaRequired": true,
+          "wrapperAutomationId": "formField-url",
+          "valueRetained": false
+        },
+        "rowDeleteButton": {
+          "typeAttribute": null,
+          "automationId": null
+        },
+        "addAnother": {
+          "automationId": "add-button",
+          "text": "Add Another",
+          "typeAttribute": null
+        }
+      },
+      "calendarIcon": {
+        "role": "button",
+        "dataAutomationId": "dateIcon",
+        "activated": false,
+        "dateValuesChanged": false
+      },
+      "resumeAttachmentPresent": true,
+      "saveAndContinueActivated": true,
+      "validationBeforeExtraRowRemoval": {
+        "errorsFound": true,
+        "requiredBlankLabels": [
+          "Job Title",
+          "Location",
+          "To",
+          "Field of Study"
+        ],
+        "stepDidNotAdvance": true
+      },
+      "fieldValuesRetained": false,
+      "responseValuesRetained": false
+    },
+    "stepActions": {
+      "nativeResumeChooserUsed": true,
+      "continueActivatedToReachMyInformation": true,
+      "myInformationSaveAndContinueActivated": false,
+      "myInformationSaveAndContinueActivatedAfterSnapshot": true,
+      "myExperienceSaveAndContinueActivated": true,
+      "applicationQuestionsSaveAndContinueActivated": true,
+      "voluntaryDisclosuresSaveAndContinueActivated": true,
+      "applicationSubmitted": false
+    },
+    "laterStepObservations": [
+      {
+        "heading": "Application Questions",
+        "index": 4,
+        "count": 6,
+        "metadataFile": "semtech-application-questions.json"
+      },
+      {
+        "heading": "Voluntary Disclosures",
+        "index": 5,
+        "count": 6,
+        "metadataFile": "semtech-voluntary-disclosures.json"
+      },
+      {
+        "heading": "Review",
+        "index": 6,
+        "count": 6,
+        "metadataFile": "semtech-review.json"
+      }
+    ],
+    "applicationSubmitted": false
+  },
+  "sanitization": "Public job title, location, requisition, route, headings, progress labels, control metadata, and public option labels only. Candidate response values, selected answer text, account data, names, phone, address, and document bytes are not retained. The only file name/size retained is the explicitly labeled synthetic upload-test fixture.",
+  "boundary": "All six Semtech application steps were observed through the parent’s Codex in-app browser session: Autofill with Resume, My Information, My Experience, Application Questions, Voluntary Disclosures, and Review. The parent’s authorized native chooser test uploaded a labeled synthetic PDF on the parser step; an attachment was visible again on My Experience, with identifying text omitted. Sanitized selectors, prompts, options, progress counters, and structure are recorded in this file and the three later-step JSON files. The parent observed blank required-field validation, the user completed the factual application fields and advanced through the later steps, and the user-directed extra Work Experience row deletion left one panel. Candidate response values are not retained. Review showed a user-controlled Submit button outside its read-only summary; it was not activated. The application was not submitted. Extension-driven Workday behavior and native MV3 execution remain unverified."
+}
